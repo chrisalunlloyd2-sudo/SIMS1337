@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.effect.*?>
+<?import javafx.scene.transform.*?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.PlayerGridController"
+            style="-fx-background-color: #0a0a1a;" prefWidth="1400" prefHeight="900">
+
+    <!-- 4D Grid Floor -->
+    <GridPane layoutX="50" layoutY="400" hgap="40" vgap="40" style="-fx-background-color: transparent;">
+        <!-- Grid cells generated dynamically -->
+    </GridPane>
+
+    <!-- City Skyline Background -->
+    <VBox layoutX="100" layoutY="50" spacing="20" style="-fx-background-color: transparent;">
+        <!-- Skyscrapers -->
+        <Rectangle width="80" height="300" fill="#1a1a3e">
+            <effect><Bloom threshold="0.5"/></effect>
+        </Rectangle>
+        <Rectangle width="60" height="250" fill="#2a2a4e"/>
+        <Rectangle width="100" height="350" fill="#1a1a3e">
+            <effect><Bloom threshold="0.5"/></effect>
+        </Rectangle>
+        <Rectangle width="70" height="280" fill="#2a2a4e"/>
+        <Rectangle width="90" height="320" fill="#1a1a3e">
+            <effect><Bloom threshold="0.5"/></effect>
+        </Rectangle>
+    </VBox>
+
+    <!-- Player Symbols Panel -->
+    <VBox layoutX="1100" layoutY="50" spacing="15" style="-fx-background-color: #16213e; -fx-padding: 20; -fx-background-radius: 10;">
+        <Label text="🎮 PLAYERS" style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+        <Separator/>
+        
+        <!-- Player 1 -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Circle radius="15" fill="#00ff88"/>
+            <Label text="Agent Alpha" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <!-- Player 2 -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Circle radius="15" fill="#00d9ff"/>
+            <Label text="Agent Beta" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <!-- Player 3 -->
+        <HBox spacing="10" alignment="CENTER_LEFT">
+            <Circle radius="15" fill="#ffaa00"/>
+            <Label text="Agent Gamma" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+    </VBox>
+
+    <!-- Legend Panel -->
+    <VBox layoutX="1100" layoutY="250" spacing="10" style="-fx-background-color: #16213e; -fx-padding: 20; -fx-background-radius: 10;">
+        <Label text="📋 LEGEND" style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+        <Separator/>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#00ff88"/>
+            <Label text="Active Agent" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#ff6b6b"/>
+            <Label text="Brute Foundry" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#c77dff"/>
+            <Label text="A/B Testing Lab" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#ffaa00"/>
+            <Label text="Research Lab" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#00d9ff"/>
+            <Label text="Tree of Knowledge" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#ffffff"/>
+            <Label text="Secrets Locker" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="20" height="20" fill="#ff6b6b" opacity="0.5"/>
+            <Label text="Hospital" style="-fx-text-fill: #ffffff;"/>
+        </HBox>
+    </VBox>
+
+    <!-- Control Panel -->
+    <HBox layoutX="100" layoutY="800" spacing="15" style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+        <Button text="🏗️ Build Factory" onAction="#buildFactory"
+                style="-fx-background-color: #ff6b6b; -fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🧬 A/B Test Lab" onAction="#openABLab"
+                style="-fx-background-color: #c77dff; -fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🌳 Tree of Knowledge" onAction="#openTreeOfKnowledge"
+                style="-fx-background-color: #00d9ff; -fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🔬 Research Lab" onAction="#openResearchLab"
+                style="-fx-background-color: #ffaa00; -fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🔒 Secrets Locker" onAction="#openSecretsLocker"
+                style="-fx-background-color: #ffffff; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🏥 Hospital" onAction="#openHospital"
+                style="-fx-background-color: #ff6b6b; -fx-text-fill: #ffffff; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="📡 GitHub Station" onAction="#openGitHubStation"
+                style="-fx-background-color: #00ff88; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+    </HBox>
+
+    <!-- Status Bar -->
+    <Label layoutX="50" layoutY="860" text="🎮 Player Grid - 4D City Skyline | Agents Active: 0 | Grid Size: 12x12"
+           style="-fx-font-size: 14px; -fx-text-fill: #a0a0a0;"/>
+
+</AnchorPane>
