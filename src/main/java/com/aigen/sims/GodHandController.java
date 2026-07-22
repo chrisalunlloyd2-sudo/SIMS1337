@@ -7,11 +7,14 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
 import javafx.application.Platform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * GodHand Controller - Connects GUI to routing system
  */
 public class GodHandController {
+    private static final Logger logger = LoggerFactory.getLogger(GodHandController.class);
     
     // Model status labels
     @FXML private Label statusLabel;
