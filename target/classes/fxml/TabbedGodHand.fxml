@@ -57,57 +57,22 @@
             
             <!-- TAB 2: Player Grid 3D -->
             <Tab text="🎮 Player Grid 3D" closable="false">
-                <BorderPane style="-fx-padding: 20;">
-                    <!-- LEFT: Grid + Skyline -->
-                    <left>
-                        <VBox spacing="15" style="-fx-min-width: 900;">
-                            <!-- XYZ Labels -->
-                            <HBox spacing="20" alignment="CENTER">
-                                <Label text="X AXIS →" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
-                                <Label text="↑ Y AXIS" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
-                                <Label text="↓ Z AXIS (Depth)" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #ff6b6b;"/>
-                            </HBox>
-                            
-                            <!-- 10x10 GRID -->
-                            <GridPane fx:id="playerGrid" hgap="35" vgap="35" alignment="CENTER"
-                                      style="-fx-background-color: rgba(22, 33, 62, 0.5); -fx-padding: 20; -fx-background-radius: 10;"/>
-                            
-                            <!-- City Skyline -->
-                            <Label text="🏙️ CITY SKYLINE" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #c77dff;"/>
-                            <HBox fx:id="skylineBox" spacing="25" alignment="CENTER" style="-fx-padding: 15; -fx-background-color: rgba(10, 10, 26, 0.8); -fx-background-radius: 10;"/>
-                        </VBox>
-                    </left>
+                <VBox spacing="15" style="-fx-padding: 20;">
+                    <!-- Simple Grid Test Label -->
+                    <Label text="👇 10x10 GRID TEST - Red squares with yellow borders 👇" 
+                           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
                     
-                    <!-- RIGHT: Players + Chat -->
-                    <right>
-                        <VBox spacing="15" style="-fx-min-width: 350;">
-                            <!-- Players -->
-                            <VBox fx:id="playerPanel" spacing="10" 
-                                  style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
-                                <Label text="🎮 PLAYER POSITIONS (XYZ)" 
-                                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
-                            </VBox>
-                            
-                            <!-- Chat -->
-                            <VBox fx:id="chatPanel" spacing="10" 
-                                  style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
-                                <Label text="💬 MODEL CHAT" 
-                                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
-                                <ScrollPane fx:id="chatScroll" prefHeight="200" 
-                                            style="-fx-background-color: #0a0a15; -fx-background-radius: 5;">
-                                    <VBox fx:id="chatBox" spacing="5" style="-fx-padding: 8;"/>
-                                </ScrollPane>
-                                <HBox spacing="5">
-                                    <TextField fx:id="chatInput" promptText="Send to models..." 
-                                               style="-fx-background-color: #0a0a15; -fx-text-fill: #ffffff;"
-                                               HBox.hgrow="ALWAYS"/>
-                                    <Button text="Send" onAction="#sendChat" 
-                                            style="-fx-background-color: #00ff88; -fx-text-fill: #000000;"/>
-                                </HBox>
-                            </VBox>
-                        </VBox>
-                    </right>
-                </BorderPane>
+                    <!-- SIMPLE 10x10 GRID -->
+                    <GridPane fx:id="simpleGrid" hgap="5" vgap="5" alignment="CENTER"
+                              style="-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3; -fx-background-radius: 10;"/>
+                    
+                    <Label text="👆 100 RED CELLS (10x10) WITH YELLOW BORDERS 👆" 
+                           style="-fx-font-size: 16px; -fx-text-fill: #ffffff;"/>
+                    
+                    <!-- Skyline and Players below -->
+                    <HBox fx:id="skylineBox" spacing="25" alignment="CENTER" style="-fx-padding: 15; -fx-background-color: rgba(10, 10, 26, 0.8); -fx-background-radius: 10;"/>
+                    <VBox fx:id="playerPanel" spacing="10" style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;"/>
+                </VBox>
             </Tab>
             
             <!-- TAB 3: Facilities -->

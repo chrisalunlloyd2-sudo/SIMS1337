@@ -174,31 +174,39 @@ public class TabbedGodHandController {
         
         String[][] facilities = {
             {"🏗️ Brute Foundry", "Autonomous coding factory", "#ff6b6b"},
-            {"🧬 A/B Testing Lab", "Model comparison & optimization", "#c77dff"},
-            {"🌳 Knowledge Tree", "Database hierarchy visualizer", "#00d9ff"},
-            {"🔬 Research Lab", "Web crawlers & data collection", "#ffaa00"},
-            {"🔒 Secrets Locker", "Encrypted credential storage", "#999999"},
-            {"🏥 Hospital", "Server/agent recovery center", "#ff6b9d"},
-            {"📡 GitHub Station", "AST crawler & repo sync", "#6e5494"}
+            {"🧬 A/B Testing Lab", "Model comparison", "#c77dff"},
+            {"🌳 Knowledge Tree", "Database hierarchy", "#00d9ff"},
+            {"🔬 Research Lab", "Web crawlers", "#ffaa00"},
+            {"🔒 Secrets Locker", "Encrypted storage", "#999999"},
+            {"🏥 Hospital", "Agent recovery", "#ff6b9d"},
+            {"📡 GitHub Station", "AST crawler", "#6e5494"}
         };
         
         for (String[] facility : facilities) {
-            VBox card = new VBox(10);
-            card.setStyle("-fx-background-color: #16213e; -fx-padding: 20; -fx-background-radius: 10; -fx-min-width: 200;");
-            
-            Label name = new Label(facility[0]);
-            name.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: " + facility[2] + ";");
-            
-            Label desc = new Label(facility[1]);
-            desc.setStyle("-fx-text-fill: #a0a0a0; -fx-font-size: 12px; -fx-wrap-text: true;");
-            
-            Button openBtn = new Button("Open");
-            openBtn.setStyle("-fx-background-color: " + facility[2] + "; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
-            openBtn.setMaxWidth(Double.MAX_VALUE);
-            
-            card.getChildren().addAll(name, desc, openBtn);
-            facilitiesPanel.getChildren().add(card);
+            try {
+                VBox card = new VBox(10);
+                card.setStyle("-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10; -fx-min-width: 180;");
+                
+                Label name = new Label(facility[0]);
+                name.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: " + facility[2] + ";");
+                
+                Label desc = new Label(facility[1]);
+                desc.setStyle("-fx-text-fill: #a0a0a0; -fx-font-size: 11px;");
+                
+                Button openBtn = new Button("Open");
+                openBtn.setStyle("-fx-background-color: " + facility[2] + "; -fx-text-fill: #ffffff; -fx-font-size: 11px;");
+                openBtn.setMaxWidth(Double.MAX_VALUE);
+                
+                card.getChildren().addAll(name, desc, openBtn);
+                facilitiesPanel.getChildren().add(card);
+                
+                logger.debug("Added facility card: {}", facility[0]);
+            } catch (Exception e) {
+                logger.error("Failed to add facility card: {}", facility[0], e);
+            }
         }
+        
+        logger.info("✅ Facilities tab initialized: {} cards", facilities.length);
     }
     
     @FXML
