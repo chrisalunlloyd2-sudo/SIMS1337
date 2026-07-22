@@ -123,10 +123,19 @@ public class GodHandController {
         if (modelPool == null) return;
         
         Platform.runLater(() -> {
-            fastModelStatus.setText(modelPool.getQwen2_0_5b().isWarm() ? "🟢 Warm" : "🟡 Cold");
-            balancedModelStatus.setText(modelPool.getTinyllama_1_1b().isWarm() ? "🟢 Warm" : "🟡 Cold");
-            reasoningModelStatus.setText(modelPool.getPhiLatest().isWarm() ? "🟢 Warm" : "🟡 Cold");
-            deepModelStatus.setText(modelPool.getPhi3Mini().isWarm() ? "🟢 Warm" : "🟡 Cold");
+            try {
+                var fast = modelPool.getQwen2_0_5b();
+                var balanced = modelPool.getTinyllama_1_1b();
+                var reasoning = modelPool.getPhiLatest();
+                var deep = modelPool.getPhi3Mini();
+                
+                fastModelStatus.setText(fast != null && fast.isWarm() ? "🟢 Warm" : "🟡 Warming...");
+                balancedModelStatus.setText(balanced != null && balanced.isWarm() ? "🟢 Warm" : "🟡 Warming...");
+                reasoningModelStatus.setText(reasoning != null && reasoning.isWarm() ? "🟢 Warm" : "🟡 Warming...");
+                deepModelStatus.setText(deep != null && deep.isWarm() ? "🟢 Warm" : "🟡 Warming...");
+            } catch (Exception e) {
+                logger.debug("Model status update (models still warming): {}", e.getMessage());
+            }
         });
     }
     
