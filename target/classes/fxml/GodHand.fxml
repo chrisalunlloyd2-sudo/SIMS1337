@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.text.*?>
+<?import javafx.geometry.Insets?>
+
+<VBox xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.aigen.sims.GodHandController"
+      spacing="10" style="-fx-background-color: #1a1a2e; -fx-padding: 20;">
+
+    <!-- Header -->
+    <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-background-color: #16213e; -fx-padding: 15;">
+        <Label text="🎮 GODHAND" style="-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+        <Label text="Agent Orchestration Dashboard" style="-fx-font-size: 16px; -fx-text-fill: #a0a0a0;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Label fx:id="statusLabel" text="🟢 System Ready" style="-fx-font-size: 14px; -fx-text-fill: #00ff88;"/>
+    </HBox>
+
+    <!-- Model Status Panel -->
+    <TitledPane text="🧠 MODEL POOL" expanded="true" 
+                style="-fx-background-color: #16213e; -fx-text-fill: #00d9ff;">
+        <content>
+            <GridPane hgap="20" vgap="10">
+                <columnConstraints>
+                    <ColumnConstraints percentWidth="25"/>
+                    <ColumnConstraints percentWidth="25"/>
+                    <ColumnConstraints percentWidth="25"/>
+                    <ColumnConstraints percentWidth="25"/>
+                </columnConstraints>
+                
+                <!-- Fast Tier -->
+                <VBox GridPane.columnIndex="0" spacing="5" style="-fx-background-color: #0f3460; -fx-padding: 15;">
+                    <Label text="⚡ FAST TIER" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                    <Label fx:id="fastModelName" text="qwen2.5:0.5b" style="-fx-font-size: 12px; -fx-text-fill: #ffffff;"/>
+                    <Label text="398MB | &lt;100ms" style="-fx-font-size: 10px; -fx-text-fill: #a0a0a0;"/>
+                    <Label fx:id="fastModelStatus" text="🟢 Warm" style="-fx-font-size: 11px; -fx-text-fill: #00ff88;"/>
+                </VBox>
+                
+                <!-- Balanced Tier -->
+                <VBox GridPane.columnIndex="1" spacing="5" style="-fx-background-color: #0f3460; -fx-padding: 15;">
+                    <Label text="⚖️ BALANCED" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #ffaa00;"/>
+                    <Label fx:id="balancedModelName" text="tinyllama:1.1b" style="-fx-font-size: 12px; -fx-text-fill: #ffffff;"/>
+                    <Label text="638MB | ~500ms" style="-fx-font-size: 10px; -fx-text-fill: #a0a0a0;"/>
+                    <Label fx:id="balancedModelStatus" text="🟢 Warm" style="-fx-font-size: 11px; -fx-text-fill: #00ff88;"/>
+                </VBox>
+                
+                <!-- Reasoning Tier -->
+                <VBox GridPane.columnIndex="2" spacing="5" style="-fx-background-color: #0f3460; -fx-padding: 15;">
+                    <Label text="🧠 REASONING" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #ff6b6b;"/>
+                    <Label fx:id="reasoningModelName" text="phi:latest" style="-fx-font-size: 12px; -fx-text-fill: #ffffff;"/>
+                    <Label text="1.6GB | ~2-5s" style="-fx-font-size: 10px; -fx-text-fill: #a0a0a0;"/>
+                    <Label fx:id="reasoningModelStatus" text="🟢 Warm" style="-fx-font-size: 11px; -fx-text-fill: #00ff88;"/>
+                </VBox>
+                
+                <!-- Deep Tier -->
+                <VBox GridPane.columnIndex="3" spacing="5" style="-fx-background-color: #0f3460; -fx-padding: 15;">
+                    <Label text="🎯 DEEP" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c77dff;"/>
+                    <Label fx:id="deepModelName" text="phi3:mini" style="-fx-font-size: 12px; -fx-text-fill: #ffffff;"/>
+                    <Label text="2.2GB | ~5-10s" style="-fx-font-size: 10px; -fx-text-fill: #a0a0a0;"/>
+                    <Label fx:id="deepModelStatus" text="🟢 Warm" style="-fx-font-size: 11px; -fx-text-fill: #00ff88;"/>
+                </VBox>
+            </GridPane>
+        </content>
+    </TitledPane>
+
+    <!-- LoRA Adapter Status -->
+    <TitledPane text="🔄 LORA ADAPTERS" expanded="true"
+                style="-fx-background-color: #16213e; -fx-text-fill: #00d9ff;">
+        <content>
+            <FlowPane hgap="10" vgap="10">
+                <Label fx:id="adapterChat" text="💬 CHAT" style="-fx-background-color: #00ff88; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+                <Label fx:id="adapterCode" text="💻 CODE" style="-fx-background-color: #00d9ff; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+                <Label fx:id="adapterPathfind" text="🗺️ PATHFIND" style="-fx-background-color: #ffaa00; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+                <Label fx:id="adapterMotives" text="❤️ MOTIVES" style="-fx-background-color: #ff6b6b; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+                <Label fx:id="adapterCareer" text="🎯 CAREER" style="-fx-background-color: #c77dff; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+                <Label fx:id="adapterAnalysis" text="🔍 ANALYSIS" style="-fx-background-color: #a0a0a0; -fx-text-fill: #000000; -fx-padding: 8 15; -fx-background-radius: 20;"/>
+            </FlowPane>
+        </content>
+    </TitledPane>
+
+    <!-- Task Queue Panel -->
+    <TitledPane text="📋 TASK QUEUE" expanded="true"
+                style="-fx-background-color: #16213e; -fx-text-fill: #00d9ff;">
+        <content>
+            <VBox spacing="10">
+                <HBox spacing="20" alignment="CENTER_LEFT">
+                    <Label text="Queue Size:" style="-fx-text-fill: #ffffff;"/>
+                    <Label fx:id="queueSize" text="0/100" style="-fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <Label text="Utilization:" style="-fx-text-fill: #ffffff;"/>
+                    <Label fx:id="queueUtilization" text="0%" style="-fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                </HBox>
+                <ProgressBar fx:id="queueProgress" progress="0.0" maxWidth="Infinity"/>
+                <ListView fx:id="taskListView" prefHeight="150" 
+                          style="-fx-background-color: #0f3460; -fx-text-fill: #ffffff;"/>
+            </VBox>
+        </content>
+    </TitledPane>
+
+    <!-- Control Panel -->
+    <HBox spacing="10" alignment="CENTER" style="-fx-padding: 10;">
+        <Button text="▶️ Start Agent" onAction="#startAgent" 
+                style="-fx-background-color: #00ff88; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="⏸️ Pause" onAction="#pauseAgent"
+                style="-fx-background-color: #ffaa00; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="⏹️ Stop" onAction="#stopAgent"
+                style="-fx-background-color: #ff6b6b; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="🔄 Switch Adapter" onAction="#switchAdapter"
+                style="-fx-background-color: #00d9ff; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+        <Button text="📊 Refresh Stats" onAction="#refreshStats"
+                style="-fx-background-color: #c77dff; -fx-text-fill: #000000; -fx-font-size: 14px; -fx-padding: 10 20;"/>
+    </HBox>
+
+    <!-- Log Console -->
+    <TitledPane text="📜 ACTIVITY LOG" expanded="true"
+                style="-fx-background-color: #16213e; -fx-text-fill: #00d9ff;">
+        <content>
+            <TextArea fx:id="logConsole" editable="false" wrapText="true" 
+                      style="-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 11px;"
+                      prefHeight="200"/>
+        </content>
+    </TitledPane>
+
+</VBox>

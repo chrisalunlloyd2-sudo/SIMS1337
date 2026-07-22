@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.aigen.sims.routing.LoRASwitcherTest" time="1.339" tests="11" errors="0" skipped="0" failures="1">
+  <properties>
+    <property name="java.specification.version" value="17"/>
+    <property name="sun.cpu.isalist" value="amd64"/>
+    <property name="sun.jnu.encoding" value="Cp1252"/>
+    <property name="java.class.path" value="C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\target\test-classes;C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\target\classes;C:\Users\viper\.m2\repository\org\openjfx\javafx-controls\17.0.6\javafx-controls-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-controls\17.0.6\javafx-controls-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-graphics\17.0.6\javafx-graphics-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-graphics\17.0.6\javafx-graphics-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-base\17.0.6\javafx-base-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-base\17.0.6\javafx-base-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-fxml\17.0.6\javafx-fxml-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-fxml\17.0.6\javafx-fxml-17.0.6-win.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-databind\2.15.2\jackson-databind-2.15.2.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-annotations\2.15.2\jackson-annotations-2.15.2.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.15.2\jackson-core-2.15.2.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\client5\httpclient5\5.2.1\httpclient5-5.2.1.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\core5\httpcore5\5.2\httpcore5-5.2.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\core5\httpcore5-h2\5.2\httpcore5-h2-5.2.jar;C:\Users\viper\.m2\repository\org\java-websocket\Java-WebSocket\1.5.3\Java-WebSocket-1.5.3.jar;C:\Users\viper\.m2\repository\org\slf4j\slf4j-api\2.0.9\slf4j-api-2.0.9.jar;C:\Users\viper\.m2\repository\ch\qos\logback\logback-classic\1.4.11\logback-classic-1.4.11.jar;C:\Users\viper\.m2\repository\ch\qos\logback\logback-core\1.4.11\logback-core-1.4.11.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter\5.10.0\junit-jupiter-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.10.0\junit-jupiter-api-5.10.0.jar;C:\Users\viper\.m2\repository\org\opentest4j\opentest4j\1.3.0\opentest4j-1.3.0.jar;C:\Users\viper\.m2\repository\org\junit\platform\junit-platform-commons\1.10.0\junit-platform-commons-1.10.0.jar;C:\Users\viper\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.10.0\junit-jupiter-params-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.10.0\junit-jupiter-engine-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\platform\junit-platform-engine\1.10.0\junit-platform-engine-1.10.0.jar;C:\Users\viper\.m2\repository\org\mockito\mockito-core\5.5.0\mockito-core-5.5.0.jar;C:\Users\viper\.m2\repository\net\bytebuddy\byte-buddy\1.14.6\byte-buddy-1.14.6.jar;C:\Users\viper\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.6\byte-buddy-agent-1.14.6.jar;C:\Users\viper\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\viper\.m2\repository\org\assertj\assertj-core\3.24.2\assertj-core-3.24.2.jar;C:\Users\viper\.m2\repository\org\testfx\testfx-core\4.0.18\testfx-core-4.0.18.jar;C:\Users\viper\.m2\repository\org\hamcrest\hamcrest\2.1\hamcrest-2.1.jar;C:\Users\viper\.m2\repository\org\osgi\org.osgi.core\6.0.0\org.osgi.core-6.0.0.jar;"/>
+    <property name="java.vm.vendor" value="Oracle Corporation"/>
+    <property name="sun.arch.data.model" value="64"/>
+    <property name="user.variant" value=""/>
+    <property name="java.vendor.url" value="https://java.oracle.com/"/>
+    <property name="user.timezone" value="America/Los_Angeles"/>
+    <property name="os.name" value="Windows 10"/>
+    <property name="java.vm.specification.version" value="17"/>
+    <property name="sun.java.launcher" value="SUN_STANDARD"/>
+    <property name="user.country" value="US"/>
+    <property name="sun.boot.library.path" value="C:\Program Files\Java\jdk-17\bin"/>
+    <property name="sun.java.command" value="C:\Users\viper\AppData\Local\Temp\surefire5520543844691619461\surefirebooter-20260721180120204_3.jar C:\Users\viper\AppData\Local\Temp\surefire5520543844691619461 2026-07-21T18-01-19_529-jvmRun1 surefire-20260721180120204_1tmp surefire_0-20260721180120204_2tmp"/>
+    <property name="jdk.debug" value="release"/>
+    <property name="surefire.test.class.path" value="C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\target\test-classes;C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\target\classes;C:\Users\viper\.m2\repository\org\openjfx\javafx-controls\17.0.6\javafx-controls-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-controls\17.0.6\javafx-controls-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-graphics\17.0.6\javafx-graphics-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-graphics\17.0.6\javafx-graphics-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-base\17.0.6\javafx-base-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-base\17.0.6\javafx-base-17.0.6-win.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-fxml\17.0.6\javafx-fxml-17.0.6.jar;C:\Users\viper\.m2\repository\org\openjfx\javafx-fxml\17.0.6\javafx-fxml-17.0.6-win.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-databind\2.15.2\jackson-databind-2.15.2.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-annotations\2.15.2\jackson-annotations-2.15.2.jar;C:\Users\viper\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.15.2\jackson-core-2.15.2.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\client5\httpclient5\5.2.1\httpclient5-5.2.1.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\core5\httpcore5\5.2\httpcore5-5.2.jar;C:\Users\viper\.m2\repository\org\apache\httpcomponents\core5\httpcore5-h2\5.2\httpcore5-h2-5.2.jar;C:\Users\viper\.m2\repository\org\java-websocket\Java-WebSocket\1.5.3\Java-WebSocket-1.5.3.jar;C:\Users\viper\.m2\repository\org\slf4j\slf4j-api\2.0.9\slf4j-api-2.0.9.jar;C:\Users\viper\.m2\repository\ch\qos\logback\logback-classic\1.4.11\logback-classic-1.4.11.jar;C:\Users\viper\.m2\repository\ch\qos\logback\logback-core\1.4.11\logback-core-1.4.11.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter\5.10.0\junit-jupiter-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.10.0\junit-jupiter-api-5.10.0.jar;C:\Users\viper\.m2\repository\org\opentest4j\opentest4j\1.3.0\opentest4j-1.3.0.jar;C:\Users\viper\.m2\repository\org\junit\platform\junit-platform-commons\1.10.0\junit-platform-commons-1.10.0.jar;C:\Users\viper\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.10.0\junit-jupiter-params-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.10.0\junit-jupiter-engine-5.10.0.jar;C:\Users\viper\.m2\repository\org\junit\platform\junit-platform-engine\1.10.0\junit-platform-engine-1.10.0.jar;C:\Users\viper\.m2\repository\org\mockito\mockito-core\5.5.0\mockito-core-5.5.0.jar;C:\Users\viper\.m2\repository\net\bytebuddy\byte-buddy\1.14.6\byte-buddy-1.14.6.jar;C:\Users\viper\.m2\repository\net\bytebuddy\byte-buddy-agent\1.14.6\byte-buddy-agent-1.14.6.jar;C:\Users\viper\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\viper\.m2\repository\org\assertj\assertj-core\3.24.2\assertj-core-3.24.2.jar;C:\Users\viper\.m2\repository\org\testfx\testfx-core\4.0.18\testfx-core-4.0.18.jar;C:\Users\viper\.m2\repository\org\hamcrest\hamcrest\2.1\hamcrest-2.1.jar;C:\Users\viper\.m2\repository\org\osgi\org.osgi.core\6.0.0\org.osgi.core-6.0.0.jar;"/>
+    <property name="sun.cpu.endian" value="little"/>
+    <property name="user.home" value="C:\Users\viper"/>
+    <property name="user.language" value="en"/>
+    <property name="java.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.version.date" value="2024-07-16"/>
+    <property name="java.home" value="C:\Program Files\Java\jdk-17"/>
+    <property name="file.separator" value="\"/>
+    <property name="basedir" value="C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx"/>
+    <property name="java.vm.compressedOopsMode" value="Zero based"/>
+    <property name="line.separator" value="&#10;"/>
+    <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
+    <property name="java.specification.name" value="Java Platform API Specification"/>
+    <property name="surefire.real.class.path" value="C:\Users\viper\AppData\Local\Temp\surefire5520543844691619461\surefirebooter-20260721180120204_3.jar"/>
+    <property name="user.script" value=""/>
+    <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
+    <property name="java.runtime.version" value="17.0.12+8-LTS-286"/>
+    <property name="user.name" value="viper"/>
+    <property name="path.separator" value=";"/>
+    <property name="os.version" value="10.0"/>
+    <property name="java.runtime.name" value="Java(TM) SE Runtime Environment"/>
+    <property name="file.encoding" value="Cp1252"/>
+    <property name="java.vm.name" value="Java HotSpot(TM) 64-Bit Server VM"/>
+    <property name="localRepository" value="C:\Users\viper\.m2\repository"/>
+    <property name="java.vendor.url.bug" value="https://bugreport.java.com/bugreport/"/>
+    <property name="java.io.tmpdir" value="C:\Users\viper\AppData\Local\Temp\"/>
+    <property name="java.version" value="17.0.12"/>
+    <property name="user.dir" value="C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx"/>
+    <property name="os.arch" value="amd64"/>
+    <property name="java.vm.specification.name" value="Java Virtual Machine Specification"/>
+    <property name="sun.os.patch.level" value=""/>
+    <property name="native.encoding" value="Cp1252"/>
+    <property name="java.library.path" value="C:\Program Files\Java\jdk-17\bin;C:\Windows\Sun\Java\bin;C:\Windows\system32;C:\Windows;C:\Program Files\Java\jdk-17\bin;C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.16\bin;C:\Program Files\Ollama;C:\Users\viper\bin;C:\Users\viper\AppData\Local\hermes\git\mingw64\bin;C:\Users\viper\AppData\Local\hermes\git\usr\local\bin;C:\Users\viper\AppData\Local\hermes\git\usr\bin;C:\Users\viper\AppData\Local\hermes\git\usr\bin;C:\Users\viper\AppData\Local\hermes\git\mingw64\bin;C:\Users\viper\AppData\Local\hermes\git\usr\bin;C:\Users\viper\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Users\viper\AppData\Local\hermes\hermes-agent\venv\Scripts;C:\Users\viper\AppData\Local\hermes\bin;C:\Users\viper\AppData\Local\Microsoft\WindowsApps;C:\Users\viper\AppData\Local\hermes\git\cmd;C:\Users\viper\AppData\Local\hermes\git\usr\bin;C:\Users\viper\AppData\Local\hermes\git\usr\bin;C:\Users\viper\AppData\Local\hermes\node;C:\Users\viper\AppData\Local\hermes\git\usr\bin\vendor_perl;C:\Users\viper\AppData\Local\hermes\git\usr\bin\core_perl;C:\Program\ Files\Ollama;C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.16\bin;C:\Program Files\Java\jdk-17\bin;C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.16\bin;C:\Program Files\Java\jdk-17\bin;C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.16\bin;."/>
+    <property name="java.vm.info" value="mixed mode, sharing"/>
+    <property name="java.vendor" value="Oracle Corporation"/>
+    <property name="java.vm.version" value="17.0.12+8-LTS-286"/>
+    <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
+    <property name="java.class.version" value="61.0"/>
+  </properties>
+  <testcase name="testAverageSwitchTime" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.995">
+    <system-out><![CDATA[18:01:25.013 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.033 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.043 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.053 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.053 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.056 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (0ms)
+18:01:25.056 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CODE
+18:01:25.056 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: PATHFIND
+18:01:25.056 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CODE ? PATHFIND (0ms)
+18:01:25.056 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: PATHFIND
+18:01:25.056 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: MOTIVES
+18:01:25.056 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: PATHFIND ? MOTIVES (0ms)
+]]></system-out>
+  </testcase>
+  <testcase name="testContextPreservation" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.011">
+    <system-out><![CDATA[18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.407 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+]]></system-out>
+  </testcase>
+  <testcase name="testSwitchTime" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.032">
+    <system-out><![CDATA[18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.428 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.428 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.428 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (0ms)
+]]></system-out>
+  </testcase>
+  <testcase name="testInitialAdapter" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.011">
+    <system-out><![CDATA[18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.458 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.466 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.466 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+]]></system-out>
+  </testcase>
+  <testcase name="testSwitchToSameAdapter" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.009">
+    <system-out><![CDATA[18:01:25.476 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.476 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.478 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.478 [main] DEBUG com.aigen.sims.routing.LoRASwitcher -- Already on adapter: CHAT
+]]></system-out>
+  </testcase>
+  <testcase name="testCircularSwitching" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.01">
+    <system-out><![CDATA[18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (0ms)
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CODE
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: PATHFIND
+18:01:25.488 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CODE ? PATHFIND (0ms)
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: PATHFIND
+18:01:25.488 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: MOTIVES
+18:01:25.494 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: PATHFIND ? MOTIVES (0ms)
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: MOTIVES
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CAREER
+18:01:25.494 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: MOTIVES ? CAREER (0ms)
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CAREER
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: ANALYSIS
+18:01:25.494 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CAREER ? ANALYSIS (0ms)
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: ANALYSIS
+18:01:25.494 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CHAT
+18:01:25.494 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: ANALYSIS ? CHAT (0ms)
+]]></system-out>
+  </testcase>
+  <testcase name="testAdapterInitialization" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.051">
+    <system-out><![CDATA[18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.498 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.509 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.509 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+]]></system-out>
+  </testcase>
+  <testcase name="testAllAdapterTypes" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.011">
+    <system-out><![CDATA[18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.559 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+]]></system-out>
+  </testcase>
+  <testcase name="testAdapterChange" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.01">
+    <system-out><![CDATA[18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.579 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.587 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.587 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.587 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.587 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (0ms)
+]]></system-out>
+  </testcase>
+  <testcase name="testSwitchStats" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.061">
+    <failure message="&#10;Expecting actual:&#10;  0L&#10;to be greater than:&#10;  0L&#10;" type="java.lang.AssertionError"><![CDATA[java.lang.AssertionError: 
+
+Expecting actual:
+  0L
+to be greater than:
+  0L
+
+	at com.aigen.sims.routing.LoRASwitcherTest.testSwitchStats(LoRASwitcherTest.java:91)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+]]></failure>
+    <system-out><![CDATA[18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.589 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.597 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (0ms)
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CODE
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: PATHFIND
+18:01:25.597 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CODE ? PATHFIND (0ms)
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: PATHFIND
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: MOTIVES
+18:01:25.597 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: PATHFIND ? MOTIVES (0ms)
+18:01:25.597 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: MOTIVES
+18:01:25.599 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CAREER
+18:01:25.599 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: MOTIVES ? CAREER (0ms)
+18:01:25.599 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CAREER
+18:01:25.599 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: ANALYSIS
+18:01:25.599 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CAREER ? ANALYSIS (0ms)
+]]></system-out>
+  </testcase>
+  <testcase name="testSwitchSuccess" classname="com.aigen.sims.routing.LoRASwitcherTest" time="0.01">
+    <system-out><![CDATA[18:01:25.660 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Initializing LoRA adapters...
+18:01:25.660 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CHAT
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CODE
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: PATHFIND
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: MOTIVES
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: CAREER
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher --   ? LoRA adapter initialized: ANALYSIS
+18:01:25.668 [main] INFO com.aigen.sims.routing.LoRASwitcher -- LoRA switcher initialized with 6 adapters, starting with: CHAT
+18:01:25.668 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Unloading LoRA adapter weights: CHAT
+18:01:25.669 [main] DEBUG com.aigen.sims.routing.LoRAAdapter -- Loading LoRA adapter weights: CODE
+18:01:25.670 [main] INFO com.aigen.sims.routing.LoRASwitcher -- Switched LoRA adapter: CHAT ? CODE (3ms)
+]]></system-out>
+  </testcase>
+</testsuite>
