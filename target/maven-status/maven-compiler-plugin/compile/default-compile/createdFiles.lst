@@ -1,5 +1,5 @@
 com\aigen\sims\tasks\Task.class
-com\aigen\sims\MainApp.class
+com\aigen\sims\PlayerGrid3DApp.class
 com\aigen\sims\tasks\TaskStatus.class
 com\aigen\sims\routing\LoRAAdapter.class
 com\aigen\sims\routing\TaskQueue.class

@@ -4,6 +4,8 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.animation.PauseTransition;
+import javafx.util.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -140,8 +142,9 @@ public class PlayerGrid3DController {
     }
     
     private void simulateModelResponse(String userMessage) {
-        // Simulate model responses after 1 second
-        javafx.util.Duration.delay(1000).onFinished(e -> {
+        // Simulate model responses after 1 second using PauseTransition
+        PauseTransition delay = new PauseTransition(Duration.seconds(1));
+        delay.setOnFinished(e -> {
             String[] responses = {
                 "Processing your request...",
                 "Task queued for execution",
@@ -151,6 +154,7 @@ public class PlayerGrid3DController {
             String response = responses[(int)(Math.random() * responses.length)];
             addChatMessage("phi", response);
         });
+        delay.play();
     }
     
     // Inner class for player positions
