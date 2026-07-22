@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.effect.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.RealPlayerGridController"
+            style="-fx-background-color: linear-gradient(to bottom, #0a0a1a, #1a1a3e);" 
+            prefWidth="1400" prefHeight="900">
+
+    <!-- TOP: Header -->
+    <top>
+        <HBox spacing="20" alignment="CENTER" style="-fx-background-color: #16213e; -fx-padding: 15;">
+            <Label text="🎮 PLAYER GRID 3D - XYZ City Skyline" 
+                   style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+            <Label fx:id="statusLabel" text="| 🟢 3 Agents Active | XYZ: 10x10x5" 
+                   style="-fx-font-size: 16px; -fx-text-fill: #00ff88;"/>
+        </HBox>
+    </top>
+
+    <!-- LEFT: 3D Grid + City Skyline -->
+    <left>
+        <VBox spacing="10" style="-fx-background-color: #0f0f2a; -fx-padding: 20; -fx-min-width: 800;">
+            
+            <!-- XYZ Axis Labels -->
+            <HBox spacing="20" alignment="CENTER">
+                <Label text="X AXIS →" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                <Label text="↑ Y AXIS" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+                <Label text="↓ Z AXIS (Depth)" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #ff6b6b;"/>
+            </HBox>
+            
+            <!-- THE ACTUAL 10x10 GRID -->
+            <GridPane fx:id="mainGrid" hgap="35" vgap="35" 
+                      alignment="CENTER"
+                      style="-fx-background-color: rgba(22, 33, 62, 0.5); -fx-padding: 20; -fx-background-radius: 10;">
+            </GridPane>
+            
+            <!-- City Skyline -->
+            <HBox spacing="20" alignment="CENTER" style="-fx-padding: 20; -fx-background-color: rgba(10, 10, 26, 0.8); -fx-background-radius: 10;">
+                <Label text="🏙️ CITY SKYLINE" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #c77dff;"/>
+            </HBox>
+            
+            <HBox fx:id="skylineBox" spacing="25" alignment="CENTER" style="-fx-padding: 10;">
+                <!-- 5 Skyscrapers will be added by controller -->
+            </HBox>
+        </VBox>
+    </left>
+
+    <!-- RIGHT: Players + Chat + Facilities -->
+    <right>
+        <VBox spacing="15" style="-fx-background-color: #0f0f2a; -fx-padding: 15; -fx-min-width: 350;">
+            
+            <!-- Player Positions -->
+            <VBox fx:id="playerPanel" spacing="10" 
+                  style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                <Label text="🎮 PLAYER POSITIONS (XYZ)" 
+                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+                <!-- Players added by controller -->
+            </VBox>
+            
+            <!-- Model Chat -->
+            <VBox fx:id="chatPanel" spacing="10" 
+                  style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                <Label text="💬 MODEL CHAT" 
+                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                <ScrollPane fx:id="chatScroll" prefHeight="200" 
+                            style="-fx-background-color: #0a0a15; -fx-background-radius: 5;">
+                    <VBox fx:id="chatBox" spacing="5" style="-fx-padding: 8;"/>
+                </ScrollPane>
+                <HBox spacing="5">
+                    <TextField fx:id="chatInput" promptText="Send to models..." 
+                               style="-fx-background-color: #0a0a15; -fx-text-fill: #ffffff;"
+                               HBox.hgrow="ALWAYS"/>
+                    <Button text="Send" onAction="#sendChat" 
+                            style="-fx-background-color: #00ff88; -fx-text-fill: #000000;"/>
+                </HBox>
+            </VBox>
+            
+            <!-- Facilities -->
+            <VBox fx:id="facilityPanel" spacing="8" 
+                  style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                <Label text="📋 FACILITIES" 
+                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ffaa00;"/>
+                <!-- Facilities added by controller -->
+            </VBox>
+        </VBox>
+    </right>
+
+    <!-- BOTTOM: Control Buttons -->
+    <bottom>
+        <HBox spacing="12" alignment="CENTER" style="-fx-background-color: #16213e; -fx-padding: 15;">
+            <Button text="🏗️ Build Factory" onAction="#buildFactory"
+                    style="-fx-background-color: #ff6b6b; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="🧬 A/B Lab" onAction="#openABLab"
+                    style="-fx-background-color: #c77dff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="🌳 Knowledge Tree" onAction="#openTree"
+                    style="-fx-background-color: #00d9ff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="🔬 Research" onAction="#openResearch"
+                    style="-fx-background-color: #ffaa00; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="🔒 Secrets" onAction="#openSecrets"
+                    style="-fx-background-color: #999999; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="🏥 Hospital" onAction="#openHospital"
+                    style="-fx-background-color: #ff6b9d; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+            <Button text="📡 GitHub" onAction="#openGitHub"
+                    style="-fx-background-color: #6e5494; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 18;"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>
