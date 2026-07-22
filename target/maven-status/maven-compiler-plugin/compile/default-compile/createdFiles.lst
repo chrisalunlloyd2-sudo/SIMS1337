@@ -1,8 +1,11 @@
+com\aigen\sims\TabbedGodHandController$1.class
+com\aigen\sims\SimpleGridApp.class
 com\aigen\sims\MainApp.class
 com\aigen\sims\PlayerGrid3DApp.class
 com\aigen\sims\PlayerGrid3DController$PlayerPosition.class
 com\aigen\sims\tasks\TaskStatus.class
 com\aigen\sims\routing\LoRAAdapter.class
+com\aigen\sims\TabbedGodHandApp.class
 com\aigen\sims\UnifiedBackendController$1.class
 com\aigen\sims\RealPlayerGridController$1.class
 com\aigen\sims\routing\TaskQueue.class
@@ -13,6 +16,7 @@ com\aigen\sims\routing\RoutingRecommendation.class
 com\aigen\sims\GodHandController.class
 com\aigen\sims\tasks\Task.class
 com\aigen\sims\PlayerGrid3DController$1.class
+com\aigen\sims\TabbedGodHandController.class
 com\aigen\sims\RealPlayerGridApp.class
 com\aigen\sims\routing\ModelPool.class
 com\aigen\sims\tasks\Complexity.class

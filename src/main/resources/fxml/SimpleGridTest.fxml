@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.effect.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.SimpleGridApp"
+            style="-fx-background-color: #0a0a1a;" 
+            prefWidth="1200" prefHeight="800">
+
+    <top>
+        <Label text="🎮 SIMPLE GRID TEST - If you see this, the window works!" 
+               style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #00ff88; -fx-padding: 15;"/>
+    </top>
+
+    <center>
+        <VBox spacing="20" alignment="CENTER" style="-fx-padding: 20;">
+            <Label text="👇 BELOW IS A 10x10 GRID 👇" 
+                   style="-fx-font-size: 16px; -fx-text-fill: #ffffff;"/>
+            
+            <!-- THE GRID -->
+            <GridPane fx:id="testGrid" hgap="5" vgap="5" 
+                      style="-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3;"/>
+            
+            <Label text="👆 ABOVE IS A 10x10 GRID 👆" 
+                   style="-fx-font-size: 16px; -fx-text-fill: #ffffff;"/>
+        </VBox>
+    </center>
+
+</BorderPane>

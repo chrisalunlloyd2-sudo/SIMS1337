@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.effect.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.TabbedGodHandController"
+            style="-fx-background-color: linear-gradient(to bottom, #0a0a1a, #1a1a3e);" 
+            prefWidth="1600" prefHeight="1000">
+
+    <!-- TOP: Header -->
+    <top>
+        <HBox spacing="20" alignment="CENTER" style="-fx-background-color: #16213e; -fx-padding: 15;">
+            <Label text="⚙️ SIMS1337 - Unified Control Center" 
+                   style="-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+            <Label fx:id="statusLabel" text="| 🟢 All Systems Online" 
+                   style="-fx-font-size: 16px; -fx-text-fill: #00ff88;"/>
+        </HBox>
+    </top>
+
+    <!-- CENTER: Tabbed Interface -->
+    <center>
+        <TabPane fx:id="mainTabPane" tabClosingPolicy="UNAVAILABLE">
+            
+            <!-- TAB 1: GodHand Dashboard -->
+            <Tab text="🧠 GodHand" closable="false">
+                <VBox spacing="15" style="-fx-padding: 20;">
+                    <!-- Model Status -->
+                    <VBox fx:id="modelPanel" spacing="10" 
+                          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                        <Label text="🧠 MODEL STATUS" 
+                               style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                        <!-- Models added by controller -->
+                    </VBox>
+                    
+                    <!-- LoRA Adapters -->
+                    <VBox fx:id="adapterPanel" spacing="10" 
+                          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                        <Label text="🔄 LoRA ADAPTERS" 
+                               style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+                        <!-- Adapters added by controller -->
+                    </VBox>
+                    
+                    <!-- Task Queue -->
+                    <VBox fx:id="queuePanel" spacing="10" 
+                          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+                        <Label text="📋 TASK QUEUE" 
+                               style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ffaa00;"/>
+                        <!-- Queue info added by controller -->
+                    </VBox>
+                </VBox>
+            </Tab>
+            
+            <!-- TAB 2: Player Grid 3D -->
+            <Tab text="🎮 Player Grid 3D" closable="false">
+                <VBox spacing="15" style="-fx-padding: 20;">
+                    <!-- Simple Grid Test Label -->
+                    <Label text="👇 10x10 GRID TEST - Red squares with yellow borders 👇" 
+                           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+                    
+                    <!-- SIMPLE 10x10 GRID -->
+                    <GridPane fx:id="simpleGrid" hgap="5" vgap="5" alignment="CENTER"
+                              style="-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3; -fx-background-radius: 10;"/>
+                    
+                    <Label text="👆 100 RED CELLS (10x10) WITH YELLOW BORDERS 👆" 
+                           style="-fx-font-size: 16px; -fx-text-fill: #ffffff;"/>
+                    
+                    <!-- Skyline and Players below -->
+                    <HBox fx:id="skylineBox" spacing="25" alignment="CENTER" style="-fx-padding: 15; -fx-background-color: rgba(10, 10, 26, 0.8); -fx-background-radius: 10;"/>
+                    <VBox fx:id="playerPanel" spacing="10" style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;"/>
+                </VBox>
+            </Tab>
+            
+            <!-- TAB 3: Facilities -->
+            <Tab text="🏗️ Facilities" closable="false">
+                <VBox fx:id="facilitiesPanel" spacing="15" style="-fx-padding: 20;">
+                    <Label text="📋 FACILITY CONTROL CENTER" 
+                           style="-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #ffaa00;"/>
+                    <!-- 7 Facility cards added by controller -->
+                </VBox>
+            </Tab>
+            
+        </TabPane>
+    </center>
+
+    <!-- BOTTOM: Status Bar -->
+    <bottom>
+        <HBox spacing="20" alignment="CENTER" style="-fx-background-color: #16213e; -fx-padding: 10;">
+            <Label text="🎮 Player Grid 3D v1.0 | XYZ: 10x10x5 | Agents: 3 | Models: 4 | Facilities: 7"
+                   style="-fx-font-size: 13px; -fx-text-fill: #666; -fx-font-family: monospace;"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>

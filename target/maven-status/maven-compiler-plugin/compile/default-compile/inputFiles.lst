@@ -3,7 +3,9 @@ C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\Uni
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\routing\ModelRouter.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\UnifiedBackendApp.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\GodHandController.java
+C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\SimpleGridApp.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\PlayerGrid3DApp.java
+C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\TabbedGodHandApp.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\tasks\TaskStatus.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\MainApp.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\PlayerGridController.java
@@ -13,6 +15,7 @@ C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\rou
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\routing\TaskQueue.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\RealPlayerGridApp.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\PlayerGridApp.java
+C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\TabbedGodHandController.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\tasks\Complexity.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\tasks\Task.java
 C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\src\main\java\com\aigen\sims\routing\AdapterType.java
