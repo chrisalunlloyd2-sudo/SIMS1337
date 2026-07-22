@@ -1,8 +1,5 @@
 package com.aigen.sims;
 
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-
 import com.aigen.sims.routing.*;
 import com.aigen.sims.tasks.Task;
 import com.aigen.sims.tasks.Complexity;
@@ -19,8 +16,6 @@ import org.slf4j.LoggerFactory;
  * GodHand Controller - Connects GUI to routing system
  */
 public class GodHandController {
-    private static final String GODHAND_FXML = "/fxml/GodHand.fxml";
-    private Scene mainScene;
     private static final Logger logger = LoggerFactory.getLogger(GodHandController.class);
     
     // Model status labels
@@ -208,73 +203,11 @@ public class GodHandController {
 
     @FXML
     public void showPlayerGridView() {
-        logger.info("🎮 Player Grid button clicked - building 10x10 RED grid");
-        try {
-            VBox gridRoot = new VBox(15);
-            gridRoot.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20;");
-            
-            Label titleLabel = new Label("🎮 PLAYER GRID 3D - 10x10x5");
-            titleLabel.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;");
-            
-            Label gridLabel = new Label("👇 10x10 GRID - Blue gradient with cyan borders 👇");
-            gridLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #00ff88;");
-            
-            GridPane grid = new GridPane();
-            grid.setHgap(5);
-            grid.setVgap(5);
-            grid.setAlignment(javafx.geometry.Pos.CENTER);
-            
-            for (int row = 0; row < 10; row++) {
-                for (int col = 0; col < 10; col++) {
-                    Rectangle cell = new Rectangle(50, 50);
-                    // Blue gradient based on position
-javafx.scene.paint.Color cellColor = javafx.scene.paint.Color.web(String.format("#%02X%02X%02X", 
-    30 + (row * 15), 
-    80 + (col * 12), 
-    150 + ((10-row) * 8)));
-cell.setFill(cellColor);
-                    cell.setStroke(javafx.scene.paint.Color.web("#00d9ff"));
-                    cell.setStrokeWidth(3);
-                    grid.add(cell, col, row);
-                }
-            }
-            
-            Label bottomLabel = new Label("👆 100 BLUE CELLS (10x10) WITH CYAN BORDERS 👆");
-            bottomLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #ffffff;");
-            
-            gridRoot.getChildren().addAll(titleLabel, gridLabel, grid, bottomLabel);
-            
-            // Switch the scene root
-            if (mainScene != null) {
-                statusLabel.getScene().setRoot(gridRoot);
-            }
-            
-            logger.info("✅ Grid displayed successfully!");
-        } catch (Exception e) {
-            logger.error("❌ Failed to show Player Grid: {}", e.getMessage());
-            e.printStackTrace();
-        }
+        logger.info("🎮 Grid button clicked");
     }
     
     @FXML
     public void showGodHandView() {
-        logger.info("🧠 GodHand button clicked - reloading dashboard");
-        try {
-            // Load the FXML
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/GodHand.fxml"));
-            Parent root = loader.load();
-            
-            // Get the current scene and set new root
-            if (mainScene != null) {
-                statusLabel.getScene().setRoot(root);
-                logger.info("✅ Dashboard reloaded successfully!");
-            } else {
-                logger.warn("⚠️ statusLabel or scene is null");
-            }
-        } catch (Exception e) {
-            logger.error("❌ Failed to reload GodHand: {}", e.getMessage(), e);
-            e.printStackTrace();
-        }
+        logger.info("🧠 GodHand button clicked");
     }
-
 }

@@ -11,14 +11,10 @@
 
     <!-- Navigation Bar -->
     <HBox alignment="CENTER_LEFT" spacing="10" style="-fx-background-color: #0f3460; -fx-padding: 10; -fx-background-radius: 5;">
-        <Button text="🧠 GodHand" onAction="#showGodHandView" 
-                style="-fx-background-color: #00d9ff; -fx-text-fill: #000000; -fx-font-weight: bold; -fx-font-size: 14px;"/>
-        <Button text="🎮 Player Grid" onAction="#showPlayerGridView" 
-                style="-fx-background-color: #16213e; -fx-text-fill: #ffffff; -fx-font-size: 14px;"/>
+        <Button text="🧠 GodHand" onAction="#showGodHandView" style="-fx-background-color: #00d9ff; -fx-text-fill: #000000; -fx-font-weight: bold;"/>
+        <Button text="🎮 Player Grid" onAction="#showPlayerGridView" style="-fx-background-color: #16213e; -fx-text-fill: #ffffff;"/>
         <Region HBox.hgrow="ALWAYS"/>
     </HBox>
-
-
 
     <!-- Header -->
     <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-background-color: #16213e; -fx-padding: 15;">

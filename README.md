@@ -1,109 +1,130 @@
-# 🎮 SIMS NEO 1337
+# SIMS Java Neo FX - Gamified SLM Agent Training System
 
-**4D City Skyline + GodHand Dashboard - Autonomous AI Foundry**
+## 🎯 Vision
+A JavaFX-based GUI for orchestrating 4-tier Small Language Model (SLM) agents in a gamified environment where models collaborate, vote on code additions, build topology, and autonomously improve the system.
 
----
+## 🏗️ Architecture
 
-## 🚀 QUICK START
+### Core Components
+- **GodHand GUI**: JavaFX dashboard for model orchestration
+- **Player Grid 3D**: 10x10x5 grid where agents navigate and interact
+- **Model Pool**: 4-tier SLM system (qwen2.5:0.5b, tinyllama:1.1b, phi:latest, phi3:mini)
+- **LoRA Adapters**: 6 specialized adapters (CHAT, CODE, PATHFIND, MOTIVES, CAREER, ANALYSIS)
+- **Station Orchestrator**: 7 facilities (Brute Foundry, A/B Lab, Knowledge Tree, Research Lab, Secrets Locker, Hospital, GitHub Station)
 
-### Launch Both GUIs
+### Model Tiers
+| Tier | Model | Size | Latency | Use Case |
+|------|-------|------|---------|----------|
+| ⚡ Fast | qwen2.5:0.5b | 398MB | <100ms | Real-time tasks |
+| ⚖️ Balanced | tinyllama:1.1b | 638MB | ~500ms | Game logic |
+| 🧠 Reasoning | phi:latest | 1.6GB | 2-5s | Social AI |
+| 🎯 Deep | phi3:mini | 2.2GB | 5-10s | Complex decisions |
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Java 17+ (JDK)
+- Maven 3.9+
+- Ollama server running locally
+
+### Build & Run
 ```bash
-cd C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx
-.\LAUNCH_BOTH.bat
+cd sims-java-neo-fx
+mvn clean compile
+mvn javafx:run
 ```
 
-### Launch Individual GUIs
-```bash
-# GodHand Dashboard (Agent Orchestration)
-.\RUN_GUI.bat
+### GUI Controls
+- **🧠 GodHand**: Dashboard view (model status, LoRA adapters, task queue)
+- **🎮 Player Grid**: 10x10 blue gradient grid with cyan borders
+- **Navigation**: Click buttons in top blue bar to switch views
 
-# Player Grid (4D City Skyline)
-# Coming soon: RUN_PLAYERGRID.bat
+## 📊 Features
+
+### Phase 1 (Complete)
+- ✅ GodHand dashboard with 4 model tiers
+- ✅ LoRA adapter status display (6 types)
+- ✅ Task queue with progress bar
+- ✅ Activity log console
+- ✅ Navigation bar with view switching
+- ✅ Player Grid 3D (10x10 blue gradient)
+
+### Phase 2 (In Progress)
+- ⏳ Model routing patterns table
+- ⏳ Web search integration buttons
+- ⏳ Command listener (preset → terminal trigger)
+- ⏳ Prompt injection menu
+
+### Phase 3 (Planned)
+- Model context options (tokens, LoRA, KV, KG, affine)
+- Station orchestration (Brute Force, Hospital, GitHub)
+- Shannon entropy monitoring
+- Markov chain patterns
+- Lexical math English programming
+
+## 🔧 Configuration
+
+### Ollama Models
+```bash
+ollama pull qwen2.5:0.5b
+ollama pull tinyllama:1.1b
+ollama pull phi:latest
+ollama pull phi3:mini
 ```
 
----
+### Environment Variables
+```bash
+JAVA_HOME=/path/to/jdk-17
+MAVEN_HOME=/path/to/maven
+OLLAMA_HOST=localhost:11434
+```
 
-## 🎯 FEATURES
+## 📝 Development Workflow
 
-### Phase 2A: Core Routing ✅
-- 4-tier SLM orchestration (qwen2.5, tinyllama, phi, phi3)
-- Complexity-based routing (<10ms)
-- Priority task queue
-- LoRA adapter switching (6 types, <100ms)
-- 42 unit tests (97.6% passing)
+### Version Control
+- Checkpoints saved to Git with semantic versioning (v0.1.0, v0.2.0, etc.)
+- Change logs in `logs/` directory with timestamps
+- Blueprints and documentation in `docs/` directory
 
-### GodHand Dashboard ✅
-- Live model status (warm/cold indicators)
-- LoRA adapter visual switching
-- Task queue with utilization stats
-- Activity log with timestamps
-- Control panel (Start/Pause/Stop)
+### Testing
+- JUnit 5 for unit tests
+- TestFX for GUI testing
+- Target: >90% code coverage
 
-### Player Grid 🔄
-- 4D city skyline background
-- Player symbols (Alpha, Beta, Gamma)
-- 7 facilities (Factory, Lab, Tree, Research, Secrets, Hospital, GitHub)
-- Interactive legend
-- 12x12 grid foundation
+## 🐛 Known Issues
 
----
+### View Switching (Being Fixed)
+**Problem**: FXML reload creates new controller instance, losing scene reference
+**Status**: Investigating VBox child swapping vs. scene root replacement
+**Workaround**: Use pure GodHand (no nav bar) for stability
 
-## 🏗️ FACILITIES (Coming Soon)
+## 📈 Roadmap
 
-| Facility | Purpose | Status |
-|----------|---------|--------|
-| 🏗️ Brute Foundry | Autonomous coding factory | PENDING |
-| 🧬 A/B Testing Lab | Model comparison | PENDING |
-| 🌳 Tree of Knowledge | Database hierarchy | PENDING |
-| 🔬 Research Lab | Web crawlers | PENDING |
-| 🔒 Secrets Locker | Encrypted storage | PENDING |
-| 🏥 Hospital | Server/agent recovery | PENDING |
-| 📡 GitHub Station | AST crawler | PENDING |
+### Week 1-2: Core Infrastructure
+- [x] GodHand GUI foundation
+- [x] Navigation bar
+- [ ] Stable view switching
+- [ ] Documentation system
 
----
+### Week 3-4: Model Integration
+- [ ] Ollama API integration
+- [ ] Model routing patterns
+- [ ] LoRA adapter switching
 
-## 🛠️ TECH STACK
+### Week 5-6: Station Orchestration
+- [ ] Brute Foundry (autonomous coding)
+- [ ] Hospital (agent recovery)
+- [ ] GitHub Station (repo management)
 
-- **Java 17** + **JavaFX 17**
-- **Maven 3.9.16**
-- **Ollama** (local SLM orchestration)
-- **JUnit 5** + **TestFX** (testing)
-- **SLF4J** + **Logback** (logging)
+### Week 7-8: Advanced Features
+- [ ] Shannon entropy monitoring
+- [ ] Markov chain patterns
+- [ ] Lexical math English
 
----
+## 📄 License
+MIT License - See LICENSE file
 
-## 📊 MODEL LINEUP
-
-| Tier | Model | Size | Speed |
-|------|-------|------|-------|
-| Fast | qwen2.5:0.5b | 398MB | <100ms |
-| Balanced | tinyllama:1.1b | 638MB | ~500ms |
-| Reasoning | phi:latest | 1.6GB | ~2-5s |
-| Deep | phi3:mini | 2.2GB | ~5-10s |
-
----
-
-## 🎮 VISION
-
-**Gamified AI Agent Orchestration:**
-- Agents navigate 4D grid like a city
-- Facilities represent AI capabilities
-- Old-school Sims-style graphics
-- Autonomous software production
-- A/B testing for models
-- Knowledge tree for databases
-- Research lab for web crawling
-
----
-
-## 📝 STATUS
-
-- ✅ Phase 2A: Core Routing COMPLETE
-- ✅ GodHand GUI: WORKING
-- ✅ Player Grid: CREATED
-- 🔄 Phase 3: Connect GUIs IN PROGRESS
-- 📦 GitHub: READY TO PUSH
-
----
-
-*Built with 💙 by Architect + Aegis*
+## 🙏 Acknowledgments
+- AIGEN_SYS autonomous foundry system
+- OpenClaw mission control inspiration
+- 4-tier SLM architecture design
