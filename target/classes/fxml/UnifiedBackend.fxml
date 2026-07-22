@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.effect.*?>
+<?import javafx.scene.web.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.UnifiedBackendController"
+            style="-fx-background-color: linear-gradient(to bottom, #0a0a1a, #1a1a3e);">
+
+    <!-- Top: Status Bar -->
+    <top>
+        <HBox spacing="20" style="-fx-background-color: #16213e; -fx-padding: 10;">
+            <Label text="⚙️ SIMS1337 BACKEND - Unified Control Center" 
+                   style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label fx:id="statusLabel" text="🟢 All Systems Online" 
+                   style="-fx-font-size: 14px; -fx-text-fill: #00ff88;"/>
+        </HBox>
+    </top>
+
+    <!-- Left: GodHand Panel -->
+    <left>
+        <VBox spacing="15" style="-fx-background-color: #0f0f2a; -fx-padding: 15; -fx-min-width: 450;">
+            <Label text="🧠 GODHAND - Model Orchestration" 
+                   style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+            
+            <!-- Model Status -->
+            <VBox fx:id="modelPanel" spacing="8" style="-fx-background-color: #16213e; -fx-padding: 10; -fx-background-radius: 8;"/>
+            
+            <!-- LoRA Adapters -->
+            <VBox fx:id="adapterPanel" spacing="8" style="-fx-background-color: #16213e; -fx-padding: 10; -fx-background-radius: 8;"/>
+            
+            <!-- Task Queue -->
+            <VBox fx:id="queuePanel" spacing="8" style="-fx-background-color: #16213e; -fx-padding: 10; -fx-background-radius: 8;"/>
+        </VBox>
+    </left>
+
+    <!-- Center: Player Grid 3D -->
+    <center>
+        <StackPane>
+            <!-- 3D Grid Floor -->
+            <GridPane hgap="40" vgap="40" style="-fx-background-color: transparent;" 
+                      alignment="CENTER" />
+            
+            <!-- XYZ Axes -->
+            <VBox spacing="10" alignment="CENTER" 
+                  style="-fx-background-color: rgba(22, 33, 62, 0.8); -fx-padding: 15; -fx-background-radius: 10;">
+                <Label text="🎮 PLAYER GRID 3D" 
+                       style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+                <Label text="XYZ: 12x12x5" style="-fx-text-fill: #a0a0a0;"/>
+                <Label text="Agents: 3 Active" style="-fx-text-fill: #00ff88;"/>
+            </VBox>
+        </StackPane>
+    </center>
+
+    <!-- Right: Facilities + Chat -->
+    <right>
+        <VBox spacing="15" style="-fx-background-color: #0f0f2a; -fx-padding: 15; -fx-min-width: 400;">
+            <!-- Model Chat -->
+            <VBox fx:id="chatPanel" spacing="10" style="-fx-background-color: #16213e; -fx-padding: 10; -fx-background-radius: 8;"/>
+            
+            <!-- Facilities -->
+            <VBox fx:id="facilitiesPanel" spacing="10" style="-fx-background-color: #16213e; -fx-padding: 10; -fx-background-radius: 8;"/>
+        </VBox>
+    </right>
+
+    <!-- Bottom: Control Panel -->
+    <bottom>
+        <HBox spacing="15" alignment="CENTER" style="-fx-background-color: #16213e; -fx-padding: 15;">
+            <Button text="🏗️ Brute Foundry" onAction="#openBruteFoundry"
+                    style="-fx-background-color: #ff6b6b; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="🧬 A/B Testing" onAction="#openABTesting"
+                    style="-fx-background-color: #c77dff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="🌳 Knowledge Tree" onAction="#openKnowledgeTree"
+                    style="-fx-background-color: #00d9ff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="🔬 Research Lab" onAction="#openResearchLab"
+                    style="-fx-background-color: #ffaa00; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="🔒 Secrets Locker" onAction="#openSecretsLocker"
+                    style="-fx-background-color: #999999; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="🏥 Hospital" onAction="#openHospital"
+                    style="-fx-background-color: #ff6b9d; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+            <Button text="📡 GitHub Station" onAction="#openGitHubStation"
+                    style="-fx-background-color: #6e5494; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 10 20;"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>
