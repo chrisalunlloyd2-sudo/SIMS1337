@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.scene.paint.*?>
+<?import javafx.scene.transform.*?>
+<?import javafx.scene.text.*?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/17.0.6" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.aigen.sims.PlayerGrid3DController"
+            style="-fx-background-color: linear-gradient(to bottom, #0a0a1a, #1a1a3e);" 
+            prefWidth="1600" prefHeight="1000">
+
+    <!-- 3D XYZ Grid Floor -->
+    <GridPane layoutX="200" layoutY="400" hgap="50" vgap="50" 
+              style="-fx-background-color: transparent;">
+        <!-- 12x12 grid with XYZ coordinates -->
+    </GridPane>
+
+    <!-- XYZ Axis Labels -->
+    <Label layoutX="100" layoutY="350" text="X AXIS →" 
+           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+    <Label layoutX="50" layoutY="300" text="↑ Y AXIS" 
+           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+    <Label layoutX="100" layoutY="800" text="↓ Z AXIS (Depth)" 
+           style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ff6b6b;"/>
+
+    <!-- City Skyline - 3D Buildings -->
+    <VBox layoutX="300" layoutY="100" spacing="15" style="-fx-background-color: transparent;">
+        <!-- Building 1 -->
+        <Rectangle width="60" height="250" fill="#1a1a3e" stroke="#00d9ff" strokeWidth="2">
+            <effect><javafx.scene.effect.Bloom threshold="0.7"/></effect>
+        </Rectangle>
+        <!-- Building 2 -->
+        <Rectangle width="80" height="300" fill="#2a2a4e" stroke="#00ff88" strokeWidth="2"/>
+        <!-- Building 3 -->
+        <Rectangle width="70" height="280" fill="#1a1a3e" stroke="#ffaa00" strokeWidth="2">
+            <effect><javafx.scene.effect.Bloom threshold="0.7"/></effect>
+        </Rectangle>
+        <!-- Building 4 -->
+        <Rectangle width="90" height="320" fill="#2a2a4e" stroke="#c77dff" strokeWidth="2"/>
+        <!-- Building 5 -->
+        <Rectangle width="65" height="260" fill="#1a1a3e" stroke="#ff6b6b" strokeWidth="2">
+            <effect><javafx.scene.effect.Bloom threshold="0.7"/></effect>
+        </Rectangle>
+    </VBox>
+
+    <!-- Player Positions Panel (XYZ Coordinates) -->
+    <VBox layoutX="1200" layoutY="50" spacing="12" 
+          style="-fx-background-color: #16213e; -fx-padding: 20; -fx-background-radius: 10; -fx-border-color: #00d9ff; -fx-border-width: 2;">
+        <Label text="🎮 PLAYER POSITIONS (XYZ)" 
+               style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+        <Separator/>
+        
+        <!-- Player 1 -->
+        <VBox spacing="5">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Circle radius="12" fill="#00ff88"/>
+                <Label text="Agent Alpha" style="-fx-text-fill: #ffffff; -fx-font-weight: bold;"/>
+            </HBox>
+            <Label text="Pos: (3, 7, 2)" style="-fx-text-fill: #a0a0a0; -fx-font-size: 11px;"/>
+            <Label text="Status: Active" style="-fx-text-fill: #00ff88; -fx-font-size: 11px;"/>
+        </VBox>
+        
+        <!-- Player 2 -->
+        <VBox spacing="5">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Circle radius="12" fill="#00d9ff"/>
+                <Label text="Agent Beta" style="-fx-text-fill: #ffffff; -fx-font-weight: bold;"/>
+            </HBox>
+            <Label text="Pos: (8, 4, 1)" style="-fx-text-fill: #a0a0a0; -fx-font-size: 11px;"/>
+            <Label text="Status: Moving" style="-fx-text-fill: #ffaa00; -fx-font-size: 11px;"/>
+        </VBox>
+        
+        <!-- Player 3 -->
+        <VBox spacing="5">
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Circle radius="12" fill="#ffaa00"/>
+                <Label text="Agent Gamma" style="-fx-text-fill: #ffffff; -fx-font-weight: bold;"/>
+            </HBox>
+            <Label text="Pos: (5, 9, 3)" style="-fx-text-fill: #a0a0a0; -fx-font-size: 11px;"/>
+            <Label text="Status: Idle" style="-fx-text-fill: #a0a0a0; -fx-font-size: 11px;"/>
+        </VBox>
+    </VBox>
+
+    <!-- Model Chat Box -->
+    <VBox layoutX="1200" layoutY="350" spacing="10" 
+          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10; -fx-border-color: #00ff88; -fx-border-width: 2;">
+        <Label text="💬 MODEL CHAT" 
+               style="-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #00ff88;"/>
+        
+        <!-- Chat Display -->
+        <ScrollPane prefWidth="350" prefHeight="300" 
+                    style="-fx-background-color: #0a0a15; -fx-background-radius: 5;">
+            <VBox fx:id="chatBox" spacing="8" style="-fx-padding: 10;">
+                <!-- Chat messages will be added dynamically -->
+                <Label text="[System] Player Grid initialized" 
+                       style="-fx-text-fill: #a0a0a0; -fx-font-size: 11px; -fx-wrap-text: true;"/>
+            </VBox>
+        </ScrollPane>
+        
+        <!-- Chat Input -->
+        <HBox spacing="5">
+            <TextField fx:id="chatInput" promptText="Send to models..." 
+                       style="-fx-background-color: #0a0a15; -fx-text-fill: #ffffff; -fx-prompt-text-fill: #666;"
+                       prefWidth="280"/>
+            <Button text="Send" onAction="#sendChat" 
+                    style="-fx-background-color: #00ff88; -fx-text-fill: #000000; -fx-font-weight: bold;"/>
+        </HBox>
+    </VBox>
+
+    <!-- Facility Legend -->
+    <VBox layoutX="1200" layoutY="700" spacing="8" 
+          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+        <Label text="📋 FACILITIES" 
+               style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #00d9ff;"/>
+        
+        <HBox spacing="10">
+            <Rectangle width="16" height="16" fill="#ff6b6b"/>
+            <Label text="Brute Foundry (Factory)" style="-fx-text-fill: #ffffff; -fx-font-size: 12px;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="16" height="16" fill="#c77dff"/>
+            <Label text="A/B Testing Lab" style="-fx-text-fill: #ffffff; -fx-font-size: 12px;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="16" height="16" fill="#00d9ff"/>
+            <Label text="Tree of Knowledge" style="-fx-text-fill: #ffffff; -fx-font-size: 12px;"/>
+        </HBox>
+        
+        <HBox spacing="10">
+            <Rectangle width="16" height="16" fill="#ffaa00"/>
+            <Label text="Research Lab" style="-fx-text-fill: #ffffff; -fx-font-size: 12px;"/>
+        </HBox>
+    </VBox>
+
+    <!-- Control Panel -->
+    <HBox layoutX="200" layoutY="920" spacing="12" 
+          style="-fx-background-color: #16213e; -fx-padding: 15; -fx-background-radius: 10;">
+        <Button text="🏗️ Build Factory" onAction="#buildFactory"
+                style="-fx-background-color: #ff6b6b; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 8 16;"/>
+        <Button text="🧬 A/B Lab" onAction="#openABLab"
+                style="-fx-background-color: #c77dff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 8 16;"/>
+        <Button text="🌳 Knowledge Tree" onAction="#openTree"
+                style="-fx-background-color: #00d9ff; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 8 16;"/>
+        <Button text="🔬 Research" onAction="#openResearch"
+                style="-fx-background-color: #ffaa00; -fx-text-fill: #ffffff; -fx-font-size: 13px; -fx-padding: 8 16;"/>
+        <Button text="🔄 Refresh Grid" onAction="#refreshGrid"
+                style="-fx-background-color: #00ff88; -fx-text-fill: #000000; -fx-font-size: 13px; -fx-padding: 8 16;"/>
+    </HBox>
+
+    <!-- Status Bar -->
+    <Label layoutX="50" layoutY="970" 
+           text="🎮 Player Grid 3D v1.0 | XYZ: 12x12x5 | Agents: 3 | Facilities: 4"
+           style="-fx-font-size: 13px; -fx-text-fill: #666; -fx-font-family: monospace;"/>
+
+</AnchorPane>
