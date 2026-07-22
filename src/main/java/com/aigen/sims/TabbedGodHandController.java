@@ -43,12 +43,11 @@ public class TabbedGodHandController {
         // Tab 3: Facilities
         initFacilitiesTab();
         
-        addChatMessage("System", "⚙️ Unified Control Center initialized");
-        addChatMessage("System", "✅ Tab 1: GodHand Dashboard");
-        addChatMessage("System", "✅ Tab 2: Player Grid 3D (10x10x5)");
-        addChatMessage("System", "✅ Tab 3: Facilities Control");
+        // Don't call addChatMessage here - chatBox is in Tab 2 and may be null
+        // Chat will be populated by simulateModelChat() after tab is rendered
+        logger.info("✅ All tabs initialized");
         
-        // Start model chat
+        // Start model chat (will add messages when tab is visible)
         simulateModelChat();
     }
     
