@@ -11,6 +11,9 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
+import java.net.URI;
+import java.net.http.*;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -43,7 +46,12 @@ public class GodHandApp extends Application {
     private final Map<String, Boolean> stationActive = new ConcurrentHashMap<>();
     private final Map<String, TextArea> stationOutputs = new ConcurrentHashMap<>();
 
-    // === Entropy ===
+    // === Ollama API ===
+    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+    private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
     private double shannonEntropy = 0.0;
     private double entropyThreshold = 0.75;
     private final List<Double> entropyHistory = new ArrayList<>();
@@ -557,31 +565,64 @@ public class GodHandApp extends Application {
         }, 0, 10, TimeUnit.SECONDS);
     }
 
-    // ==================== MODEL CHAT ====================
+    // ==================== MODEL CHAT (REAL OLLAMA API) ====================
     private void simulateModelResponse(String modelName, String input) {
         chatScheduler.schedule(() -> {
-            Platform.runLater(() -> {
-                TextArea chat = modelChats.get(modelName);
-                if (chat == null) return;
+            try {
+                String response = callOllama(modelName, input);
+                Platform.runLater(() -> {
+                    TextArea chat = modelChats.get(modelName);
+                    if (chat != null) {
+                        chat.appendText("[" + modelName + "] " + response + "\n");
+                    }
+                    log("💬 [" + modelName + "] " + response);
+                    checkCommandTriggers(response, modelName);
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    TextArea chat = modelChats.get(modelName);
+                    if (chat != null) {
+                        chat.appendText("[" + modelName + "] ⚠️ API unavailable: " + e.getMessage() + "\n");
+                    }
+                    log("⚠️ [" + modelName + "] Ollama API error: " + e.getMessage());
+                });
+            }
+        }, 100, TimeUnit.MILLISECONDS);
+    }
 
-                String pattern = modelPatterns.get(modelName).getValue();
-                String response = switch (pattern) {
-                    case "Linear" -> "[" + modelName + "] Processing: " + input.substring(0, Math.min(30, input.length())) + "...";
-                    case "Loop" -> "[" + modelName + "] Loop iteration: analyzing " + input.substring(0, Math.min(20, input.length()));
-                    case "Markov" -> "[" + modelName + "] Markov chain: state transition from input";
-                    case "Vote" -> "[" + modelName + "] Vote: " + (Math.random() > 0.5 ? "APPROVE ✅" : "REJECT ❌");
-                    case "Chain" -> "[" + modelName + "] Chain output → next model input ready";
-                    case "Broadcast" -> "[" + modelName + "] Broadcasting to all agents...";
-                    default -> "[" + modelName + "] Response: " + input.substring(0, Math.min(20, input.length()));
-                };
+    private String callOllama(String model, String prompt) throws Exception {
+        String json = String.format("{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false}",
+                model.replace("\"", "\\\""),
+                prompt.replace("\"", "\\\"").replace("\n", "\\n"));
 
-                chat.appendText(response + "\n");
-                log("💬 [" + modelName + "] Pattern: " + pattern + " | " + response);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(OLLAMA_URL))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
 
-                // Check command triggers
-                checkCommandTriggers(input, modelName);
-            });
-        }, 500 + (long)(Math.random() * 1500), TimeUnit.MILLISECONDS);
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            ollamaAvailable.put(model, true);
+            // Extract just the response text from Ollama JSON
+            String body = response.body();
+            int start = body.indexOf("\"response\":\"");
+            if (start > 0) {
+                start += 12;
+                int end = body.indexOf("\"", start);
+                if (end > start) {
+                    return body.substring(start, end)
+                            .replace("\\n", " ")
+                            .replace("\\\"", "\"");
+                }
+            }
+            return body.length() > 200 ? body.substring(0, 200) + "..." : body;
+        } else {
+            ollamaAvailable.put(model, false);
+            throw new RuntimeException("HTTP " + response.statusCode() + ": " + response.body().substring(0, Math.min(100, response.body().length())));
+        }
     }
 
     // ==================== COMMAND SYSTEM ====================
