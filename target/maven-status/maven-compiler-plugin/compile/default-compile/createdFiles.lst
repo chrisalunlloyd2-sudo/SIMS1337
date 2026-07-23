@@ -7,6 +7,7 @@ com\aigen\sims\tasks\TaskStatus.class
 com\aigen\sims\routing\LoRAAdapter.class
 com\aigen\sims\TabbedGodHandApp.class
 com\aigen\sims\UnifiedBackendController$1.class
+com\aigen\sims\GodHandApp.class
 com\aigen\sims\RealPlayerGridController$1.class
 com\aigen\sims\routing\TaskQueue.class
 com\aigen\sims\routing\ModelRouter.class
