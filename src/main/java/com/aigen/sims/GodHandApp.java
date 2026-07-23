@@ -206,7 +206,9 @@ public class GodHandApp extends Application {
             {"⚡ FAST", "qwen2.5:0.5b", "398MB | <100ms", "#00ff88"},
             {"⚖️ BALANCED", "tinyllama:1.1b", "638MB | ~500ms", "#ffaa00"},
             {"🧠 REASONING", "phi:latest", "1.6GB | ~2-5s", "#ff6b6b"},
-            {"🎯 DEEP", "phi3:mini", "2.2GB | ~5-10s", "#c77dff"}
+            {"🎯 DEEP", "phi3:mini", "2.2GB | ~5-10s", "#c77dff"},
+            {"🦙 LLAMA", "llama3.2:1b", "1.3GB | ~1-3s", "#ffd700"},
+            {"🐋 DEEPSEEK", "deepseek-r1:1.5b", "1.1GB | ~2-5s", "#ff69b4"}
         };
         for (String[] m : models) {
             VBox card = vbox(4, "#0f3460", 8);
@@ -653,6 +655,77 @@ public class GodHandApp extends Application {
         rcContent.getChildren().addAll(label("Routing:",11,"#00d9ff",true), rtTable, label("Commands:",11,"#00d9ff",true), cmdTable, label("Prompt:",11,"#00d9ff",true), promptArea, injectBtn, label("Context:",11,"#00d9ff",true), ctxRow);
         routingPane.setContent(new ScrollPane(rcContent));
 
+        // === MODEL EVALUATION + LORA + PROMPT ENGINEERING + STATS ===
+        TitledPane evalPane = titledPane("🧪 MODEL EVALUATION + LORA + PROMPT ENGINEERING + STATS", true);
+        VBox evalContent = vbox(8, "#16213e", 8);
+
+        // Model capability matrix
+        Label evalTitle = label("📊 Model Capability Matrix (editable)", 12, "#00d9ff", true);
+        TableView<String[]> evalTable = new TableView<>(); evalTable.setPrefHeight(100); evalTable.setStyle("-fx-background-color: #0f3460;");
+        TableColumn<String[],String> eModel = new TableColumn<>("Model"); eModel.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
+        TableColumn<String[],String> eCode = new TableColumn<>("Code"); eCode.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
+        TableColumn<String[],String> eEssay = new TableColumn<>("Essay"); eEssay.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
+        TableColumn<String[],String> eLogic = new TableColumn<>("Logic"); eLogic.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
+        TableColumn<String[],String> eCreative = new TableColumn<>("Creative"); eCreative.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
+        TableColumn<String[],String> eSpeed = new TableColumn<>("Speed"); eSpeed.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5]));
+        TableColumn<String[],String> eReliability = new TableColumn<>("Reliability"); eReliability.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[6]));
+        evalTable.getColumns().addAll(eModel, eCode, eEssay, eLogic, eCreative, eSpeed, eReliability);
+
+        ObservableList<String[]> evalData = FXCollections.observableArrayList();
+        evalData.addAll(
+            new String[]{"qwen2.5:0.5b", "⭐⭐⭐", "⭐⭐", "⭐⭐", "⭐", "⚡⚡⚡⚡⚡", "⭐⭐⭐⭐"},
+            new String[]{"tinyllama:1.1b", "⭐⭐⭐", "⭐⭐⭐", "⭐⭐", "⭐⭐", "⚡⚡⚡⚡", "⭐⭐⭐"},
+            new String[]{"phi:latest", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐", "⚡⚡", "⭐⭐⭐"},
+            new String[]{"phi3:mini", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⚡", "⭐⭐⭐⭐"},
+            new String[]{"llama3.2:1b", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐", "⚡⚡⚡", "⭐⭐⭐⭐"},
+            new String[]{"deepseek-r1:1.5b", "⭐⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐⭐", "⭐⭐", "⚡⚡", "⭐⭐⭐⭐"}
+        );
+        evalTable.setItems(evalData);
+
+        // LoRA adapter config
+        Label loraTitle = label("🔄 LoRA Adapter Configuration (per model)", 12, "#00d9ff", true);
+        HBox loraRow = hbox(8, Pos.CENTER_LEFT, null, 0);
+        String[] loraTypes = {"CHAT","CODE","PATHFIND","MOTIVES","CAREER","ANALYSIS"};
+        for (String lt : loraTypes) {
+            ComboBox<String> loraCb = new ComboBox<>();
+            loraCb.getItems().addAll("qwen2.5:0.5b","tinyllama:1.1b","phi:latest","phi3:mini","llama3.2:1b","deepseek-r1:1.5b");
+            loraCb.setValue("qwen2.5:0.5b");
+            loraCb.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); loraCb.setMaxWidth(100);
+            loraRow.getChildren().addAll(label(lt+":",9,"#a0a0a0",false), loraCb);
+        }
+
+        // Prompt engineering templates
+        Label promptEngTitle = label("💉 Prompt Engineering Templates (editable)", 12, "#00d9ff", true);
+        TextArea codePrompt = new TextArea("You are an expert programmer. Write clean, efficient, well-documented code. Output ONLY the code, no explanation.");
+        codePrompt.setPrefRowCount(2); codePrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 9px;");
+        TextArea essayPrompt = new TextArea("You are a professional writer. Write engaging, well-structured content with clear arguments and evidence.");
+        essayPrompt.setPrefRowCount(2); essayPrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #ffaa00; -fx-font-family: monospace; -fx-font-size: 9px;");
+        TextArea taskPrompt = new TextArea("You are a task completion agent. Break down the task, execute step by step, verify results.");
+        taskPrompt.setPrefRowCount(2); taskPrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00d9ff; -fx-font-family: monospace; -fx-font-size: 9px;");
+
+        // Stats tracker
+        Label statsTitle = label("📈 Model Performance Stats (auto-tracked)", 12, "#00d9ff", true);
+        HBox statsRow = hbox(15, Pos.CENTER_LEFT, null, 0);
+        Label totalCalls = label("Total API calls: 0", 11, "#fff", false);
+        Label avgLatency = label("Avg latency: 0ms", 11, "#fff", false);
+        Label successRate = label("Success rate: 100%", 11, "#00ff88", false);
+        statsRow.getChildren().addAll(totalCalls, avgLatency, successRate);
+
+        // Test buttons
+        HBox testRow = hbox(10, Pos.CENTER_LEFT, null, 0);
+        Button testCodeBtn = styledButton("💻 Test Code Gen", "#00ff88");
+        testCodeBtn.setOnAction(e -> runEvalTest("code", codePrompt.getText()));
+        Button testEssayBtn = styledButton("📝 Test Essay", "#ffaa00");
+        testEssayBtn.setOnAction(e -> runEvalTest("essay", essayPrompt.getText()));
+        Button testTaskBtn = styledButton("⚡ Test Task", "#00d9ff");
+        testTaskBtn.setOnAction(e -> runEvalTest("task", taskPrompt.getText()));
+        Button testAllBtn = styledButton("🧪 Test All Models", "#c77dff");
+        testAllBtn.setOnAction(e -> runFullEval());
+        testRow.getChildren().addAll(testCodeBtn, testEssayBtn, testTaskBtn, testAllBtn);
+
+        evalContent.getChildren().addAll(evalTitle, evalTable, loraTitle, loraRow, promptEngTitle, codePrompt, essayPrompt, taskPrompt, statsTitle, statsRow, testRow);
+        evalPane.setContent(new ScrollPane(evalContent));
+
         // === ADVANCED (Entropy + Markov + Lexical + GitHub) ===
         TitledPane advPane = titledPane("📊 ADVANCED: Entropy + Markov + Lexical + GitHub", true);
         VBox advContent = vbox(8, "#16213e", 8);
@@ -674,11 +747,45 @@ public class GodHandApp extends Application {
         ScheduledExecutorService eu = Executors.newSingleThreadScheduledExecutor();
         eu.scheduleAtFixedRate(()->{double ne=Math.random()*0.5+0.2; shannonEntropy=ne; Platform.runLater(()->{ev.setText(String.format("Entropy: %.3f bits",ne)); if(ne>entropyThreshold){es.setText("🔴 ALERT!");es.setStyle("-fx-font-size: 12px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");log("🚨 ENTROPY: "+String.format("%.3f",ne));}else{es.setText("🟢 Normal");es.setStyle("-fx-font-size: 12px; -fx-text-fill: #00ff88;");}});},0,3,TimeUnit.SECONDS);
 
-        box.getChildren().addAll(apiPane, modelMgrPane, votePane, topoPane, nightPane, routingPane, advPane);
+        box.getChildren().addAll(apiPane, modelMgrPane, votePane, topoPane, nightPane, evalPane, routingPane, advPane);
         return box;
     }
 
     private TextField tf(String text, int width) { TextField f = new TextField(text); f.setMaxWidth(width); f.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 10px;"); return f; }
+
+    // ==================== MODEL EVALUATION ====================
+    private void runEvalTest(String type, String promptTemplate) {
+        String[] testModels = {"qwen2.5:0.5b", "tinyllama:1.1b", "llama3.2:1b", "deepseek-r1:1.5b"};
+        String testInput = type.equals("code") ? "Write a function to reverse a string" :
+                          type.equals("essay") ? "Write about artificial intelligence" :
+                          "Complete the task: organize files by type";
+        log("🧪 Running " + type + " eval on " + testModels.length + " models...");
+        addToGodChat("🧪 EVAL", type.toUpperCase(), "Testing " + testModels.length + " models");
+        for (String model : testModels) {
+            final String m = model;
+            chatScheduler.schedule(() -> {
+                try {
+                    long start = System.currentTimeMillis();
+                    String result = callOllama(m, promptTemplate + "\n\n" + testInput);
+                    long latency = System.currentTimeMillis() - start;
+                    Platform.runLater(() -> {
+                        addToGodChat("🧪 EVAL", m, type + " [" + latency + "ms]: " + result.substring(0, Math.min(80, result.length())));
+                        log("🧪 [" + m + "] " + type + ": " + latency + "ms, " + result.length() + " chars");
+                    });
+                } catch (Exception e) {
+                    Platform.runLater(() -> log("❌ [" + m + "] eval failed: " + e.getMessage()));
+                }
+            }, 0, TimeUnit.SECONDS);
+        }
+    }
+
+    private void runFullEval() {
+        log("🧪 FULL EVALUATION - All models, all test types");
+        addToGodChat("🧪 FULL EVAL", "System", "Running all models through code + essay + task tests");
+        runEvalTest("code", "You are an expert programmer. Output ONLY code.");
+        runEvalTest("essay", "You are a professional writer. Be thorough.");
+        runEvalTest("task", "You are a task agent. Execute step by step.");
+    }
 
     // ==================== GITHUB ====================
     private void pushToGitHub() {

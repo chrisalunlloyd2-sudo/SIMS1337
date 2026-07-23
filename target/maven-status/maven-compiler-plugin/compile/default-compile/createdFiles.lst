@@ -29,6 +29,7 @@ com\aigen\sims\PlayerGrid3DController.class
 com\aigen\sims\PlayerGridController.class
 com\aigen\sims\routing\LoRASwitcher.class
 com\aigen\sims\UnifiedBackendController.class
+com\aigen\sims\HeadlessOllamaPipeline.class
 com\aigen\sims\routing\AdapterType.class
 com\aigen\sims\routing\QueueStats.class
 com\aigen\sims\agents\SLMAgent.class
