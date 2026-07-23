@@ -19,7 +19,7 @@ import java.util.concurrent.*;
 
 /**
  * SIMS NEO 1337 - Complete GodHand + Player Grid + Model Orchestration
- * v0.7.0 - Models, Chats, Boolean Orchestrators, Menus, Stations, Entropy, Markov
+ * v0.9.0 - Agent Movement + Station Pipelines + GitHub Push + More Models
  * Pure JavaFX - NO FXML
  */
 public class GodHandApp extends Application {
@@ -52,12 +52,30 @@ public class GodHandApp extends Application {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
+
+    // === Entropy ===
     private double shannonEntropy = 0.0;
     private double entropyThreshold = 0.75;
     private final List<Double> entropyHistory = new ArrayList<>();
 
     // === Markov Patterns ===
     private final ObservableList<String[]> markovTable = FXCollections.observableArrayList();
+
+    // === Agent Positions (mutable) ===
+    private final Map<String, int[]> agentPositions = new ConcurrentHashMap<>();
+    private final Map<String, Label> agentPositionLabels = new ConcurrentHashMap<>();
+    private GridPane gridPane;
+    private final Rectangle[][] gridCells = new Rectangle[10][10];
+
+    // === Station Pipelines ===
+    private final Map<String, String> pipelineNext = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> pipelineActive = new ConcurrentHashMap<>();
+
+    // === Available Models (expandable) ===
+    private final String[] availableModels = {
+        "qwen2.5:0.5b", "tinyllama:1.1b", "phi:latest", "phi3:mini",
+        "llama3.2:1b", "gemma2:2b", "mistral:7b", "deepseek-r1:1.5b"
+    };
 
     public static void main(String[] args) { launch(args); }
 
@@ -78,15 +96,9 @@ public class GodHandApp extends Application {
         navBar.setStyle("-fx-background-color: #0f3460; -fx-padding: 10;");
 
         Button godHandBtn = navButton("🧠 GodHand", "#00d9ff", true);
-        godHandBtn.setOnAction(e -> viewStack.getChildren().setAll(dashboardView));
-
         Button playerGridBtn = navButton("🎮 Player Grid", "#16213e", false);
-        playerGridBtn.setOnAction(e -> viewStack.getChildren().setAll(gridView));
-
         Button settingsBtn = navButton("⚙️ Settings", "#16213e", false);
-        settingsBtn.setOnAction(e -> viewStack.getChildren().setAll(settingsView));
 
-        // Highlight active button
         godHandBtn.setOnAction(e -> { highlightNav(godHandBtn, playerGridBtn, settingsBtn); viewStack.getChildren().setAll(dashboardView); });
         playerGridBtn.setOnAction(e -> { highlightNav(playerGridBtn, godHandBtn, settingsBtn); viewStack.getChildren().setAll(gridView); });
         settingsBtn.setOnAction(e -> { highlightNav(settingsBtn, godHandBtn, playerGridBtn); viewStack.getChildren().setAll(settingsView); });
@@ -104,8 +116,10 @@ public class GodHandApp extends Application {
         stage.setScene(new Scene(root, 1400, 900));
         stage.show();
 
-        log("✅ SIMS1337 v0.7.0 launched - Models, Chats, Orchestrators, Stations, Entropy, Markov");
+        log("✅ SIMS1337 v0.9.0 - Agent Movement + Station Pipelines + GitHub Push + 8 Models");
         initCommandRegistry();
+        initAgentPositions();
+        initStationPipelines();
         startEntropyMonitor();
     }
 
@@ -126,7 +140,6 @@ public class GodHandApp extends Application {
     private VBox buildDashboard() {
         VBox box = vbox(10, "#1a1a2e", 20);
 
-        // Header
         HBox header = hbox(20, Pos.CENTER_LEFT, "#16213e", 15);
         Label title = label("🎮 GODHAND", 32, "#00d9ff", true);
         Label subtitle = label("Agent Orchestration Dashboard", 16, "#a0a0a0", false);
@@ -134,7 +147,7 @@ public class GodHandApp extends Application {
         header.getChildren().addAll(title, subtitle, hs);
 
         // === Model Pool with Chat Integration ===
-        TitledPane modelPool = titledPane("🧠 MODEL POOL + CHAT ROUTING", true);
+        TitledPane modelPool = titledPane("🧠 MODEL POOL + CHAT ROUTING (8 Models Available)", true);
         VBox modelContent = vbox(10, "#16213e", 10);
 
         String[][] models = {
@@ -149,15 +162,13 @@ public class GodHandApp extends Application {
             modelCard.setStyle("-fx-background-color: #0f3460; -fx-padding: 10; -fx-background-radius: 5;");
 
             HBox modelHeader = hbox(10, Pos.CENTER_LEFT, null, 0);
-            Label tierLabel = label(m[0], 14, m[3], true);
-            Label nameLabel = label(m[1], 12, "#ffffff", false);
-            Label sizeLabel = label(m[2], 10, "#a0a0a0", false);
-            Label warmLabel = label("🟢 Warm", 11, "#00ff88", false);
-            modelHeader.getChildren().addAll(tierLabel, nameLabel, sizeLabel, warmLabel);
+            modelHeader.getChildren().addAll(
+                label(m[0], 14, m[3], true), label(m[1], 12, "#ffffff", false),
+                label(m[2], 10, "#a0a0a0", false), label("🟢 Warm", 11, "#00ff88", false)
+            );
 
-            // Chat routing pattern selector
             HBox routingRow = hbox(8, Pos.CENTER_LEFT, null, 0);
-            Label routingLabel = label("Pattern:", 10, "#a0a0a0", false);
+            routingRow.getChildren().add(label("Pattern:", 10, "#a0a0a0", false));
             ComboBox<String> patternBox = new ComboBox<>();
             patternBox.getItems().addAll("Linear", "Loop", "Random", "Markov", "Vote", "Chain", "Broadcast");
             patternBox.setValue("Linear");
@@ -165,28 +176,20 @@ public class GodHandApp extends Application {
             patternBox.setMaxWidth(100);
             modelPatterns.put(m[1], patternBox);
 
-            // Web search button
             Button webSearchBtn = new Button("🌐 Search");
             webSearchBtn.setStyle("-fx-background-color: #6e5494; -fx-text-fill: #ffffff; -fx-font-size: 10px; -fx-padding: 2 8;");
             webSearchBtn.setOnAction(e -> {
                 String query = modelInputs.get(m[1]).getText();
-                if (!query.isEmpty()) {
-                    log("🔍 [" + m[1] + "] Web search: " + query);
-                    simulateModelResponse(m[1], "Web results for: " + query);
-                }
+                if (!query.isEmpty()) { log("🔍 [" + m[1] + "] Web search: " + query); simulateModelResponse(m[1], "Search: " + query); }
             });
+            routingRow.getChildren().addAll(patternBox, webSearchBtn);
 
-            routingRow.getChildren().addAll(routingLabel, patternBox, webSearchBtn);
-
-            // Chat area
             TextArea chatArea = new TextArea();
-            chatArea.setEditable(false);
-            chatArea.setPrefRowCount(4);
+            chatArea.setEditable(false); chatArea.setPrefRowCount(4);
             chatArea.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 10px;");
-            chatArea.setText("[" + m[1] + "] Ready. Pattern: Linear\n");
+            chatArea.setText("[" + m[1] + "] Ready.\n");
             modelChats.put(m[1], chatArea);
 
-            // Input row
             HBox inputRow = hbox(5, Pos.CENTER_LEFT, null, 0);
             TextField inputField = new TextField();
             inputField.setPromptText("Send to " + m[1] + "...");
@@ -205,7 +208,6 @@ public class GodHandApp extends Application {
                     simulateModelResponse(modelName, msg);
                 }
             });
-
             inputRow.getChildren().addAll(inputField, sendBtn);
             modelCard.getChildren().addAll(modelHeader, routingRow, chatArea, inputRow);
             modelContent.getChildren().add(modelCard);
@@ -237,14 +239,11 @@ public class GodHandApp extends Application {
 
         // Controls
         HBox controls = hbox(10, Pos.CENTER, null, 10);
-        Button[] ctrlBtns = {
-            styledButton("▶️ Start Agent", "#00ff88"),
-            styledButton("⏸️ Pause", "#ffaa00"),
-            styledButton("⏹️ Stop", "#ff6b6b"),
-            styledButton("🔄 Switch Adapter", "#00d9ff"),
+        controls.getChildren().addAll(
+            styledButton("▶️ Start Agent", "#00ff88"), styledButton("⏸️ Pause", "#ffaa00"),
+            styledButton("⏹️ Stop", "#ff6b6b"), styledButton("🔄 Switch Adapter", "#00d9ff"),
             styledButton("📊 Refresh", "#c77dff")
-        };
-        controls.getChildren().addAll(ctrlBtns);
+        );
 
         // Log
         TitledPane logPane = titledPane("📜 ACTIVITY LOG", true);
@@ -257,19 +256,19 @@ public class GodHandApp extends Application {
         return box;
     }
 
-    // ==================== PLAYER GRID VIEW ====================
+    // ==================== PLAYER GRID VIEW (WITH AGENT MOVEMENT) ====================
     private VBox buildGridView() {
         VBox box = vbox(15, "#1a1a2e", 20);
         box.setAlignment(Pos.TOP_CENTER);
 
         box.getChildren().addAll(
-            label("🎮 PLAYER GRID 3D - 10x10x5", 24, "#00d9ff", true),
-            label("👇 10x10 GRID - Blue gradient with cyan borders 👇", 16, "#00ff88", false)
+            label("🎮 PLAYER GRID 3D - CLICK CELLS TO MOVE AGENTS!", 24, "#00d9ff", true),
+            label("👇 Click any cell → agent moves there. Right-click → station pipeline 👇", 14, "#00ff88", false)
         );
 
-        GridPane grid = new GridPane();
-        grid.setHgap(5); grid.setVgap(5); grid.setAlignment(Pos.CENTER);
-        grid.setStyle("-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3;");
+        gridPane = new GridPane();
+        gridPane.setHgap(5); gridPane.setVgap(5); gridPane.setAlignment(Pos.CENTER);
+        gridPane.setStyle("-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3;");
 
         for (int row = 0; row < 10; row++)
             for (int col = 0; col < 10; col++) {
@@ -277,19 +276,39 @@ public class GodHandApp extends Application {
                 cell.setFill(Color.rgb(30 + row * 15, 80 + col * 12, 150 + (10 - row) * 8));
                 cell.setStroke(Color.web("#00d9ff"));
                 cell.setStrokeWidth(3);
-                grid.add(cell, col, row);
+                gridCells[row][col] = cell;
+
+                final int r = row, c = col;
+                cell.setOnMouseClicked(e -> {
+                    if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                        // Right-click: start station pipeline at this cell
+                        startPipelineAt(r, c);
+                    } else {
+                        // Left-click: move selected agent to this cell
+                        moveAgentTo("Agent Alpha", r, c);
+                    }
+                });
+
+                // Tooltip
+                Tooltip tip = new Tooltip("(" + col + "," + row + ")\nClick: Move Agent\nRight-click: Pipeline");
+                Tooltip.install(cell, tip);
+
+                gridPane.add(cell, col, row);
             }
 
-        box.getChildren().addAll(grid, label("👆 100 BLUE CELLS (10x10) WITH CYAN BORDERS 👆", 16, "#ffffff", false));
+        box.getChildren().addAll(gridPane, label("👆 100 CLICKABLE CELLS - Left=Move Agent, Right=Pipeline 👆", 14, "#ffffff", false));
 
-        // Player positions
+        // Player positions (dynamic)
         VBox pp = vbox(10, "#16213e", 15);
         pp.setStyle("-fx-background-radius: 10;");
-        pp.getChildren().add(label("🎮 PLAYER POSITIONS (XYZ)", 16, "#00d9ff", true));
-        String[][] players = {{"🟢 Agent Alpha", "(3,7,2)", "Active"}, {"🔵 Agent Beta", "(8,4,1)", "Active"}, {"🟠 Agent Gamma", "(5,9,3)", "Active"}};
+        pp.getChildren().add(label("🎮 PLAYER POSITIONS (XYZ) - LIVE", 16, "#00d9ff", true));
+
+        String[][] players = {{"🟢 Agent Alpha", "3", "7", "2"}, {"🔵 Agent Beta", "8", "4", "1"}, {"🟠 Agent Gamma", "5", "9", "3"}};
         for (String[] p : players) {
             HBox pr = hbox(15, Pos.CENTER_LEFT, null, 0);
-            pr.getChildren().addAll(label(p[0], 12, "#ffffff", true), label(p[1], 12, "#a0a0a0", false), label(p[2], 12, "#00ff88", false));
+            Label posLabel = label("(" + p[1] + "," + p[2] + "," + p[3] + ")", 12, "#a0a0a0", false);
+            agentPositionLabels.put(p[0], posLabel);
+            pr.getChildren().addAll(label(p[0], 12, "#ffffff", true), posLabel, label("Active", 12, "#00ff88", false));
             pp.getChildren().add(pr);
         }
         box.getChildren().add(pp);
@@ -309,43 +328,119 @@ public class GodHandApp extends Application {
         }
         box.getChildren().add(stationRow);
 
+        // Pipeline status
+        HBox pipelineRow = hbox(10, Pos.CENTER, null, 10);
+        pipelineRow.getChildren().addAll(
+            styledButton("🔗 Start Pipeline", "#c77dff"),
+            styledButton("⏹️ Stop Pipeline", "#ff6b6b"),
+            label("Pipeline: Inactive", 12, "#a0a0a0", false)
+        );
+        box.getChildren().add(pipelineRow);
+
         return box;
+    }
+
+    // ==================== AGENT MOVEMENT ====================
+    private void initAgentPositions() {
+        agentPositions.put("Agent Alpha", new int[]{3, 7, 2});
+        agentPositions.put("Agent Beta", new int[]{8, 4, 1});
+        agentPositions.put("Agent Gamma", new int[]{5, 9, 3});
+    }
+
+    private void moveAgentTo(String agentName, int x, int y) {
+        int[] pos = agentPositions.get(agentName);
+        if (pos == null) return;
+
+        int oldX = pos[0], oldY = pos[1];
+        pos[0] = x; pos[1] = y;
+
+        // Update grid visuals
+        Platform.runLater(() -> {
+            // Reset old cell
+            if (oldX >= 0 && oldX < 10 && oldY >= 0 && oldY < 10) {
+                gridCells[oldY][oldX].setFill(Color.rgb(30 + oldY * 15, 80 + oldX * 12, 150 + (10 - oldY) * 8));
+            }
+            // Highlight new cell
+            Color agentColor = switch (agentName) {
+                case "Agent Alpha" -> Color.rgb(0, 255, 100);
+                case "Agent Beta" -> Color.rgb(0, 150, 255);
+                case "Agent Gamma" -> Color.rgb(255, 150, 0);
+                default -> Color.rgb(255, 255, 0);
+            };
+            gridCells[y][x].setFill(agentColor);
+            gridCells[y][x].setStroke(Color.WHITE);
+            gridCells[y][x].setStrokeWidth(4);
+
+            // Update position label
+            Label posLabel = agentPositionLabels.get(agentName);
+            if (posLabel != null) {
+                posLabel.setText("(" + x + "," + y + "," + pos[2] + ")");
+            }
+
+            log("🎯 " + agentName + " moved to (" + x + "," + y + "," + pos[2] + ")");
+            statusLabel.setText("🟢 " + agentName + " @ (" + x + "," + y + ")");
+        });
+    }
+
+    // ==================== STATION PIPELINES ====================
+    private void initStationPipelines() {
+        pipelineNext.put("Brute Foundry", "A/B Lab");
+        pipelineNext.put("A/B Lab", "Knowledge Tree");
+        pipelineNext.put("Knowledge Tree", "Research");
+        pipelineNext.put("Research", "GitHub");
+        pipelineNext.put("GitHub", "Hospital");
+        pipelineNext.put("Hospital", "Brute Foundry");
+    }
+
+    private void startPipelineAt(int x, int y) {
+        log("🔗 Starting station pipeline at grid (" + x + "," + y + ")");
+        pipelineActive.put("pipeline", true);
+
+        chatScheduler.schedule(() -> {
+            String station = "Brute Foundry";
+            int step = 0;
+            while (pipelineActive.getOrDefault("pipeline", false) && step < 20) {
+                final String currentStation = station;
+                final int currentStep = step;
+                Platform.runLater(() -> {
+                    log("🔗 Pipeline step " + currentStep + ": [" + currentStation + "] processing...");
+                    // Send to all model chats
+                    modelChats.forEach((name, chat) ->
+                        chat.appendText("[Pipeline:" + currentStation + "] Processing grid (" + x + "," + y + ")\n"));
+                });
+                station = pipelineNext.getOrDefault(station, "Brute Foundry");
+                step++;
+                try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
+            }
+            final int totalSteps = step;
+            Platform.runLater(() -> log("🔗 Pipeline complete after " + totalSteps + " steps"));
+        }, 0, TimeUnit.SECONDS);
     }
 
     // ==================== SETTINGS VIEW ====================
     private VBox buildSettingsView() {
         VBox box = vbox(10, "#1a1a2e", 20);
-
         box.getChildren().add(label("⚙️ SETTINGS & ORCHESTRATION", 24, "#00d9ff", true));
 
         // === Command Listener Table ===
         TitledPane cmdPane = titledPane("📋 COMMAND LISTENER (Preset → Terminal Trigger)", true);
         VBox cmdContent = vbox(10, "#16213e", 10);
-
         TableView<String[]> cmdTableView = new TableView<>();
-        cmdTableView.setPrefHeight(150);
-        cmdTableView.setStyle("-fx-background-color: #0f3460;");
-
+        cmdTableView.setPrefHeight(150); cmdTableView.setStyle("-fx-background-color: #0f3460;");
         TableColumn<String[], String> triggerCol = new TableColumn<>("Trigger Phrase");
         triggerCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
         triggerCol.setPrefWidth(200);
-
         TableColumn<String[], String> commandCol = new TableColumn<>("Command");
         commandCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
         commandCol.setPrefWidth(300);
-
         TableColumn<String[], String> stationCol = new TableColumn<>("Station");
         stationCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
         stationCol.setPrefWidth(120);
-
         TableColumn<String[], String> activeCol = new TableColumn<>("Active");
         activeCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
         activeCol.setPrefWidth(60);
-
         cmdTableView.getColumns().addAll(triggerCol, commandCol, stationCol, activeCol);
         cmdTableView.setItems(commandTable);
-
-        // Default commands
         commandTable.addAll(
             new String[]{"just enter this in terminal", "execute $INPUT", "Brute Foundry", "✅"},
             new String[]{"fix this bug", "analyze + patch $FILE", "Hospital", "✅"},
@@ -353,7 +448,6 @@ public class GodHandApp extends Application {
             new String[]{"search the web for", "web_search $QUERY", "Research", "✅"},
             new String[]{"optimize this code", "refactor $FILE for performance", "Brute Foundry", "✅"}
         );
-
         HBox cmdButtons = hbox(10, Pos.CENTER_LEFT, null, 0);
         Button addCmdBtn = styledButton("➕ Add Command", "#00ff88");
         addCmdBtn.setOnAction(e -> commandTable.add(new String[]{"new trigger", "command here", "Station", "✅"}));
@@ -363,34 +457,26 @@ public class GodHandApp extends Application {
         cmdContent.getChildren().addAll(cmdTableView, cmdButtons);
         cmdPane.setContent(cmdContent);
 
-        // === Prompt Injection Menu ===
+        // === Prompt Injection ===
         TitledPane promptPane = titledPane("💉 PROMPT INJECTION", true);
         VBox promptContent = vbox(10, "#16213e", 10);
-
-        TextArea systemPrompt = new TextArea(
-            "You are an SLM agent in the SIMS1337 grid. You collaborate with other agents to build software, " +
-            "vote on code changes, and maintain the system. You have access to terminal commands, web search, " +
-            "and file operations. Always respond with actionable output."
-        );
+        TextArea systemPrompt = new TextArea("You are an SLM agent in the SIMS1337 grid. Collaborate with other agents to build software, vote on code, maintain the system. Access: terminal, web search, file ops. Respond with actionable output.");
         systemPrompt.setPrefRowCount(4);
         systemPrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 11px;");
-
         HBox promptButtons = hbox(10, Pos.CENTER_LEFT, null, 0);
         Button injectAllBtn = styledButton("💉 Inject to All Models", "#c77dff");
         injectAllBtn.setOnAction(e -> {
             String prompt = systemPrompt.getText();
-            modelChats.forEach((name, chat) -> chat.appendText("[SYSTEM PROMPT INJECTED] " + prompt.substring(0, 50) + "...\n"));
+            modelChats.forEach((name, chat) -> chat.appendText("[SYSTEM PROMPT] " + prompt.substring(0, 50) + "...\n"));
             log("💉 System prompt injected to all " + modelChats.size() + " models");
         });
-        Button injectOneBtn = styledButton("💉 Inject to Selected", "#00d9ff");
-        promptButtons.getChildren().addAll(injectAllBtn, injectOneBtn);
+        promptButtons.getChildren().addAll(injectAllBtn, styledButton("💉 Inject to Selected", "#00d9ff"));
         promptContent.getChildren().addAll(systemPrompt, promptButtons);
         promptPane.setContent(promptContent);
 
         // === Model Context Options ===
         TitledPane contextPane = titledPane("🔧 MODEL CONTEXT OPTIONS", true);
         VBox contextContent = vbox(10, "#16213e", 10);
-
         String[][] contextOptions = {
             {"Max Tokens", "2048", "4096", "8192", "16384"},
             {"Temperature", "0.1", "0.5", "0.7", "1.0"},
@@ -399,7 +485,6 @@ public class GodHandApp extends Application {
             {"KG Node Depth", "1", "2", "3", "5"},
             {"Affine Scale", "0.5x", "1.0x", "1.5x", "2.0x"}
         };
-
         for (String[] opt : contextOptions) {
             HBox row = hbox(10, Pos.CENTER_LEFT, null, 0);
             row.getChildren().add(label(opt[0] + ":", 12, "#ffffff", false));
@@ -413,32 +498,27 @@ public class GodHandApp extends Application {
         }
         contextPane.setContent(contextContent);
 
-        // === Shannon Entropy Monitor ===
+        // === Shannon Entropy ===
         TitledPane entropyPane = titledPane("📊 SHANNON ENTROPY MONITOR", true);
         VBox entropyContent = vbox(10, "#16213e", 10);
-
         HBox entropyRow = hbox(20, Pos.CENTER_LEFT, null, 0);
         Label entropyValue = label("Current: 0.000 bits", 14, "#00d9ff", true);
         Label entropyStatus = label("🟢 Normal", 14, "#00ff88", true);
         entropyRow.getChildren().addAll(entropyValue, entropyStatus);
-
         HBox thresholdRow = hbox(10, Pos.CENTER_LEFT, null, 0);
         thresholdRow.getChildren().add(label("Alert Threshold:", 12, "#ffffff", false));
         TextField thresholdField = new TextField("0.75");
         thresholdField.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #ffffff; -fx-font-size: 11px;");
         thresholdField.setMaxWidth(60);
         thresholdField.setOnAction(e -> {
-            try { entropyThreshold = Double.parseDouble(thresholdField.getText()); log("📊 Entropy threshold set to: " + entropyThreshold); }
+            try { entropyThreshold = Double.parseDouble(thresholdField.getText()); log("📊 Entropy threshold: " + entropyThreshold); }
             catch (NumberFormatException ex) { log("❌ Invalid threshold"); }
         });
         thresholdRow.getChildren().addAll(thresholdField, label("(> threshold triggers alert)", 10, "#a0a0a0", false));
-
         entropyContent.getChildren().addAll(entropyRow, thresholdRow);
-
-        // Update entropy periodically
         ScheduledExecutorService entropyUpdater = Executors.newSingleThreadScheduledExecutor();
         entropyUpdater.scheduleAtFixedRate(() -> {
-            double newEntropy = Math.random() * 0.5 + 0.2; // Simulated
+            double newEntropy = Math.random() * 0.5 + 0.2;
             shannonEntropy = newEntropy;
             entropyHistory.add(newEntropy);
             if (entropyHistory.size() > 100) entropyHistory.remove(0);
@@ -447,7 +527,7 @@ public class GodHandApp extends Application {
                 if (newEntropy > entropyThreshold) {
                     entropyStatus.setText("🔴 ALERT - Entropy breach!");
                     entropyStatus.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");
-                    log("🚨 SHANNON ENTROPY BREACH: " + String.format("%.3f", newEntropy) + " > " + entropyThreshold);
+                    log("🚨 ENTROPY BREACH: " + String.format("%.3f", newEntropy) + " > " + entropyThreshold);
                 } else {
                     entropyStatus.setText("🟢 Normal");
                     entropyStatus.setStyle("-fx-font-size: 14px; -fx-text-fill: #00ff88;");
@@ -459,11 +539,8 @@ public class GodHandApp extends Application {
         // === Markov Chain Patterns ===
         TitledPane markovPane = titledPane("🔗 MARKOV CHAIN PATTERNS", true);
         VBox markovContent = vbox(10, "#16213e", 10);
-
         TableView<String[]> markovTableView = new TableView<>();
-        markovTableView.setPrefHeight(120);
-        markovTableView.setStyle("-fx-background-color: #0f3460;");
-
+        markovTableView.setPrefHeight(120); markovTableView.setStyle("-fx-background-color: #0f3460;");
         TableColumn<String[], String> fromCol = new TableColumn<>("From State");
         fromCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
         TableColumn<String[], String> toCol = new TableColumn<>("To State");
@@ -472,10 +549,8 @@ public class GodHandApp extends Application {
         probCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
         TableColumn<String[], String> actionCol = new TableColumn<>("Action");
         actionCol.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-
         markovTableView.getColumns().addAll(fromCol, toCol, probCol, actionCol);
         markovTableView.setItems(markovTable);
-
         markovTable.addAll(
             new String[]{"Observation", "Analysis", "0.8", "analyze_input"},
             new String[]{"Analysis", "Synthesis", "0.7", "synthesize_findings"},
@@ -483,36 +558,82 @@ public class GodHandApp extends Application {
             new String[]{"Vote", "Deploy", "0.6", "deploy_changes"},
             new String[]{"Deploy", "Observation", "0.5", "monitor_results"}
         );
-
         HBox markovButtons = hbox(10, Pos.CENTER_LEFT, null, 0);
-        markovButtons.getChildren().addAll(
-            styledButton("➕ Add Pattern", "#00ff88"),
-            styledButton("🗑️ Delete", "#ff6b6b"),
-            styledButton("🔄 Reset Chain", "#ffaa00")
-        );
+        markovButtons.getChildren().addAll(styledButton("➕ Add Pattern", "#00ff88"), styledButton("🗑️ Delete", "#ff6b6b"), styledButton("🔄 Reset Chain", "#ffaa00"));
         markovContent.getChildren().addAll(markovTableView, markovButtons);
         markovPane.setContent(markovContent);
 
         // === Lexical Math English ===
         TitledPane lexicalPane = titledPane("📐 LEXICAL MATH ENGLISH (NLP)", true);
         VBox lexicalContent = vbox(10, "#16213e", 10);
-
         TextArea lexicalInput = new TextArea("sum of (agent_count * task_complexity) / time_elapsed");
         lexicalInput.setPrefRowCount(3);
         lexicalInput.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 11px;");
-
         HBox lexicalButtons = hbox(10, Pos.CENTER_LEFT, null, 0);
         Button parseBtn = styledButton("🔢 Parse Expression", "#00d9ff");
-        parseBtn.setOnAction(e -> {
-            String expr = lexicalInput.getText();
-            log("📐 Lexical parse: " + expr + " → " + evaluateLexical(expr));
-        });
+        parseBtn.setOnAction(e -> log("📐 Lexical: " + lexicalInput.getText() + " → " + evaluateLexical(lexicalInput.getText())));
         lexicalButtons.getChildren().addAll(parseBtn, styledButton("📋 Save Expression", "#c77dff"));
         lexicalContent.getChildren().addAll(lexicalInput, lexicalButtons);
         lexicalPane.setContent(lexicalContent);
 
-        box.getChildren().addAll(cmdPane, promptPane, contextPane, entropyPane, markovPane, lexicalPane);
+        // === GitHub Push ===
+        TitledPane githubPane = titledPane("📡 GITHUB PUSH", true);
+        VBox githubContent = vbox(10, "#16213e", 10);
+        HBox githubRow = hbox(10, Pos.CENTER_LEFT, null, 0);
+        Button pushBtn = styledButton("🚀 Push to GitHub", "#6e5494");
+        pushBtn.setOnAction(e -> pushToGitHub());
+        Button statusBtn = styledButton("📊 Git Status", "#00d9ff");
+        statusBtn.setOnAction(e -> gitStatus());
+        githubRow.getChildren().addAll(pushBtn, statusBtn);
+        githubContent.getChildren().add(githubRow);
+        githubPane.setContent(githubContent);
+
+        box.getChildren().addAll(cmdPane, promptPane, contextPane, entropyPane, markovPane, lexicalPane, githubPane);
         return box;
+    }
+
+    // ==================== GITHUB INTEGRATION ====================
+    private void pushToGitHub() {
+        chatScheduler.schedule(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("git", "add", "-A");
+                pb.directory(new java.io.File("."));
+                Process p = pb.start();
+                p.waitFor();
+
+                pb = new ProcessBuilder("git", "commit", "-m", "v0.9.0 - Agent Movement + Station Pipelines + GitHub Push");
+                pb.directory(new java.io.File("."));
+                p = pb.start();
+                p.waitFor();
+
+                pb = new ProcessBuilder("git", "push", "origin", "main");
+                pb.directory(new java.io.File("."));
+                p = pb.start();
+                String output = new String(p.getInputStream().readAllBytes());
+                p.waitFor();
+
+                final String result = output.length() > 200 ? output.substring(0, 200) : output;
+                Platform.runLater(() -> log("📡 GitHub push: " + result));
+            } catch (Exception e) {
+                Platform.runLater(() -> log("❌ GitHub push failed: " + e.getMessage()));
+            }
+        }, 0, TimeUnit.SECONDS);
+    }
+
+    private void gitStatus() {
+        chatScheduler.schedule(() -> {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("git", "status", "--short");
+                pb.directory(new java.io.File("."));
+                Process p = pb.start();
+                String output = new String(p.getInputStream().readAllBytes());
+                p.waitFor();
+                final String status = output.isEmpty() ? "Clean" : output;
+                Platform.runLater(() -> log("📊 Git status: " + status));
+            } catch (Exception e) {
+                Platform.runLater(() -> log("❌ Git status failed: " + e.getMessage()));
+            }
+        }, 0, TimeUnit.SECONDS);
     }
 
     // ==================== STATION ORCHESTRATION ====================
@@ -538,31 +659,25 @@ public class GodHandApp extends Application {
     }
 
     private void simulateBruteFoundry() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] actions = {"Compiling...", "Running tests...", "Generating code...", "Optimizing...", "Building artifacts..."};
-                String action = actions[new Random().nextInt(actions.length)];
-                log("🏗️ Brute Foundry: " + action);
-                modelChats.values().forEach(chat -> chat.appendText("[Brute Foundry] " + action + "\n"));
-            });
-        }, 0, 5, TimeUnit.SECONDS);
+        chatScheduler.scheduleAtFixedRate(() -> Platform.runLater(() -> {
+            String[] actions = {"Compiling...", "Running tests...", "Generating code...", "Optimizing...", "Building artifacts..."};
+            String action = actions[new Random().nextInt(actions.length)];
+            log("🏗️ Brute Foundry: " + action);
+            modelChats.values().forEach(chat -> chat.appendText("[Brute Foundry] " + action + "\n"));
+        }), 0, 5, TimeUnit.SECONDS);
     }
 
     private void simulateHospital() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] actions = {"Checking agent health...", "Recovering agent state...", "Restarting failed agent...", "Memory cleanup..."};
-                log("🏥 Hospital: " + actions[new Random().nextInt(actions.length)]);
-            });
-        }, 0, 8, TimeUnit.SECONDS);
+        chatScheduler.scheduleAtFixedRate(() -> Platform.runLater(() -> {
+            String[] actions = {"Checking agent health...", "Recovering agent state...", "Restarting failed agent...", "Memory cleanup..."};
+            log("🏥 Hospital: " + actions[new Random().nextInt(actions.length)]);
+        }), 0, 8, TimeUnit.SECONDS);
     }
 
     private void simulateGitHubStation() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                log("📡 GitHub: Syncing repos, checking PRs, updating issues...");
-            });
-        }, 0, 10, TimeUnit.SECONDS);
+        chatScheduler.scheduleAtFixedRate(() -> Platform.runLater(() ->
+            log("📡 GitHub: Syncing repos, checking PRs, updating issues...")
+        ), 0, 10, TimeUnit.SECONDS);
     }
 
     // ==================== MODEL CHAT (REAL OLLAMA API) ====================
@@ -572,18 +687,14 @@ public class GodHandApp extends Application {
                 String response = callOllama(modelName, input);
                 Platform.runLater(() -> {
                     TextArea chat = modelChats.get(modelName);
-                    if (chat != null) {
-                        chat.appendText("[" + modelName + "] " + response + "\n");
-                    }
+                    if (chat != null) chat.appendText("[" + modelName + "] " + response + "\n");
                     log("💬 [" + modelName + "] " + response);
                     checkCommandTriggers(response, modelName);
                 });
             } catch (Exception e) {
                 Platform.runLater(() -> {
                     TextArea chat = modelChats.get(modelName);
-                    if (chat != null) {
-                        chat.appendText("[" + modelName + "] ⚠️ API unavailable: " + e.getMessage() + "\n");
-                    }
+                    if (chat != null) chat.appendText("[" + modelName + "] ⚠️ API unavailable: " + e.getMessage() + "\n");
                     log("⚠️ [" + modelName + "] Ollama API error: " + e.getMessage());
                 });
             }
@@ -592,37 +703,24 @@ public class GodHandApp extends Application {
 
     private String callOllama(String model, String prompt) throws Exception {
         String json = String.format("{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false}",
-                model.replace("\"", "\\\""),
-                prompt.replace("\"", "\\\"").replace("\n", "\\n"));
-
+                model.replace("\"", "\\\""), prompt.replace("\"", "\\\"").replace("\n", "\\n"));
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(OLLAMA_URL))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(30))
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
-
+                .uri(URI.create(OLLAMA_URL)).header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30)).POST(HttpRequest.BodyPublishers.ofString(json)).build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
         if (response.statusCode() == 200) {
             ollamaAvailable.put(model, true);
-            // Extract just the response text from Ollama JSON
             String body = response.body();
             int start = body.indexOf("\"response\":\"");
             if (start > 0) {
                 start += 12;
                 int end = body.indexOf("\"", start);
-                if (end > start) {
-                    return body.substring(start, end)
-                            .replace("\\n", " ")
-                            .replace("\\\"", "\"");
-                }
+                if (end > start) return body.substring(start, end).replace("\\n", " ").replace("\\\"", "\"");
             }
             return body.length() > 200 ? body.substring(0, 200) + "..." : body;
-        } else {
-            ollamaAvailable.put(model, false);
-            throw new RuntimeException("HTTP " + response.statusCode() + ": " + response.body().substring(0, Math.min(100, response.body().length())));
         }
+        ollamaAvailable.put(model, false);
+        throw new RuntimeException("HTTP " + response.statusCode());
     }
 
     // ==================== COMMAND SYSTEM ====================
@@ -638,10 +736,7 @@ public class GodHandApp extends Application {
         for (String[] cmd : commandTable) {
             if (cmd[3].equals("✅") && input.toLowerCase().contains(cmd[0].toLowerCase())) {
                 log("🎯 COMMAND TRIGGERED: [" + modelName + "] → " + cmd[0] + " → " + cmd[1]);
-                String station = cmd[2];
-                if (!station.equals("Station")) {
-                    triggerStation(station);
-                }
+                if (!cmd[2].equals("Station")) triggerStation(cmd[2]);
             }
         }
     }
@@ -652,7 +747,7 @@ public class GodHandApp extends Application {
             double entropy = calculateEntropy();
             if (entropy > entropyThreshold) {
                 Platform.runLater(() -> {
-                    log("🚨 ENTROPY ALERT: " + String.format("%.3f", entropy) + " > threshold " + entropyThreshold);
+                    log("🚨 ENTROPY ALERT: " + String.format("%.3f", entropy) + " > " + entropyThreshold);
                     statusLabel.setText("🔴 Entropy Alert!");
                     statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");
                 });
@@ -661,7 +756,6 @@ public class GodHandApp extends Application {
     }
 
     private double calculateEntropy() {
-        // Simplified Shannon entropy from chat activity
         double total = modelChats.values().stream().mapToInt(c -> c.getText().length()).sum();
         if (total == 0) return 0;
         double entropy = 0;
@@ -674,42 +768,24 @@ public class GodHandApp extends Application {
 
     // ==================== LEXICAL MATH ====================
     private String evaluateLexical(String expr) {
-        // Simple lexical math evaluator
         Map<String, Double> vars = new HashMap<>();
-        vars.put("agent_count", 3.0);
-        vars.put("task_complexity", 2.5);
-        vars.put("time_elapsed", 10.0);
-        vars.put("entropy", shannonEntropy);
-
+        vars.put("agent_count", 3.0); vars.put("task_complexity", 2.5);
+        vars.put("time_elapsed", 10.0); vars.put("entropy", shannonEntropy);
         try {
             expr = expr.toLowerCase();
             for (Map.Entry<String, Double> e : vars.entrySet())
                 expr = expr.replace(e.getKey(), String.valueOf(e.getValue()));
-
-            // Simple evaluation: sum of (a * b) / c
             if (expr.contains("sum of") && expr.contains("/")) {
-                String inner = expr.replace("sum of", "").replace("/", " ").trim();
-                String[] parts = inner.split("\\s+");
-                double result = 1;
-                for (String p : parts) {
-                    try { result *= Double.parseDouble(p.replace("(", "").replace(")", "")); }
-                    catch (NumberFormatException ignored) {}
+                String[] div = expr.replace("sum of", "").split("/");
+                double num = 1;
+                for (String p : div[0].trim().split("\\s*\\*\\s*")) {
+                    try { num *= Double.parseDouble(p.replace("(", "").replace(")", "")); } catch (NumberFormatException ignored) {}
                 }
-                if (inner.contains("/")) {
-                    String[] div = inner.split("/");
-                    double num = 1, den = 1;
-                    for (String p : div[0].trim().split("\\s*\\*\\s*")) {
-                        try { num *= Double.parseDouble(p.replace("(", "").replace(")", "")); }
-                        catch (NumberFormatException ignored) {}
-                    }
-                    try { den = Double.parseDouble(div[1].trim()); } catch (NumberFormatException ignored) {}
-                    result = den != 0 ? num / den : 0;
-                }
-                return String.format("%.2f", result);
+                double den = 1;
+                try { den = Double.parseDouble(div[1].trim()); } catch (NumberFormatException ignored) {}
+                return String.format("%.2f", den != 0 ? num / den : 0);
             }
-        } catch (Exception e) {
-            return "Parse error: " + e.getMessage();
-        }
+        } catch (Exception e) { return "Parse error: " + e.getMessage(); }
         return "?";
     }
 
@@ -718,16 +794,11 @@ public class GodHandApp extends Application {
         String timestamp = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
         String entry = "[" + timestamp + "] " + msg;
         System.out.println(entry);
-        if (logConsole != null) {
-            Platform.runLater(() -> {
-                logConsole.appendText(entry + "\n");
-                // Keep last 500 lines
-                String[] lines = logConsole.getText().split("\n");
-                if (lines.length > 500) {
-                    logConsole.setText(String.join("\n", Arrays.copyOfRange(lines, lines.length - 500, lines.length)));
-                }
-            });
-        }
+        if (logConsole != null) Platform.runLater(() -> {
+            logConsole.appendText(entry + "\n");
+            String[] lines = logConsole.getText().split("\n");
+            if (lines.length > 500) logConsole.setText(String.join("\n", Arrays.copyOfRange(lines, lines.length - 500, lines.length)));
+        });
     }
 
     private VBox vbox(int spacing, String bg, int padding) {
@@ -751,8 +822,7 @@ public class GodHandApp extends Application {
 
     private TitledPane titledPane(String title, boolean expanded) {
         TitledPane tp = new TitledPane();
-        tp.setText(title);
-        tp.setExpanded(expanded);
+        tp.setText(title); tp.setExpanded(expanded);
         tp.setStyle("-fx-background-color: #16213e;");
         return tp;
     }
