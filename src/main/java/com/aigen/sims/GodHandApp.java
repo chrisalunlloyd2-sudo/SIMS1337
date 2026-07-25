@@ -1601,13 +1601,13 @@ public class GodHandApp extends Application {
                 for (String model : modelChats.keySet()) {
                     int rep = foundryReputation.getOrDefault(model, 0);
                     if (rep < -5) {
-                        // Model struggling — inject better prompt
-                        String bestPrompt = perfectPrompts.entrySet().stream()
-                            .max(Map.Entry.comparingByValue((a, b) ->
-                                Integer.compare(promptSuccessRates.getOrDefault(a.getKey(), 0),
-                                              promptSuccessRates.getOrDefault(b.getKey(), 0))))
-                            .map(Map.Entry::getValue)
-                            .orElse("Be clear and direct.");
+                        // Model struggling — inject best prompt
+                        String bestKey = "code";
+                        int bestRate = 0;
+                        for (Map.Entry<String, Integer> e : promptSuccessRates.entrySet()) {
+                            if (e.getValue() > bestRate) { bestRate = e.getValue(); bestKey = e.getKey(); }
+                        }
+                        String bestPrompt = perfectPrompts.getOrDefault(bestKey, "Be clear and direct.");
                         log("💉 Prompt Optimization: [" + model + "] rep=" + rep + " → injecting best prompt");
                         addToGodChat("💉 PROMPT", model, "Optimized: " + bestPrompt.substring(0, 60) + "...");
                         // Boost success rate
@@ -1818,6 +1818,7 @@ public class GodHandApp extends Application {
             });
         }, 75, 75, TimeUnit.SECONDS);
     }
+    private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private HBox hbox(int s,Pos a,String bg,int p){HBox b=new HBox(s);b.setAlignment(a);if(bg!=null)b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private Label label(String t,int sz,String c,boolean bd){Label l=new Label(t);l.setStyle("-fx-font-size: "+sz+"px; -fx-text-fill: "+c+";"+(bd?" -fx-font-weight: bold;":""));return l;}
     private TitledPane titledPane(String t,boolean ex){TitledPane tp=new TitledPane();tp.setText(t);tp.setExpanded(ex);tp.setStyle("-fx-background-color: #16213e;");return tp;}
