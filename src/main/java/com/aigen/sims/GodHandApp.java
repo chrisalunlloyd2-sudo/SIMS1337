@@ -153,7 +153,7 @@ public class GodHandApp extends Application {
         stage.setScene(new Scene(root, 1500, 950));
         stage.show();
 
-        log("✅ SIMS1337 v0.11.0 - Web APIs + Model Manager + Voting + Topology + Night Cycle");
+        log("✅ SIMS1337 v0.16.0 - Perfect Prompts + Map + Patterns + Tools + Memory");
         initAll();
         refreshInstalledModels();
     }
