@@ -9,7 +9,7 @@
 
 ## 🎯 What is SIMS1337?
 
-SIMS1337 is a **Small Language Model (SLM) agent orchestration platform** built in pure JavaFX. It provides a unified control center for running, evaluating, and orchestrating multiple local AI models through Ollama. Think of it as a **better OpenClaw** — a desktop application where SLM agents chat, vote, build topology, run pipelines, and operate autonomously.
+SIMS1337 is a **Small Language Model (SLM) agent orchestration platform** built in pure JavaFX. It provides a unified control center for running, evaluating, and orchestrating multiple local AI models through Ollama. Think of it as a better way to use local models — a desktop application where SLM agents chat, vote, build topology, run pipelines, and operate autonomously.
 
 ### Core Philosophy
 
