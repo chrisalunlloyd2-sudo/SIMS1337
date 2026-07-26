@@ -116,7 +116,7 @@ public class GodHandApp extends Application {
 
     @Override
     public void start(Stage stage) {
-        stage.setTitle("⚙️ SIMS1337 - Unified Control Center v0.11.0");
+        stage.setTitle("⚙️ SIMS1337 - Unified Control Center v0.16.0");
 
         dashboardView = buildDashboard();
         gridView = buildGridView();
@@ -199,7 +199,7 @@ public class GodHandApp extends Application {
         VBox box = vbox(10, "#1a1a2e", 15);
 
         HBox header = hbox(20, Pos.CENTER_LEFT, "#16213e", 12);
-        header.getChildren().addAll(label("🎮 GODHAND", 28, "#00d9ff", true), label("v0.11.0 - All Systems", 14, "#a0a0a0", false), new Region());
+        header.getChildren().addAll(label("🎮 GODHAND", 28, "#00d9ff", true), label("v0.16.0 - All Systems", 14, "#a0a0a0", false), new Region());
         HBox.setHgrow(header.getChildren().get(2), Priority.ALWAYS);
 
         // === SHARED GOD CHAT ===
@@ -1516,18 +1516,31 @@ public class GodHandApp extends Application {
                 }
                 html.append("</table></div>");
 
-                // Backend systems
+                // Backend systems - all 17
                 html.append("<div class='card'><h2>🏗️ Backend Systems</h2><table>");
                 html.append("<tr><th>System</th><th>Status</th></tr>");
-                html.append("<tr><td>Hospital</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Brute Foundry</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Knowledge Graph</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Server Orchestration</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Self-Exploration</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Error Logging</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>RAG Pipeline</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Fine-Tuning</td><td class='ok'>✅ Active</td></tr>");
-                html.append("<tr><td>Multi-Agent Topology</td><td class='ok'>✅ Active</td></tr>");
+                String[][] allSystems = {
+                    {"1. Hospital", "✅ Active"},
+                    {"2. Brute Foundry", "✅ Active"},
+                    {"3. Knowledge Graph", "✅ Active"},
+                    {"4. Server Orchestration", "✅ Active"},
+                    {"5. Self-Exploration", "✅ Active"},
+                    {"6. Error Logging", "✅ Active"},
+                    {"7. Design", "✅ Active"},
+                    {"8. Real RAG", "✅ Active"},
+                    {"9. Fine-Tuning", "✅ Active"},
+                    {"10. Multi-Agent Topology", "✅ Active"},
+                    {"11. Web Dashboard", "✅ Active"},
+                    {"12. Plugin System", "✅ Active"},
+                    {"13. Perfect Prompts", "✅ Active"},
+                    {"14. Map Guidance", "✅ Active"},
+                    {"15. Perfect Patterns", "✅ Active"},
+                    {"16. Tools System", "✅ Active"},
+                    {"17. Persistent Memory", "✅ Active"}
+                };
+                for (String[] sys : allSystems) {
+                    html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
+                }
                 html.append("</table></div>");
 
                 html.append("<div class='card'><p>🕐 " + java.time.LocalDateTime.now() + "</p></div>");
@@ -1542,9 +1555,23 @@ public class GodHandApp extends Application {
 
             // API endpoint
             webServer.createContext("/api/status", exchange -> {
+                int apiModelCount = 0;
+                try {
+                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
+                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
+                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        String body = resp.body();
+                        int idx = 0;
+                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
+                            idx += 8; apiModelCount++;
+                        }
+                    }
+                } catch (Exception ex) { apiModelCount = 0; }
                 String json = String.format(
-                    "{\"version\":\"0.15.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
-                    ollamaAvailable.size(), kgNodes.size(), errorCount, recoveryCount,
+                    "{\"version\":\"0.16.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
+                    apiModelCount, kgNodes.size(), errorCount, recoveryCount,
                     java.time.LocalDateTime.now().toString());
                 byte[] response = json.getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
