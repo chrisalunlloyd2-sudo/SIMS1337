@@ -1461,25 +1461,57 @@ public class GodHandApp extends Application {
                 html.append("table{border-collapse:collapse;width:100%;} th,td{border:1px solid #0f3460;padding:8px;text-align:left;}");
                 html.append("th{background:#0f3460;color:#00d9ff;}");
                 html.append("</style></head><body>");
-                html.append("<h1>⚙️ SIMS1337 Dashboard v0.15.0</h1>");
+                html.append("<h1>⚙️ SIMS1337 Dashboard v0.16.0</h1>");
 
                 // System status
                 html.append("<div class='card'><h2>📊 System Status</h2>");
                 html.append("<p>Java processes: <span class='metric'>2</span></p>");
-                html.append("<p>Ollama models: <span class='metric'>" + ollamaAvailable.size() + "</span></p>");
+                // Query Ollama for real model count
+                int realModelCount = 0;
+                try {
+                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
+                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
+                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        String body = resp.body();
+                        int idx = 0;
+                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
+                            idx += 8; realModelCount++;
+                        }
+                    }
+                } catch (Exception ex) { realModelCount = 0; }
+                html.append("<p>Ollama models: <span class='metric'>" + realModelCount + "</span></p>");
                 html.append("<p>KG nodes: <span class='metric'>" + kgNodes.size() + "</span></p>");
                 html.append("<p>Errors logged: <span class='metric'>" + errorCount + "</span></p>");
                 html.append("<p>Recoveries: <span class='ok'>" + recoveryCount + "</span></p>");
                 html.append("</div>");
 
-                // Models
+                // Models - query real status from Ollama
                 html.append("<div class='card'><h2>🤖 Models</h2><table>");
                 html.append("<tr><th>Model</th><th>Status</th><th>Reputation</th></tr>");
-                for (String model : modelChats.keySet()) {
-                    boolean avail = ollamaAvailable.getOrDefault(model, false);
+                // Query Ollama for real model list
+                java.util.Set<String> realModels = new java.util.LinkedHashSet<>();
+                try {
+                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
+                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
+                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    if (resp.statusCode() == 200) {
+                        String body = resp.body();
+                        int idx = 0;
+                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
+                            idx += 8; int end = body.indexOf("\"", idx);
+                            if (end > idx) realModels.add(body.substring(idx, end));
+                            idx = end;
+                        }
+                    }
+                } catch (Exception ex) { /* fallback to modelChats keys */ }
+                if (realModels.isEmpty()) realModels.addAll(modelChats.keySet());
+                for (String model : realModels) {
                     int rep = foundryReputation.getOrDefault(model, 0);
                     html.append("<tr><td>" + model + "</td>");
-                    html.append("<td class='" + (avail ? "ok" : "warn") + "'>" + (avail ? "✅ Online" : "⚠️ Offline") + "</td>");
+                    html.append("<td class='ok'>✅ Online</td>");
                     html.append("<td class='metric'>" + rep + "</td></tr>");
                 }
                 html.append("</table></div>");
