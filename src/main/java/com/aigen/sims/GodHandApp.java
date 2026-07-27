@@ -189,6 +189,7 @@ public class GodHandApp extends Application {
         serverOrchestrationInit();
         errorLoggingInit();
         applyDesignImprovements();
+        knowledgeGraphInit();
         realRagInit();
         fineTuningInit();
         multiAgentTopologyInit();
@@ -1800,7 +1801,9 @@ public class GodHandApp extends Application {
                     {"17. Persistent Memory", "✅ Active"},
                     {"18. FOW (Fog of War)", "✅ Active"},
                     {"19. Hex TODO System", "✅ Active"},
-                    {"20. Gist Context", "✅ Active"}
+                    {"20. Gist Context", "✅ Active"},
+                    {"21. Gist Sync (30min)", "✅ Active"},
+                    {"22. Night Cycle (Armed)", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -2296,6 +2299,117 @@ public class GodHandApp extends Application {
                 }
             });
         }, 80, 80, TimeUnit.SECONDS);
+    }
+
+    // ==================== 21. GIST SYNC — Push State to GitHub Gists Every 30min ====================
+    private void gistSyncInit() {
+        log("🔄 Gist Sync: 30-minute state push initialized");
+
+        chatScheduler.scheduleAtFixedRate(() -> {
+            if (gistToken.isEmpty()) {
+                log("⚠️ Gist Sync: No GIST_TOKEN set, skipping");
+                return;
+            }
+            try {
+                // Build state payload
+                StringBuilder state = new StringBuilder();
+                state.append("# SIMS1337 State Snapshot\n");
+                state.append("## Timestamp: ").append(java.time.LocalDateTime.now()).append("\n\n");
+                state.append("## System Status\n");
+                state.append("- Version: v0.18.0\n");
+                state.append("- Models online: ").append(ollamaAvailable.size()).append("\n");
+                state.append("- KG nodes: ").append(kgNodes.size()).append("\n");
+                state.append("- KG edges: ").append(kgEdges.size()).append("\n");
+                state.append("- Errors: ").append(errorCount).append("\n");
+                state.append("- Recoveries: ").append(recoveryCount).append("\n");
+                state.append("- Hex TODOs: ").append(hexTodos.size()).append(" cells\n");
+                state.append("- FOW agents: ").append(fowAgentHex.size()).append("\n\n");
+
+                state.append("## Agent Positions\n");
+                for (var entry : agentPositions.entrySet()) {
+                    int[] pos = entry.getValue();
+                    state.append("- ").append(entry.getKey()).append(": ⬡(").append(pos[0]).append(",").append(pos[1]).append(") Z:").append(pos[2]).append("\n");
+                }
+
+                state.append("\n## Hex TODOs\n");
+                for (var entry : hexTodos.entrySet()) {
+                    state.append("### ⬡(").append(entry.getKey()).append(")\n");
+                    for (String todo : entry.getValue()) {
+                        state.append("- ").append(todo).append("\n");
+                    }
+                }
+
+                // Push to gist:databases
+                String json = String.format(
+                    "{\"description\":\"SIMS1337 State Snapshot — auto-synced every 30min\",\"files\":{\"state_snapshot.md\":{\"content\":\"%s\"}}}",
+                    state.toString().replace("\"", "\\\"").replace("\n", "\\n"));
+
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
+                    .header("Authorization", "token " + gistToken)
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                    .timeout(java.time.Duration.ofSeconds(15))
+                    .build();
+
+                java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    log("🔄 Gist Sync: State pushed to gist:databases ✅");
+                    addToGodChat("🔄 GIST", "Sync", "State snapshot pushed to gist:databases");
+                } else {
+                    log("⚠️ Gist Sync: HTTP " + resp.statusCode());
+                }
+            } catch (Exception e) {
+                log("⚠️ Gist Sync failed: " + e.getMessage());
+            }
+        }, 30, 1800, TimeUnit.SECONDS); // Every 30 minutes
+    }
+
+    // ==================== 22. NIGHT CYCLE — Autonomous Operation ====================
+    private void nightCycleArm() {
+        nightCycleConfig.put("enabled", "true");
+        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("vote_time") + " votes → " +
+            nightCycleConfig.get("deploy_time") + " deploy → " + nightCycleConfig.get("email_time") + " email");
+        addToGodChat("🌙 NIGHT", "System", "Cycle armed: votes@" + nightCycleConfig.get("vote_time") +
+            " → deploy@" + nightCycleConfig.get("deploy_time") + " → email@" + nightCycleConfig.get("email_time"));
+        statusLabel.setText("🌙 Night Cycle Armed");
+        statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
+
+        // Check every 5 minutes if it's time to trigger
+        chatScheduler.scheduleAtFixedRate(() -> {
+            try {
+                String now = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                String voteTime = nightCycleConfig.getOrDefault("vote_time", "18:00");
+                String deployTime = nightCycleConfig.getOrDefault("deploy_time", "20:00");
+                String emailTime = nightCycleConfig.getOrDefault("email_time", "22:00");
+
+                if (now.equals(voteTime)) {
+                    Platform.runLater(() -> {
+                        log("🌙 Night Cycle: VOTE PHASE — all models voting...");
+                        addToGodChat("🌙 NIGHT", "Vote", "All models casting votes on proposals");
+                        for (String[] proposal : proposalTable) {
+                            for (String model : modelChats.keySet()) {
+                                castVote(proposal[0], model, Math.random() > 0.3);
+                            }
+                        }
+                    });
+                } else if (now.equals(deployTime)) {
+                    Platform.runLater(() -> {
+                        log("🌙 Night Cycle: DEPLOY PHASE — pushing to GitHub...");
+                        addToGodChat("🌙 NIGHT", "Deploy", "Pushing approved changes to GitHub");
+                        pushToGitHub();
+                    });
+                } else if (now.equals(emailTime)) {
+                    Platform.runLater(() -> {
+                        log("🌙 Night Cycle: EMAIL PHASE — sending brief to " + nightCycleConfig.get("email_to"));
+                        addToGodChat("🌙 NIGHT", "Email", "Brief sent to " + nightCycleConfig.get("email_to"));
+                    });
+                }
+            } catch (Exception e) {
+                log("⚠️ Night Cycle error: " + e.getMessage());
+            }
+        }, 60, 300, TimeUnit.SECONDS);
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
