@@ -91,11 +91,16 @@ public class GodHandApp extends Application {
     // === Markov Patterns ===
     private final ObservableList<String[]> markovTable = FXCollections.observableArrayList();
 
-    // === Agent Positions ===
-    private final Map<String, int[]> agentPositions = new ConcurrentHashMap<>();
+    // === Agent Positions (Hex Axial Q,R,Z) ===
+    private final Map<String, int[]> agentPositions = new ConcurrentHashMap<>(); // [q, r, z]
     private final Map<String, Label> agentPositionLabels = new ConcurrentHashMap<>();
-    private GridPane gridPane;
-    private final Rectangle[][] gridCells = new Rectangle[10][10];
+    private Pane hexPane;
+    private final Map<String, javafx.scene.shape.Polygon> hexCells = new ConcurrentHashMap<>(); // key="q,r"
+    private final Map<String, Double> hexElevation = new ConcurrentHashMap<>(); // Z depth
+    private final Map<String, Double> hexPulsePhase = new ConcurrentHashMap<>(); // 4D time phase
+    private static final int HEX_RADIUS = 4; // 61 hexes total
+    private static final double HEX_SIZE = 28.0;
+    private javafx.animation.Timeline hexPulseTimeline;
 
     // === Station Pipelines ===
     private final Map<String, String> pipelineNext = new ConcurrentHashMap<>();
@@ -131,7 +136,7 @@ public class GodHandApp extends Application {
         navBar.setStyle("-fx-background-color: #0f3460; -fx-padding: 10;");
 
         Button godHandBtn = navButton("🧠 GodHand", "#00d9ff", true);
-        Button playerGridBtn = navButton("🎮 Player Grid", "#16213e", false);
+        Button playerGridBtn = navButton("⬡ Hex Map", "#16213e", false);
         Button gameplayBtn = navButton("🎯 Gameplay", "#16213e", false);
         Button settingsBtn = navButton("⚙️ Settings", "#16213e", false);
 
@@ -491,35 +496,157 @@ public class GodHandApp extends Application {
         }
     }
 
-    // ==================== PLAYER GRID VIEW ====================
+    // ==================== HEX MAP VIEW (4D: Q,R,Z + Time Pulse) ====================
     private VBox buildGridView() {
-        VBox box = vbox(15, "#1a1a2e", 20);
+        VBox box = vbox(10, "#1a1a2e", 15);
         box.setAlignment(Pos.TOP_CENTER);
-        box.getChildren().addAll(label("🎮 PLAYER GRID 3D - CLICK CELLS!", 24, "#00d9ff", true), label("👇 Left=Move | Right=Pipeline 👇", 14, "#00ff88", false));
-        gridPane = new GridPane(); gridPane.setHgap(5); gridPane.setVgap(5); gridPane.setAlignment(Pos.CENTER);
-        gridPane.setStyle("-fx-background-color: #1a1a3e; -fx-padding: 20; -fx-border-color: #00ff88; -fx-border-width: 3;");
-        for (int row = 0; row < 10; row++)
-            for (int col = 0; col < 10; col++) {
-                Rectangle cell = new Rectangle(50, 50);
-                cell.setFill(Color.rgb(30 + row * 15, 80 + col * 12, 150 + (10 - row) * 8));
-                cell.setStroke(Color.web("#00d9ff")); cell.setStrokeWidth(3);
-                gridCells[row][col] = cell;
-                final int r = row, c = col;
-                cell.setOnMouseClicked(e -> { if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) startPipelineAt(r, c); else moveAgentTo("Agent Alpha", r, c); });
-                Tooltip.install(cell, new Tooltip("(" + col + "," + row + ")\nClick: Move\nRight: Pipeline"));
-                gridPane.add(cell, col, row);
+        box.getChildren().addAll(
+            label("⬡ HEX MAP 4D — Axial(Q,R) + Elevation(Z) + Time Pulse", 20, "#00d9ff", true),
+            label("👇 Left=Move Agent | Right=Start Pipeline | Scroll=Change Elevation 👇", 12, "#00ff88", false));
+
+        hexPane = new Pane();
+        hexPane.setPrefSize(700, 600);
+        hexPane.setStyle("-fx-background-color: #0a0a1a; -fx-border-color: #00d9ff; -fx-border-width: 2;");
+
+        // Build 61 hexes (radius 4)
+        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
+            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
+            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
+            for (int r = r1; r <= r2; r++) {
+                String key = q + "," + r;
+                double[] xy = hexToPixel(q, r);
+                javafx.scene.shape.Polygon hex = new javafx.scene.shape.Polygon();
+                for (int i = 0; i < 6; i++) {
+                    double[] corner = hexCorner(xy[0], xy[1], HEX_SIZE, i);
+                    hex.getPoints().addAll(corner[0], corner[1]);
+                }
+                // Translucent fill with depth-based opacity
+                double z = Math.random() * 3.0; // initial random elevation
+                hexElevation.put(key, z);
+                hexPulsePhase.put(key, Math.random() * Math.PI * 2);
+                double alpha = 0.3 + z * 0.2;
+                hex.setFill(Color.rgb(20, 80 + (int)(z * 30), 180, alpha));
+                hex.setStroke(Color.web("#00d9ff44"));
+                hex.setStrokeWidth(1.5);
+                hex.setOpacity(0.7);
+
+                final int fq = q, fr = r;
+                hex.setOnMouseClicked(e -> {
+                    if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                        startPipelineAt(fq, fr);
+                    } else {
+                        moveAgentTo("Agent Alpha", fq, fr, (int)Math.round(hexElevation.getOrDefault(key, 0.0)));
+                    }
+                });
+                hex.setOnMouseEntered(e -> {
+                    hex.setStroke(Color.web("#00ff88"));
+                    hex.setStrokeWidth(3);
+                    hex.setOpacity(1.0);
+                });
+                hex.setOnMouseExited(e -> {
+                    hex.setStroke(Color.web("#00d9ff44"));
+                    hex.setStrokeWidth(1.5);
+                    hex.setOpacity(0.7);
+                });
+                // Scroll wheel changes elevation (Z)
+                hex.setOnScroll(e -> {
+                    double dz = e.getDeltaY() > 0 ? 0.5 : -0.5;
+                    double newZ = Math.max(0, Math.min(5, hexElevation.getOrDefault(key, 0.0) + dz));
+                    hexElevation.put(key, newZ);
+                    updateHexAppearance(key, hex);
+                });
+
+                Tooltip tip = new Tooltip("⬡ (" + q + "," + r + ") Z:" + String.format("%.1f", z) +
+                    "\nClick: Move Agent\nRight: Pipeline\nScroll: Elevation");
+                Tooltip.install(hex, tip);
+
+                hexCells.put(key, hex);
+                hexPane.getChildren().add(hex);
             }
-        box.getChildren().addAll(gridPane, label("👆 100 CLICKABLE CELLS 👆", 14, "#ffffff", false));
-        VBox pp = vbox(10, "#16213e", 15); pp.setStyle("-fx-background-radius: 10;");
-        pp.getChildren().add(label("🎮 PLAYER POSITIONS (XYZ)", 16, "#00d9ff", true));
-        String[][] players = {{"🟢 Agent Alpha","3","7","2"},{"🔵 Agent Beta","8","4","1"},{"🟠 Agent Gamma","5","9","3"}};
-        for (String[] p : players) { HBox pr = hbox(15, Pos.CENTER_LEFT, null, 0); Label pl = label("("+p[1]+","+p[2]+","+p[3]+")", 12, "#a0a0a0", false); agentPositionLabels.put(p[0], pl); pr.getChildren().addAll(label(p[0], 12, "#ffffff", true), pl, label("Active", 12, "#00ff88", false)); pp.getChildren().add(pr); }
+        }
+
+        // 4D Time Pulse animation
+        hexPulseTimeline = new javafx.animation.Timeline(
+            new javafx.animation.KeyFrame(javafx.util.Duration.millis(50), e -> {
+                double t = System.currentTimeMillis() / 1000.0;
+                for (var entry : hexCells.entrySet()) {
+                    String key = entry.getKey();
+                    javafx.scene.shape.Polygon hex = entry.getValue();
+                    double phase = hexPulsePhase.getOrDefault(key, 0.0);
+                    double z = hexElevation.getOrDefault(key, 0.0);
+                    // 4D pulse: sin wave on opacity + slight scale based on Z and time
+                    double pulse = 0.5 + 0.5 * Math.sin(t * 2.0 + phase);
+                    double alpha = 0.25 + z * 0.15 + pulse * 0.15;
+                    hex.setFill(Color.rgb(
+                        (int)(20 + pulse * 40),
+                        (int)(60 + z * 30 + pulse * 30),
+                        (int)(140 + z * 20 + pulse * 40),
+                        Math.min(1.0, alpha)));
+                    // Z elevation → slight scale shift (parallax)
+                    double scale = 1.0 + z * 0.03 + pulse * 0.02;
+                    hex.setScaleX(scale);
+                    hex.setScaleY(scale);
+                }
+            })
+        );
+        hexPulseTimeline.setCycleCount(javafx.animation.Animation.INDEFINITE);
+        hexPulseTimeline.play();
+
+        box.getChildren().add(hexPane);
+
+        // Agent position panel
+        VBox pp = vbox(8, "#16213e", 12);
+        pp.setStyle("-fx-background-radius: 10;");
+        pp.getChildren().add(label("🎮 AGENT POSITIONS (Q,R,Z) — Hex Axial", 14, "#00d9ff", true));
+        String[][] players = {
+            {"🟢 Agent Alpha", "0", "0", "2"},
+            {"🔵 Agent Beta", "3", "-2", "1"},
+            {"🟠 Agent Gamma", "-3", "2", "3"}
+        };
+        for (String[] p : players) {
+            HBox pr = hbox(12, Pos.CENTER_LEFT, null, 0);
+            Label pl = label("⬡(" + p[1] + "," + p[2] + ") Z:" + p[3], 11, "#a0a0a0", false);
+            agentPositionLabels.put(p[0], pl);
+            pr.getChildren().addAll(label(p[0], 12, "#ffffff", true), pl, label("Active", 11, "#00ff88", false));
+            pp.getChildren().add(pr);
+        }
         box.getChildren().add(pp);
-        HBox sr = hbox(10, Pos.CENTER, null, 10);
-        String[][] sts = {{"🏗️ Brute Foundry","#ff6b6b"},{"🧬 A/B Lab","#c77dff"},{"🌳 Knowledge Tree","#00d9ff"},{"🔬 Research","#ffaa00"},{"🔒 Secrets","#999999"},{"🏥 Hospital","#ff6b9d"},{"📡 GitHub","#6e5494"}};
-        for (String[] s : sts) { Button sb = new Button(s[0]); sb.setStyle("-fx-background-color: "+s[1]+"; -fx-text-fill: #fff; -fx-font-size: 11px; -fx-padding: 5 10;"); sb.setOnAction(e -> triggerStation(s[0].substring(2).trim())); sr.getChildren().add(sb); }
+
+        // Station buttons
+        HBox sr = hbox(8, Pos.CENTER, null, 8);
+        String[][] sts = {
+            {"🏗️ Brute Foundry", "#ff6b6b"}, {"🧬 A/B Lab", "#c77dff"},
+            {"🌳 Knowledge Tree", "#00d9ff"}, {"🔬 Research", "#ffaa00"},
+            {"🔒 Secrets", "#999999"}, {"🏥 Hospital", "#ff6b9d"}, {"📡 GitHub", "#6e5494"}
+        };
+        for (String[] s : sts) {
+            Button sb = new Button(s[0]);
+            sb.setStyle("-fx-background-color: " + s[1] + "; -fx-text-fill: #fff; -fx-font-size: 10px; -fx-padding: 4 8;");
+            sb.setOnAction(e -> triggerStation(s[0].substring(2).trim()));
+            sr.getChildren().add(sb);
+        }
         box.getChildren().add(sr);
         return box;
+    }
+
+    // === HEX GEOMETRY ===
+    private double[] hexToPixel(int q, int r) {
+        double x = HEX_SIZE * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r) + 350;
+        double y = HEX_SIZE * (3.0 / 2 * r) + 300;
+        return new double[]{x, y};
+    }
+
+    private double[] hexCorner(double cx, double cy, double size, int i) {
+        double angle = Math.PI / 180 * (60 * i - 30);
+        return new double[]{cx + size * Math.cos(angle), cy + size * Math.sin(angle)};
+    }
+
+    private void updateHexAppearance(String key, javafx.scene.shape.Polygon hex) {
+        double z = hexElevation.getOrDefault(key, 0.0);
+        double alpha = 0.3 + z * 0.2;
+        hex.setFill(Color.rgb(20, 80 + (int)(z * 30), 180, alpha));
+        // Drop shadow effect for 3D depth
+        hex.setEffect(new javafx.scene.effect.DropShadow(5 + z * 4, 2 + z * 2, 2 + z * 2, Color.rgb(0, 0, 0, 0.5 + z * 0.1)));
     }
 
     // ==================== GAMEPLAY VIEW ====================
@@ -713,27 +840,70 @@ public class GodHandApp extends Application {
         }, 0, TimeUnit.SECONDS);
     }
 
-    // ==================== AGENT MOVEMENT ====================
-    private void initAgentPositions() { agentPositions.put("Agent Alpha", new int[]{3,7,2}); agentPositions.put("Agent Beta", new int[]{8,4,1}); agentPositions.put("Agent Gamma", new int[]{5,9,3}); }
-    private void moveAgentTo(String name, int x, int y) {
-        int[] pos = agentPositions.get(name); if (pos == null) return;
-        int ox = pos[0], oy = pos[1]; pos[0] = x; pos[1] = y;
+    // ==================== AGENT MOVEMENT (Hex Q,R,Z) ====================
+    private void initAgentPositions() {
+        agentPositions.put("Agent Alpha", new int[]{0, 0, 2});
+        agentPositions.put("Agent Beta", new int[]{3, -2, 1});
+        agentPositions.put("Agent Gamma", new int[]{-3, 2, 3});
+    }
+
+    private void moveAgentTo(String name, int q, int r, int z) {
+        int[] pos = agentPositions.get(name);
+        if (pos == null) return;
+        int oq = pos[0], or = pos[1];
+        pos[0] = q; pos[1] = r; pos[2] = z;
+
         Platform.runLater(() -> {
-            if (ox>=0&&ox<10&&oy>=0&&oy<10) gridCells[oy][ox].setFill(Color.rgb(30+oy*15,80+ox*12,150+(10-oy)*8));
-            Color ac = name.contains("Alpha") ? Color.rgb(0,255,100) : name.contains("Beta") ? Color.rgb(0,150,255) : Color.rgb(255,150,0);
-            gridCells[y][x].setFill(ac); gridCells[y][x].setStroke(Color.WHITE); gridCells[y][x].setStrokeWidth(4);
-            Label pl = agentPositionLabels.get(name); if (pl != null) pl.setText("("+x+","+y+","+pos[2]+")");
-            log("🎯 "+name+" → ("+x+","+y+")"); statusLabel.setText("🟢 "+name+" @ ("+x+","+y+")");
+            // Reset old hex
+            String oldKey = oq + "," + or;
+            javafx.scene.shape.Polygon oldHex = hexCells.get(oldKey);
+            if (oldHex != null) {
+                updateHexAppearance(oldKey, oldHex);
+            }
+            // Highlight new hex with agent color
+            String newKey = q + "," + r;
+            javafx.scene.shape.Polygon newHex = hexCells.get(newKey);
+            Color ac = name.contains("Alpha") ? Color.rgb(0, 255, 100) :
+                      name.contains("Beta") ? Color.rgb(0, 150, 255) :
+                      Color.rgb(255, 150, 0);
+            if (newHex != null) {
+                newHex.setFill(ac);
+                newHex.setStroke(Color.WHITE);
+                newHex.setStrokeWidth(4);
+                newHex.setOpacity(1.0);
+            }
+            Label pl = agentPositionLabels.get(name);
+            if (pl != null) pl.setText("⬡(" + q + "," + r + ") Z:" + z);
+            log("🎯 " + name + " → ⬡(" + q + "," + r + ") Z:" + z);
+            statusLabel.setText("🟢 " + name + " @ ⬡(" + q + "," + r + ")");
         });
     }
 
-    // ==================== STATION PIPELINES ====================
-    private void initStationPipelines() { pipelineNext.put("Brute Foundry","A/B Lab"); pipelineNext.put("A/B Lab","Knowledge Tree"); pipelineNext.put("Knowledge Tree","Research"); pipelineNext.put("Research","GitHub"); pipelineNext.put("GitHub","Hospital"); pipelineNext.put("Hospital","Brute Foundry"); }
-    private void startPipelineAt(int x, int y) {
-        log("🔗 Pipeline @ ("+x+","+y+")"); pipelineActive.put("pipeline", true);
-        chatScheduler.schedule(() -> { String st = "Brute Foundry"; int step = 0;
-            while (pipelineActive.getOrDefault("pipeline",false) && step < 20) { final String cs = st; final int s = step; Platform.runLater(() -> { addToGodChat("🔗 PIPELINE", cs, "Step "+s+" @ ("+x+","+y+")"); modelChats.forEach((n,c)->c.appendText("[Pipeline:"+cs+"]\n")); }); st = pipelineNext.getOrDefault(st,"Brute Foundry"); step++; try { Thread.sleep(2000); } catch (InterruptedException e) { break; } }
-            final int ts = step; Platform.runLater(() -> log("🔗 Pipeline done: "+ts+" steps")); }, 0, TimeUnit.SECONDS);
+    // ==================== STATION PIPELINES (Hex) ====================
+    private void initStationPipelines() {
+        pipelineNext.put("Brute Foundry","A/B Lab"); pipelineNext.put("A/B Lab","Knowledge Tree");
+        pipelineNext.put("Knowledge Tree","Research"); pipelineNext.put("Research","GitHub");
+        pipelineNext.put("GitHub","Hospital"); pipelineNext.put("Hospital","Brute Foundry");
+    }
+
+    private void startPipelineAt(int q, int r) {
+        log("🔗 Pipeline @ ⬡(" + q + "," + r + ")");
+        pipelineActive.put("pipeline", true);
+        chatScheduler.schedule(() -> {
+            String st = "Brute Foundry"; int step = 0;
+            while (pipelineActive.getOrDefault("pipeline", false) && step < 20) {
+                final String cs = st; final int s = step;
+                Platform.runLater(() -> {
+                    addToGodChat("🔗 PIPELINE", cs, "Step " + s + " @ ⬡(" + q + "," + r + ")");
+                    modelChats.forEach((n, c) -> c.appendText("[Pipeline:" + cs + "]\n"));
+                });
+                st = pipelineNext.getOrDefault(st, "Brute Foundry");
+                step++;
+                try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
+            }
+            final int ts = step;
+            Platform.runLater(() -> log("🔗 Pipeline done: " + ts + " steps"));
+        }, 0, TimeUnit.SECONDS);
     }
 
     // ==================== SETTINGS VIEW ====================
@@ -1677,47 +1847,51 @@ public class GodHandApp extends Application {
         }, 55, 55, TimeUnit.SECONDS);
     }
 
-    // ==================== 14. MAP GUIDANCE SYSTEM ====================
-    private final int[][] gridWeights = new int[10][10];
-    private final Map<String, int[]> agentDestinations = new ConcurrentHashMap<>();
+    // ==================== 14. MAP GUIDANCE SYSTEM (Hex) ====================
+    private final Map<String, Double> hexWeights = new ConcurrentHashMap<>();
 
     private void mapGuidanceInit() {
-        // Initialize grid weights (higher = better path)
-        for (int x = 0; x < 10; x++) {
-            for (int y = 0; y < 10; y++) {
-                // Center is best, edges are worse
-                gridWeights[x][y] = 10 - Math.max(Math.abs(x - 5), Math.abs(y - 5));
+        // Initialize hex weights (center is best, edges lower)
+        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
+            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
+            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
+            for (int r = r1; r <= r2; r++) {
+                double dist = Math.sqrt(q * q + r * r);
+                hexWeights.put(q + "," + r, 10.0 - dist);
             }
         }
         // Stations get bonus weight
-        gridWeights[0][0] = 15; // Brute Foundry
-        gridWeights[9][9] = 15; // Hospital
-        gridWeights[5][5] = 20; // Center hub
+        hexWeights.put("0,0", 20.0);    // Center hub
+        hexWeights.put("4,-4", 15.0);   // Brute Foundry
+        hexWeights.put("-4,4", 15.0);   // Hospital
+        hexWeights.put("4,0", 12.0);    // Research
+        hexWeights.put("-4,0", 12.0);   // Knowledge Tree
 
-        log("🗺️ Map Guidance: 10x10 weighted grid initialized");
+        log("🗺️ Map Guidance: " + hexWeights.size() + " hex weights initialized");
 
-        // Guide agents to optimal positions
+        // Guide agents to optimal hex positions
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 for (Map.Entry<String, int[]> agent : agentPositions.entrySet()) {
                     String name = agent.getKey();
                     int[] pos = agent.getValue();
-                    int cx = pos[0], cy = pos[1];
+                    int cq = pos[0], cr = pos[1];
 
-                    // Find best adjacent cell
-                    int bestX = cx, bestY = cy, bestWeight = gridWeights[cx][cy];
-                    int[][] dirs = {{0,1},{0,-1},{1,0},{-1,0},{1,1},{-1,-1},{1,-1},{-1,1}};
+                    // Find best adjacent hex
+                    int bestQ = cq, bestR = cr;
+                    double bestWeight = hexWeights.getOrDefault(cq + "," + cr, 0.0);
+                    int[][] dirs = {{1,0},{1,-1},{0,-1},{-1,0},{-1,1},{0,1}};
                     for (int[] d : dirs) {
-                        int nx = cx + d[0], ny = cy + d[1];
-                        if (nx >= 0 && nx < 10 && ny >= 0 && ny < 10 && gridWeights[nx][ny] > bestWeight) {
-                            bestX = nx; bestY = ny; bestWeight = gridWeights[nx][ny];
-                        }
+                        int nq = cq + d[0], nr = cr + d[1];
+                        String nk = nq + "," + nr;
+                        double w = hexWeights.getOrDefault(nk, 0.0);
+                        if (w > bestWeight) { bestQ = nq; bestR = nr; bestWeight = w; }
                     }
 
-                    if (bestX != cx || bestY != cy) {
-                        moveAgentTo(name, bestX, bestY);
-                        log("🗺️ Map: " + name + " guided to (" + bestX + "," + bestY + ") weight=" + bestWeight);
-                        addToGodChat("🗺️ MAP", name, "→ (" + bestX + "," + bestY + ") [w:" + bestWeight + "]");
+                    if (bestQ != cq || bestR != cr) {
+                        moveAgentTo(name, bestQ, bestR, pos[2]);
+                        log("🗺️ Map: " + name + " guided to ⬡(" + bestQ + "," + bestR + ") w=" + String.format("%.1f", bestWeight));
+                        addToGodChat("🗺️ MAP", name, "→ ⬡(" + bestQ + "," + bestR + ") [w:" + String.format("%.1f", bestWeight) + "]");
                     }
                 }
             });
