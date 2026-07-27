@@ -1471,8 +1471,49 @@ public class GodHandApp extends Application {
     private void checkCommandTriggers(String input, String modelName) { for(String[] cmd:commandTable) if(cmd[3].equals("✅")&&input.toLowerCase().contains(cmd[0].toLowerCase())){log("🎯 TRIGGER: ["+modelName+"] → "+cmd[0]); if(!cmd[2].equals("Station"))triggerStation(cmd[2]);} }
 
     // ==================== ENTROPY ====================
-    private void startEntropyMonitor() { chatScheduler.scheduleAtFixedRate(()->{double e=calculateEntropy(); if(e>entropyThreshold)Platform.runLater(()->{log("🚨 ENTROPY: "+String.format("%.3f",e)); statusLabel.setText("🔴 Entropy Alert!"); statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");});},10,10,TimeUnit.SECONDS); }
-    private double calculateEntropy() { double t=modelChats.values().stream().mapToInt(c->c.getText().length()).sum(); if(t==0)return 0; double e=0; for(TextArea c:modelChats.values()){double p=c.getText().length()/t; if(p>0)e-=p*Math.log(p)/Math.log(2);} return Math.min(1.0,e); }
+    private void startEntropyMonitor() {
+        chatScheduler.scheduleAtFixedRate(() -> {
+            double e = calculateEntropy();
+            shannonEntropy = e;
+            Platform.runLater(() -> {
+                if (e > entropyThreshold) {
+                    log("🚨 ENTROPY: " + String.format("%.3f", e));
+                    statusLabel.setText("🔴 Entropy Alert!");
+                    statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");
+                }
+            });
+        }, 10, 10, TimeUnit.SECONDS);
+    }
+
+    private double calculateEntropy() {
+        // Use model activity + hex state diversity for real entropy
+        double totalActivity = 0;
+        double[] activities = new double[modelChats.size()];
+        int i = 0;
+        for (TextArea c : modelChats.values()) {
+            double a = c.getText().length();
+            activities[i++] = a;
+            totalActivity += a;
+        }
+        if (totalActivity == 0) return 0;
+
+        // Shannon entropy with Laplace smoothing
+        double e = 0;
+        for (double a : activities) {
+            double p = (a + 1) / (totalActivity + activities.length); // Laplace smoothing
+            if (p > 0) e -= p * Math.log(p) / Math.log(2);
+        }
+
+        // Add hex diversity factor (how spread are agents?)
+        double hexSpread = 0;
+        for (int[] pos : agentPositions.values()) {
+            hexSpread += Math.sqrt(pos[0] * pos[0] + pos[1] * pos[1]);
+        }
+        double hexFactor = Math.min(1.0, hexSpread / 20.0);
+
+        // Blend: 70% chat entropy + 30% hex spread
+        return 0.7 * Math.min(1.0, e) + 0.3 * hexFactor;
+    }
 
     // ==================== LEXICAL MATH ====================
     private String evaluateLexical(String expr) { Map<String,Double> v=new HashMap<>(); v.put("agent_count",3.0); v.put("task_complexity",2.5); v.put("time_elapsed",10.0); v.put("entropy",shannonEntropy); try{expr=expr.toLowerCase(); for(Map.Entry<String,Double> e:v.entrySet())expr=expr.replace(e.getKey(),String.valueOf(e.getValue())); if(expr.contains("sum of")&&expr.contains("/")){String[] d=expr.replace("sum of","").split("/"); double n=1; for(String p:d[0].trim().split("\\s*\\*\\s*")){try{n*=Double.parseDouble(p.replace("(","").replace(")",""));}catch(NumberFormatException ignored){}} double den=1; try{den=Double.parseDouble(d[1].trim());}catch(NumberFormatException ignored){} return String.format("%.2f",den!=0?n/den:0);}}catch(Exception e){return"Error: "+e.getMessage();} return"?"; }
