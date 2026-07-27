@@ -202,6 +202,8 @@ public class GodHandApp extends Application {
         fowInit();
         hexTodoInit();
         gistContextInit();
+        gistSyncInit();
+        nightCycleArm();
     }
 
     // ==================== NAVIGATION ====================
@@ -1280,19 +1282,50 @@ public class GodHandApp extends Application {
     private final List<String[]> kgEdges = Collections.synchronizedList(new ArrayList<>());
 
     private void knowledgeGraphInit() {
-        // Seed initial KG nodes
+        // Seed initial KG nodes — full ecosystem
         kgNodes.put("SIMS1337", "Agent orchestration platform for SLM models");
         kgNodes.put("Ollama", "Local LLM runtime with 8+ models");
         kgNodes.put("GodHand", "Central dashboard for model management");
         kgNodes.put("BruteFoundry", "Autonomous code generation station");
         kgNodes.put("Hospital", "Agent diagnostics and memory repair");
         kgNodes.put("RAG", "Retrieval-Augmented Generation for persistent memory");
+        kgNodes.put("HexFOW", "Fog-of-War spatial masking — 1-hop hex visibility");
+        kgNodes.put("HexGrid", "61-cell axial hex grid (Q,R,Z) with 4D time pulse");
+        kgNodes.put("GistSync", "GitHub Gist state persistence — 30min push cycle");
+        kgNodes.put("NightCycle", "Autonomous 18:00→20:00→22:00 pipeline");
+        kgNodes.put("TopologicalMemory", "H0/H1/H2 persistent homology tracking");
+        kgNodes.put("HyperBuffer", "O(1) bitwise pruning engine");
+        kgNodes.put("AgentAlpha", "Orchestrator agent at hex (0,0)");
+        kgNodes.put("AgentBeta", "Builder agent at hex (3,-2)");
+        kgNodes.put("AgentGamma", "Analyst agent at hex (-3,2)");
+        kgNodes.put("qwen2.5:0.5b", "Fast responder model — 398MB, <100ms");
+        kgNodes.put("tinyllama:1.1b", "Balanced writer model — 638MB");
+        kgNodes.put("llama3.2:1b", "Tool-using model — 1.3GB");
+        kgNodes.put("deepseek-r1:1.5b", "Deep thinker model — 1.1GB");
+        kgNodes.put("phi3:mini", "Deep reasoning model — 2.2GB");
+        kgNodes.put("codellama:7b", "Code generation model — 3.8GB");
+        kgNodes.put("gemma2:2b", "Balanced model — 1.6GB");
+        kgNodes.put("phi:latest", "Reasoning model — 1.6GB");
 
         kgEdges.add(new String[]{"SIMS1337", "GodHand", "controls"});
         kgEdges.add(new String[]{"GodHand", "Ollama", "queries"});
         kgEdges.add(new String[]{"SIMS1337", "BruteFoundry", "delegates"});
         kgEdges.add(new String[]{"SIMS1337", "Hospital", "monitors"});
         kgEdges.add(new String[]{"SIMS1337", "RAG", "uses"});
+        kgEdges.add(new String[]{"SIMS1337", "HexFOW", "uses"});
+        kgEdges.add(new String[]{"SIMS1337", "HexGrid", "renders"});
+        kgEdges.add(new String[]{"SIMS1337", "GistSync", "triggers"});
+        kgEdges.add(new String[]{"SIMS1337", "NightCycle", "schedules"});
+        kgEdges.add(new String[]{"SIMS1337", "TopologicalMemory", "queries"});
+        kgEdges.add(new String[]{"SIMS1337", "HyperBuffer", "uses"});
+        kgEdges.add(new String[]{"AgentAlpha", "AgentBeta", "communicates"});
+        kgEdges.add(new String[]{"AgentAlpha", "AgentGamma", "communicates"});
+        kgEdges.add(new String[]{"AgentBeta", "AgentGamma", "communicates"});
+        kgEdges.add(new String[]{"BruteFoundry", "GitHub", "pushes"});
+        kgEdges.add(new String[]{"Hospital", "AgentAlpha", "repairs"});
+        kgEdges.add(new String[]{"NightCycle", "GistSync", "triggers"});
+        kgEdges.add(new String[]{"HexFOW", "HexGrid", "masks"});
+        kgEdges.add(new String[]{"GistSync", "GitHub", "pushes"});
 
         log("🌳 Knowledge Graph: " + kgNodes.size() + " nodes, " + kgEdges.size() + " edges");
 
