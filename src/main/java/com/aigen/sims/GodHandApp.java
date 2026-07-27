@@ -112,8 +112,9 @@ public class GodHandApp extends Application {
     private final Map<String, String> hexTodoGistUrl = new ConcurrentHashMap<>(); // "q,r" -> gist URL
 
     // === Gist Context ===
-    private String gistToken = "";
+    private String gistToken = System.getenv().getOrDefault("GIST_TOKEN", "");
     private final List<String> gistContexts = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, String> gistUrls = new ConcurrentHashMap<>();
 
     // === Station Pipelines ===
     private final Map<String, String> pipelineNext = new ConcurrentHashMap<>();
@@ -2161,6 +2162,16 @@ public class GodHandApp extends Application {
 
     // ==================== 20. GIST CONTEXT — Load Models with Gist Knowledge ====================
     private void gistContextInit() {
+        // Register all gist URLs
+        gistUrls.put("neuromorphic-lineage", "https://gist.github.com/chrisalunlloyd2-sudo/87a6e878f96616971a8754cb4cea06be");
+        gistUrls.put("memories-db", "https://gist.github.com/chrisalunlloyd2-sudo/14e94c9d5256c16c6ecfdf748f7d3bbd");
+        gistUrls.put("project-places", "https://gist.github.com/chrisalunlloyd2-sudo/09a19470abadd0ad47e133ac44edec0d");
+        gistUrls.put("databases", "https://gist.github.com/chrisalunlloyd2-sudo/d0733fb0460ff11128870902e7eb27d5");
+        gistUrls.put("hex-fow", "https://gist.github.com/chrisalunlloyd2-sudo/a23215d054d804834fd902d12692d096");
+        gistUrls.put("topological-memory", "https://gist.github.com/chrisalunlloyd2-sudo/93ef40fd2d9c610eca8839a676005286");
+        gistUrls.put("hyper-buffer", "https://gist.github.com/chrisalunlloyd2-sudo/f918a05e859a4bc7a037e741ba1dbd5f");
+        gistUrls.put("matrix-wince", "https://gist.github.com/chrisalunlloyd2-sudo/c91b5b29cc871f0140fbba0e4b187b85");
+
         // Load neuromorphic lineage + gist knowledge into model context
         String[] lineageContext = {
             "NEUROMORPHIC LINEAGE: Boolean→Turing→McCullochPitts→Hebbian→Perceptron→Analog→Atari→Procedural→3D→Voodoo→CERN→Agents→LSTM→GRU→Attention→Transformers→MoE→SSMs→RAG→SIMS1337",
@@ -2173,6 +2184,7 @@ public class GodHandApp extends Application {
             "HEX GRID: 61 hexes, axial Q/R/Z + 4D time pulse, FOW 1-hop visibility, 3 agents pinned",
             "TOOLS: terminal, file_read, file_write, web_search, web_fetch, git, ollama, memory, vote, pipeline",
             "MODELS: qwen2.5:0.5b(fast), tinyllama:1.1b(balanced), llama3.2:1b(tools), deepseek-r1:1.5b(deep), phi:latest(reasoning), phi3:mini(deep), gemma2:2b(balanced), codellama:7b(code)",
+            "GISTS: neuromorphic-lineage, memories-db, project-places, databases, hex-fow, topological-memory, hyper-buffer, matrix-wince",
         };
 
         for (String ctx : lineageContext) {
