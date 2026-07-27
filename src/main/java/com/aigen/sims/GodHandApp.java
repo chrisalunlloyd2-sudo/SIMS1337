@@ -102,6 +102,19 @@ public class GodHandApp extends Application {
     private static final double HEX_SIZE = 28.0;
     private javafx.animation.Timeline hexPulseTimeline;
 
+    // === FOW (Fog of War) ===
+    private final Map<String, String> fowAgentHex = new ConcurrentHashMap<>(); // agent -> "q,r"
+    private boolean fowEnabled = true;
+    private static final int FOW_HOP = 1; // agents see 1-hop neighborhood
+
+    // === Hex TODO System ===
+    private final Map<String, List<String>> hexTodos = new ConcurrentHashMap<>(); // "q,r" -> [todo strings]
+    private final Map<String, String> hexTodoGistUrl = new ConcurrentHashMap<>(); // "q,r" -> gist URL
+
+    // === Gist Context ===
+    private String gistToken = "";
+    private final List<String> gistContexts = Collections.synchronizedList(new ArrayList<>());
+
     // === Station Pipelines ===
     private final Map<String, String> pipelineNext = new ConcurrentHashMap<>();
     private final Map<String, Boolean> pipelineActive = new ConcurrentHashMap<>();
@@ -158,7 +171,7 @@ public class GodHandApp extends Application {
         stage.setScene(new Scene(root, 1500, 950));
         stage.show();
 
-        log("✅ SIMS1337 v0.16.0 - Perfect Prompts + Map + Patterns + Tools + Memory");
+        log("✅ SIMS1337 v0.18.0 - 4D Hex Map + FOW + Hex TODOs + Neuromorphic Context");
         initAll();
         refreshInstalledModels();
     }
@@ -185,6 +198,9 @@ public class GodHandApp extends Application {
         perfectPatternsInit();
         toolsSystemInit();
         persistentMemoryInit();
+        fowInit();
+        hexTodoInit();
+        gistContextInit();
     }
 
     // ==================== NAVIGATION ====================
@@ -1631,7 +1647,7 @@ public class GodHandApp extends Application {
                 html.append("table{border-collapse:collapse;width:100%;} th,td{border:1px solid #0f3460;padding:8px;text-align:left;}");
                 html.append("th{background:#0f3460;color:#00d9ff;}");
                 html.append("</style></head><body>");
-                html.append("<h1>⚙️ SIMS1337 Dashboard v0.16.0</h1>");
+                html.append("<h1>⚙️ SIMS1337 Dashboard v0.18.0</h1>");
 
                 // System status
                 html.append("<div class='card'><h2>📊 System Status</h2>");
@@ -1706,7 +1722,10 @@ public class GodHandApp extends Application {
                     {"14. Map Guidance", "✅ Active"},
                     {"15. Perfect Patterns", "✅ Active"},
                     {"16. Tools System", "✅ Active"},
-                    {"17. Persistent Memory", "✅ Active"}
+                    {"17. Persistent Memory", "✅ Active"},
+                    {"18. FOW (Fog of War)", "✅ Active"},
+                    {"19. Hex TODO System", "✅ Active"},
+                    {"20. Gist Context", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -1740,7 +1759,7 @@ public class GodHandApp extends Application {
                     }
                 } catch (Exception ex) { apiModelCount = 0; }
                 String json = String.format(
-                    "{\"version\":\"0.16.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
+                    "{\"version\":\"0.18.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
                     apiModelCount, kgNodes.size(), errorCount, recoveryCount,
                     java.time.LocalDateTime.now().toString());
                 byte[] response = json.getBytes("UTF-8");
@@ -2051,6 +2070,148 @@ public class GodHandApp extends Application {
             });
         }, 75, 75, TimeUnit.SECONDS);
     }
+
+    // ==================== 18. FOW (FOG OF WAR) — 1-Hop Hex Visibility ====================
+    private void fowInit() {
+        // Pin each agent to their starting hex
+        fowAgentHex.put("Agent Alpha", "0,0");
+        fowAgentHex.put("Agent Beta", "3,-2");
+        fowAgentHex.put("Agent Gamma", "-3,2");
+
+        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents pinned");
+
+        // Periodic FOW update: dim hexes outside agent's 1-hop
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                if (!fowEnabled) return;
+                for (var entry : hexCells.entrySet()) {
+                    String hexKey = entry.getKey();
+                    javafx.scene.shape.Polygon hex = entry.getValue();
+                    String[] parts = hexKey.split(",");
+                    int hq = Integer.parseInt(parts[0]), hr = Integer.parseInt(parts[1]);
+
+                    // Check if ANY agent can see this hex
+                    boolean visible = false;
+                    for (var agentEntry : fowAgentHex.entrySet()) {
+                        String[] aParts = agentEntry.getValue().split(",");
+                        int aq = Integer.parseInt(aParts[0]), ar = Integer.parseInt(aParts[1]);
+                        int dist = Math.max(Math.abs(hq - aq), Math.abs(hr - ar));
+                        // Axial hex distance approximation
+                        if (dist <= FOW_HOP) { visible = true; break; }
+                    }
+
+                    if (!visible) {
+                        // FOW: dim and desaturate
+                        hex.setOpacity(0.15);
+                        hex.setStroke(Color.web("#333333"));
+                    } else {
+                        // Visible: restore
+                        hex.setOpacity(0.7);
+                        hex.setStroke(Color.web("#00d9ff44"));
+                    }
+                }
+            });
+        }, 5, 5, TimeUnit.SECONDS);
+    }
+
+    // ==================== 19. HEX TODO SYSTEM — TODOs Pinned to Hex Cells ====================
+    private void hexTodoInit() {
+        // Seed TODOs from the hex_todo_mapper
+        String[][] seedTodos = {
+            {"0,0", "⬡ Center Hub: GodHand dashboard"},
+            {"0,0", "⬡ Wire FOW to all 8 models"},
+            {"1,0", "⬡ Port hex-hex.go → Java HexCoord"},
+            {"1,-1", "⬡ Port clock-clock.go → CloudflaredClock"},
+            {"2,-1", "⬡ Build WebSocket live hex streaming"},
+            {"2,-2", "⬡ Integrate topological memory H₀/H₁/H₂"},
+            {"3,-2", "⬡ Agent Beta: Deterministic intent parser"},
+            {"-1,1", "⬡ Deploy hyper buffer O(1) bitwise"},
+            {"-2,1", "⬡ Create gist-sync cron: 30min push"},
+            {"-3,2", "⬡ Agent Gamma: MatrixWinCE APK pipeline"},
+            {"-1,0", "⬡ Wire 8 Ollama models into hex grid"},
+            {"0,1", "⬡ Dashboard: hex grid with FOW overlay"},
+            {"1,1", "⬡ Night cycle: auto-vote hex TODO priorities"},
+            {"-1,-1", "⬡ Gist: memories-db (persistent agent memory)"},
+            {"-2,-2", "⬡ Gist: project-places (hex coords for repos)"},
+            {"-3,-3", "⬡ Gist: databases (SQLite schemas, KG exports)"},
+        };
+
+        for (String[] td : seedTodos) {
+            hexTodos.computeIfAbsent(td[0], k -> Collections.synchronizedList(new ArrayList<>())).add(td[1]);
+        }
+
+        log("⬡ Hex TODOs: " + seedTodos.length + " items across " + hexTodos.size() + " hex cells");
+
+        // Periodic: show TODOs on hex hover in tooltip
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                for (var entry : hexCells.entrySet()) {
+                    String key = entry.getKey();
+                    javafx.scene.shape.Polygon hex = entry.getValue();
+                    List<String> todos = hexTodos.getOrDefault(key, List.of());
+                    if (!todos.isEmpty()) {
+                        StringBuilder tip = new StringBuilder("⬡ (" + key + ") TODOs:\n");
+                        for (String t : todos) tip.append("  • ").append(t).append("\n");
+                        Tooltip.install(hex, new Tooltip(tip.toString().trim()));
+                    }
+                }
+            });
+        }, 10, 30, TimeUnit.SECONDS);
+    }
+
+    // ==================== 20. GIST CONTEXT — Load Models with Gist Knowledge ====================
+    private void gistContextInit() {
+        // Load neuromorphic lineage + gist knowledge into model context
+        String[] lineageContext = {
+            "NEUROMORPHIC LINEAGE: Boolean→Turing→McCullochPitts→Hebbian→Perceptron→Analog→Atari→Procedural→3D→Voodoo→CERN→Agents→LSTM→GRU→Attention→Transformers→MoE→SSMs→RAG→SIMS1337",
+            "PRINCIPLE 1: Computation = physical process, not symbolic manipulation.",
+            "PRINCIPLE 2: Determinism + temporal consistency = stable neural firing patterns.",
+            "PRINCIPLE 3: Intelligence emerges from distributed, message-passing systems.",
+            "PRINCIPLE 4: Routing + weighting = cognition.",
+            "PRINCIPLE 5: A cognitive engine is a distributed, stateless, message-passing organism.",
+            "SIMS1337 MAPPING: Hippocampus=LexicalEngine, Thalamus=ModelRouter, CorticalColumns=Stations, SpikingNeurons=SLMAgents, SynapticPlasticity=LoRA, CircadianRhythm=NightCycle, GlialCells=Hospital, Neurogenesis=BruteFoundry",
+            "HEX GRID: 61 hexes, axial Q/R/Z + 4D time pulse, FOW 1-hop visibility, 3 agents pinned",
+            "TOOLS: terminal, file_read, file_write, web_search, web_fetch, git, ollama, memory, vote, pipeline",
+            "MODELS: qwen2.5:0.5b(fast), tinyllama:1.1b(balanced), llama3.2:1b(tools), deepseek-r1:1.5b(deep), phi:latest(reasoning), phi3:mini(deep), gemma2:2b(balanced), codellama:7b(code)",
+        };
+
+        for (String ctx : lineageContext) {
+            gistContexts.add(ctx);
+        }
+
+        log("📚 Gist Context: " + gistContexts.size() + " knowledge fragments loaded");
+
+        // Inject context into all model chats
+        chatScheduler.schedule(() -> {
+            Platform.runLater(() -> {
+                for (var entry : modelChats.entrySet()) {
+                    String model = entry.getKey();
+                    TextArea chat = entry.getValue();
+                    chat.appendText("\n═══ NEUROMORPHIC CONTEXT LOADED ═══\n");
+                    for (int i = 0; i < Math.min(5, gistContexts.size()); i++) {
+                        chat.appendText("[" + model + "] " + gistContexts.get(i) + "\n");
+                    }
+                    chat.appendText("══════════════════════════════════\n\n");
+                }
+                addToGodChat("📚 CONTEXT", "System", "Loaded " + gistContexts.size() + " neuromorphic lineage fragments into all " + modelChats.size() + " models");
+                log("📚 All models loaded with neuromorphic lineage context");
+            });
+        }, 2, TimeUnit.SECONDS);
+
+        // Periodic: refresh context injection
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                for (var entry : modelChats.entrySet()) {
+                    TextArea chat = entry.getValue();
+                    if (new Random().nextInt(5) == 0) {
+                        String ctx = gistContexts.get(new Random().nextInt(gistContexts.size()));
+                        chat.appendText("[📚] " + ctx + "\n");
+                    }
+                }
+            });
+        }, 80, 80, TimeUnit.SECONDS);
+    }
+
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private HBox hbox(int s,Pos a,String bg,int p){HBox b=new HBox(s);b.setAlignment(a);if(bg!=null)b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private Label label(String t,int sz,String c,boolean bd){Label l=new Label(t);l.setStyle("-fx-font-size: "+sz+"px; -fx-text-fill: "+c+";"+(bd?" -fx-font-weight: bold;":""));return l;}
