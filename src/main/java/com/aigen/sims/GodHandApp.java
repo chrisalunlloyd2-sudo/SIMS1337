@@ -1,5 +1,6 @@
 package com.aigen.sims;
 
+import com.aigen.sims.phase1.*;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
@@ -102,12 +103,11 @@ public class GodHandApp extends Application {
     private static final double HEX_SIZE = 28.0;
     private javafx.animation.Timeline hexPulseTimeline;
 
-    // === FOW (Fog of War) ===
-    private final Map<String, String> fowAgentHex = new ConcurrentHashMap<>(); // agent -> "q,r"
+    // === FOW (Fog of War) — powered by phase1 backend ===
+    private final FOWGate fowGate = new FOWGate(1);
+    private final QuorumVoting quorumVoting = new QuorumVoting(fowGate);
     private boolean fowEnabled = true;
-    private static final int FOW_HOP = 1; // agents see 1-hop neighborhood
-    private final Map<String, String> modelAgentMap = new ConcurrentHashMap<>(); // model -> agent
-    private final Map<String, String> proposalHex = new ConcurrentHashMap<>(); // proposal -> "q,r"
+    private static final int FOW_HOP = 1;
 
     // === Hex TODO System ===
     private final Map<String, List<String>> hexTodos = new ConcurrentHashMap<>(); // "q,r" -> [todo strings]
@@ -438,49 +438,43 @@ public class GodHandApp extends Application {
 
     // ==================== VOTING SYSTEM ====================
     private void initDefaultProposals() {
-        proposalTable.addAll(
-            new String[]{"Add WebSocket support", "Pending", "0/4", "0/4", "0%", "1,0"},
-            new String[]{"Implement Markov reviews", "Pending", "0/4", "0/4", "0%", "-1,-1"},
-            new String[]{"Deploy to production", "Pending", "0/4", "0/4", "0%", "0,0"},
-            new String[]{"Refactor ModelRouter", "Pending", "0/4", "0/4", "0%", "2,-1"}
-        );
-        // Populate proposalHex map
-        for (String[] p : proposalTable) proposalHex.put(p[0], p[5]);
+        quorumVoting.addProposal("1", "Add WebSocket support", HexCoord.fromString("1,0"));
+        quorumVoting.addProposal("2", "Implement Markov reviews", HexCoord.fromString("-1,-1"));
+        quorumVoting.addProposal("3", "Deploy to production", HexCoord.fromString("0,0"));
+        quorumVoting.addProposal("4", "Refactor ModelRouter", HexCoord.fromString("2,-1"));
+        // Sync to JavaFX proposalTable
+        proposalTable.clear();
+        for (var p : quorumVoting.allProposals()) {
+            proposalTable.add(new String[]{p.id, "PENDING", "0/4", "0/4", "0%", p.hex.key()});
+        }
     }
 
     private void castVote(String proposal, String modelName, boolean approve) {
-        votes.putIfAbsent(proposal, new ConcurrentHashMap<>());
-        // FOW gate: models can only vote on proposals they can see
-        String hex = proposalHex.get(proposal);
-        if (hex != null && !isHexVisibleToModel(hex, modelName)) {
-            votes.get(proposal).put(modelName, "BLIND");
+        QuorumVoting.Vote result = quorumVoting.castVote(proposal, modelName, approve);
+        if (result == QuorumVoting.Vote.BLIND) {
+            var p = quorumVoting.getProposal(proposal);
+            String hex = p != null ? p.hex.key() : "?";
             addToGodChat("🌫️ BLIND", modelName, "Cannot see proposal → " + proposal + " (hex " + hex + ")");
-            log("🌫️ [" + modelName + "] BLIND on " + proposal + " — hex " + hex + " outside FOW");
-            updateProposalStatus(proposal);
-            return;
+            log("🌫️ [" + modelName + "] BLIND on " + proposal + " — outside FOW");
+        } else {
+            addToGodChat("🗳️ VOTE", modelName, (approve ? "✅ APPROVE" : "❌ REJECT") + " → " + proposal);
+            log("🗳️ [" + modelName + "] " + (approve ? "APPROVED" : "REJECTED") + " " + proposal);
         }
-        votes.get(proposal).put(modelName, approve ? "APPROVE" : "REJECT");
-        addToGodChat("🗳️ VOTE", modelName, (approve ? "✅ APPROVE" : "❌ REJECT") + " → " + proposal);
-        log("🗳️ [" + modelName + "] " + (approve ? "APPROVED" : "REJECTED") + " " + proposal);
         updateProposalStatus(proposal);
     }
 
     private void updateProposalStatus(String proposal) {
-        Map<String, String> v = votes.getOrDefault(proposal, Map.of());
-        long approve = v.values().stream().filter("APPROVE"::equals).count();
-        long blind = v.values().stream().filter("BLIND"::equals).count();
-        long total = v.size();
-        long visibleTotal = total - blind;
-        for (String[] p : proposalTable) {
-            if (p[0].equals(proposal)) {
-                if (blind > visibleTotal && total >= 3) {
-                    p[1] = "🌫️ BLINDED";
-                } else {
-                    p[1] = visibleTotal >= 3 ? (approve >= 2 ? "✅ APPROVED" : "❌ REJECTED") : "Voting...";
-                }
-                p[2] = approve + "/" + total;
-                p[3] = blind + "🌫️";
-                p[4] = visibleTotal > 0 ? (int)(approve * 100.0 / visibleTotal) + "%" : "0%";
+        var p = quorumVoting.getProposal(proposal);
+        if (p == null) return;
+        int approve = p.approveCount(), blind = p.blindCount(), total = p.totalVotes();
+        int visibleTotal = p.visibleTotal();
+        String status = p.status(); // "APPROVED" / "REJECTED" / "PENDING" / "BLINDED"
+        for (String[] row : proposalTable) {
+            if (row[0].equals(proposal)) {
+                row[1] = status;
+                row[2] = approve + "/" + total;
+                row[3] = blind + "🌫️";
+                row[4] = visibleTotal > 0 ? (int)(approve * 100.0 / visibleTotal) + "%" : "0%";
             }
         }
     }
@@ -2171,20 +2165,19 @@ public class GodHandApp extends Application {
 
     // ==================== 18. FOW (FOG OF WAR) — 1-Hop Hex Visibility ====================
     private void fowInit() {
-        // Pin each agent to their starting hex
-        fowAgentHex.put("Agent Alpha", "0,0");
-        fowAgentHex.put("Agent Beta", "3,-2");
-        fowAgentHex.put("Agent Gamma", "-3,2");
+        // Pin agents and assign models via phase1 backend
+        fowGate.pinAgent("Agent Alpha", new HexCoord(0, 0));
+        fowGate.pinAgent("Agent Beta", new HexCoord(3, -2));
+        fowGate.pinAgent("Agent Gamma", new HexCoord(-3, 2));
 
-        // Assign models to agents for FOW-gated voting
-        modelAgentMap.put("qwen2.5:0.5b", "Agent Alpha");
-        modelAgentMap.put("tinyllama:1.1b", "Agent Alpha");
-        modelAgentMap.put("phi:latest", "Agent Beta");
-        modelAgentMap.put("phi3:mini", "Agent Beta");
-        modelAgentMap.put("llama3.2:1b", "Agent Gamma");
-        modelAgentMap.put("deepseek-r1:1.5b", "Agent Gamma");
+        fowGate.assignModel("qwen2.5:0.5b", "Agent Alpha");
+        fowGate.assignModel("tinyllama:1.1b", "Agent Alpha");
+        fowGate.assignModel("phi:latest", "Agent Beta");
+        fowGate.assignModel("phi3:mini", "Agent Beta");
+        fowGate.assignModel("llama3.2:1b", "Agent Gamma");
+        fowGate.assignModel("deepseek-r1:1.5b", "Agent Gamma");
 
-        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents, " + modelAgentMap.size() + " models mapped");
+        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowGate.agentCount() + " agents, " + fowGate.modelCount() + " models mapped");
 
         // Periodic FOW update: dim hexes outside agent's 1-hop
         chatScheduler.scheduleAtFixedRate(() -> {
@@ -2193,17 +2186,12 @@ public class GodHandApp extends Application {
                 for (var entry : hexCells.entrySet()) {
                     String hexKey = entry.getKey();
                     javafx.scene.shape.Polygon hex = entry.getValue();
-                    String[] parts = hexKey.split(",");
-                    int hq = Integer.parseInt(parts[0]), hr = Integer.parseInt(parts[1]);
+                    HexCoord hc = HexCoord.fromString(hexKey);
 
-                    // Check if ANY agent can see this hex
+                    // Check if ANY model can see this hex via phase1 backend
                     boolean visible = false;
-                    for (var agentEntry : fowAgentHex.entrySet()) {
-                        String[] aParts = agentEntry.getValue().split(",");
-                        int aq = Integer.parseInt(aParts[0]), ar = Integer.parseInt(aParts[1]);
-                        int dist = Math.max(Math.abs(hq - aq), Math.abs(hr - ar));
-                        // Axial hex distance approximation
-                        if (dist <= FOW_HOP) { visible = true; break; }
+                    for (String model : fowGate.modelNames()) {
+                        if (fowGate.isVisible(hc, model)) { visible = true; break; }
                     }
 
                     if (!visible) {
@@ -2218,23 +2206,6 @@ public class GodHandApp extends Application {
                 }
             });
         }, 5, 5, TimeUnit.SECONDS);
-    }
-
-    /** Check if a hex "q,r" is visible to a model via their assigned agent's FOW range. */
-    private boolean isHexVisibleToModel(String hexKey, String modelName) {
-        if (!fowEnabled) return true;
-        String agentName = modelAgentMap.get(modelName);
-        if (agentName == null) return true; // unassigned model sees all
-        String agentHex = fowAgentHex.get(agentName);
-        if (agentHex == null) return true;
-        try {
-            String[] hp = hexKey.split(",");
-            String[] ap = agentHex.split(",");
-            int hq = Integer.parseInt(hp[0]), hr = Integer.parseInt(hp[1]);
-            int aq = Integer.parseInt(ap[0]), ar = Integer.parseInt(ap[1]);
-            int dist = Math.max(Math.abs(hq - aq), Math.abs(hr - ar));
-            return dist <= FOW_HOP;
-        } catch (Exception e) { return true; }
     }
 
     // ==================== 19. HEX TODO SYSTEM — TODOs Pinned to Hex Cells ====================
@@ -2431,7 +2402,7 @@ public class GodHandApp extends Application {
 
                 if (now.equals(voteTime)) {
                     Platform.runLater(() -> {
-                        log("🌙 Night Cycle: VOTE PHASE — FOW-aware voting (" + modelAgentMap.size() + " models, " + proposalTable.size() + " proposals)...");
+                        log("🌙 Night Cycle: VOTE PHASE — FOW-aware voting (" + fowGate.modelCount() + " models, " + proposalTable.size() + " proposals)...");
                         addToGodChat("🌙 NIGHT", "Vote", "All models casting FOW-gated votes on proposals");
                         for (String[] proposal : proposalTable) {
                             for (String model : modelChats.keySet()) {
