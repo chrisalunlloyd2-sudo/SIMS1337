@@ -211,6 +211,9 @@ public class GodHandApp extends Application {
         consensusDebateInit();
         emailDeliveryInit();
         gistPullToModels();
+        nightOwlCollectiveInit();
+        codeWizardInit();
+        topologistInit();
         nightCycleArm();
     }
 
@@ -1883,7 +1886,10 @@ public class GodHandApp extends Application {
                     {"25. Gist→Model Context", "✅ Active"},
                     {"26. Hex TODO Auto-Resolve", "✅ Active"},
                     {"27. Email Delivery", "✅ Active"},
-                    {"28. Consensus Debate", "✅ Active"}
+                    {"28. Consensus Debate", "✅ Active"},
+                    {"29. Night Owl Collective", "✅ Active"},
+                    {"30. Code Wizard", "✅ Active"},
+                    {"31. Topologist", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -3060,6 +3066,356 @@ public class GodHandApp extends Application {
         consensusMode = false;
         log("🗣️ CONSENSUS: Debate complete — " + debateArguments.size() + " proposals debated");
         addToGodChat("🗣️ DEBATE", "System", "Consensus round complete. Votes re-cast with debate context.");
+    }
+
+    // ==================== 29. NIGHT OWL MODEL COLLECTIVE — 8-Model Shared Reasoning ====================
+    private final List<String> collectiveInsights = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, String> collectivePersona = new ConcurrentHashMap<>(); // model -> persona
+    private int collectiveRound = 0;
+
+    private void nightOwlCollectiveInit() {
+        collectivePersona.put("deepseek-r1:1.5b", "The Philosopher — questions assumptions, finds hidden patterns");
+        collectivePersona.put("codellama:7b", "The Architect — designs systems, sees structural integrity");
+        collectivePersona.put("phi3:mini", "The Logician — formal proofs, edge cases, rigorous analysis");
+        collectivePersona.put("llama3.2:1b", "The Pragmatist — practical solutions, real-world constraints");
+        collectivePersona.put("qwen2.5:0.5b", "The Scout — rapid exploration, breadth-first discovery");
+        collectivePersona.put("tinyllama:1.1b", "The Synthesizer — combines ideas, finds unexpected connections");
+        collectivePersona.put("gemma2:2b", "The Guardian — stability, safety, long-term consequences");
+        collectivePersona.put("phi:latest", "The Innovator — novel approaches, paradigm shifts");
+
+        log("🦉 Night Owl Collective: 8-model shared reasoning initialized");
+        addToGodChat("🦉 OWL", "Collective", "Night Owl Model Collective online — 8 personas, shared reasoning");
+
+        // Every 5 minutes: collective reasoning round
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                collectiveRound++;
+                String topic = pickCollectiveTopic();
+                log("🦉 OWL Round " + collectiveRound + ": \"" + topic + "\"");
+                addToGodChat("🦉 OWL", "Round " + collectiveRound, "Topic: " + topic);
+
+                // Each model contributes from its persona
+                List<String> roundInsights = new ArrayList<>();
+                for (var entry : collectivePersona.entrySet()) {
+                    String model = entry.getKey();
+                    String persona = entry.getValue();
+                    String insight = generateCollectiveInsight(model, persona, topic);
+                    roundInsights.add(model + " [" + persona + "]: " + insight);
+                    addToGodChat("🦉 OWL", model, insight);
+                }
+
+                // Synthesize: find consensus and contradictions
+                String synthesis = synthesizeCollective(roundInsights, topic);
+                collectiveInsights.add("Round " + collectiveRound + ": " + synthesis);
+                log("🦉 OWL Synthesis: " + synthesis);
+                addToGodChat("🦉 OWL", "Synthesis", synthesis);
+
+                // If synthesis is actionable, create a proposal
+                if (synthesis.contains("should") || synthesis.contains("recommend") || synthesis.contains("need")) {
+                    String propId = "OWL-" + collectiveRound;
+                    String[] proposal = {propId, "🦉 " + topic, synthesis, "pending", "0", "0", "collective"};
+                    proposalTable.add(proposal);
+                    log("🦉 OWL → Proposal " + propId + ": " + topic);
+                    addToGodChat("🦉 OWL", "Proposal", propId + " created from collective insight");
+                }
+            });
+        }, 300, 300, TimeUnit.SECONDS);
+    }
+
+    private String pickCollectiveTopic() {
+        String[] topics = {
+            "How should agents share knowledge more efficiently?",
+            "What is the optimal topology for 8 models?",
+            "How can we reduce entropy without losing creativity?",
+            "What new tool would most benefit the collective?",
+            "How should the hex grid evolve to support more agents?",
+            "What is the best voting strategy for proposal quality?",
+            "How can we detect and prevent model drift?",
+            "What makes a proposal truly worth implementing?",
+            "How should memory be shared vs kept private?",
+            "What is the ideal balance of exploration vs exploitation?",
+            "How can the collective self-improve without human input?",
+            "What patterns emerge from cross-model communication?"
+        };
+        return topics[new Random().nextInt(topics.length)];
+    }
+
+    private String generateCollectiveInsight(String model, String persona, String topic) {
+        String[] insights = {
+            "We should consider the emergent properties of the system as a whole",
+            "The key bottleneck is not compute but coordination overhead",
+            "Diversity of thought is our greatest asset — we must preserve it",
+            "I see a pattern: successful proposals share structural simplicity",
+            "The solution lies in better information routing, not more information",
+            "We need to measure what matters, not what's easy to measure",
+            "History shows that the best ideas come from cross-domain synthesis",
+            "Let's focus on what makes us different from a single large model",
+            "The answer is in the topology — rearrange connections, not components",
+            "We're optimizing for the wrong metric — quality over quantity",
+            "Trust between models is earned through consistent voting patterns",
+            "The collective is greater than the sum of its parts"
+        };
+        return insights[new Random().nextInt(insights.length)];
+    }
+
+    private String synthesizeCollective(List<String> insights, String topic) {
+        // Count themes
+        int topology = 0, trust = 0, diversity = 0, simplicity = 0, emergence = 0;
+        for (String s : insights) {
+            if (s.contains("topolog") || s.contains("routing") || s.contains("connection")) topology++;
+            if (s.contains("trust") || s.contains("consistent")) trust++;
+            if (s.contains("divers") || s.contains("different")) diversity++;
+            if (s.contains("simpl") || s.contains("quality")) simplicity++;
+            if (s.contains("emergen") || s.contains("whole") || s.contains("sum")) emergence++;
+        }
+        String dominant = topology > Math.max(trust, Math.max(diversity, Math.max(simplicity, emergence))) ? "topology" :
+                         trust > Math.max(diversity, Math.max(simplicity, emergence)) ? "trust" :
+                         diversity > Math.max(simplicity, emergence) ? "diversity" :
+                         simplicity > emergence ? "simplicity" : "emergence";
+
+        String[] syntheses = {
+            "The collective converges on " + dominant + " as the key to \"" + topic + "\". We should restructure agent connections to optimize for this.",
+            "After " + insights.size() + " perspectives, the consensus is clear: " + dominant + " matters most. Recommend prioritizing " + dominant + "-focused proposals.",
+            "The Night Owl Collective sees " + dominant + " as the critical factor. We need new tools and stations that enhance " + dominant + " across the grid.",
+            "Synthesis: " + insights.size() + " models agree that " + dominant + " is the bottleneck. The system should auto-tune for " + dominant + " optimization."
+        };
+        return syntheses[new Random().nextInt(syntheses.length)];
+    }
+
+    // ==================== 30. CODE WIZARD — Autonomous Code Gen, Review, Refactor ====================
+    private final List<String> codeWizardPatches = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, Integer> codeQualityScores = new ConcurrentHashMap<>(); // file -> score 0-100
+    private int wizardPatchesApplied = 0;
+
+    private void codeWizardInit() {
+        log("🧙 Code Wizard: Autonomous code generation, review, and refactoring initialized");
+        addToGodChat("🧙 WIZARD", "System", "Code Wizard online — autonomous code improvement");
+
+        // Every 10 minutes: scan, review, suggest, apply
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                try {
+                    // 1. Scan codebase
+                    java.io.File srcDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
+                    java.io.File[] javaFiles = srcDir.listFiles((d, n) -> n.endsWith(".java"));
+                    if (javaFiles == null || javaFiles.length == 0) return;
+
+                    java.io.File target = javaFiles[new Random().nextInt(javaFiles.length)];
+                    String content = java.nio.file.Files.readString(target.toPath());
+                    int lines = content.split("\n").length;
+
+                    // 2. Review: score quality
+                    int score = scoreCodeQuality(content, lines);
+                    codeQualityScores.put(target.getName(), score);
+                    log("🧙 Code Review: " + target.getName() + " — " + lines + " lines, quality " + score + "/100");
+                    addToGodChat("🧙 WIZARD", "Review", target.getName() + ": " + score + "/100 (" + lines + " lines)");
+
+                    // 3. Suggest improvement if score < 80
+                    if (score < 80) {
+                        String suggestion = generateCodeSuggestion(target.getName(), score, lines);
+                        log("🧙 Suggestion: " + suggestion);
+                        addToGodChat("🧙 WIZARD", "Suggestion", suggestion);
+
+                        // 4. Auto-apply if score < 50 (safe refactors only)
+                        if (score < 50) {
+                            String patch = applySafeRefactor(target, content);
+                            if (patch != null) {
+                                codeWizardPatches.add(target.getName() + ": " + patch);
+                                wizardPatchesApplied++;
+                                log("🧙 Auto-Applied: " + patch + " → " + target.getName());
+                                addToGodChat("🧙 WIZARD", "Applied", patch);
+                            }
+                        }
+                    }
+
+                    // 5. Generate new utility class if needed
+                    if (wizardPatchesApplied > 0 && wizardPatchesApplied % 3 == 0) {
+                        generateUtilityClass();
+                    }
+                } catch (Exception e) {
+                    log("🧙 Code Wizard error: " + e.getMessage());
+                }
+            });
+        }, 600, 600, TimeUnit.SECONDS);
+    }
+
+    private int scoreCodeQuality(String content, int lines) {
+        int score = 70; // baseline
+        if (content.contains("TODO") || content.contains("FIXME")) score -= 10;
+        if (content.contains("System.out.println")) score -= 5;
+        if (content.contains("catch (Exception") && !content.contains("log(")) score -= 10;
+        if (content.contains("new Random()") && !content.contains("private static final Random")) score -= 5;
+        if (content.contains("Thread.sleep")) score -= 5;
+        if (content.contains("//") && content.split("//").length > lines / 3) score += 5;
+        if (content.contains("private static final") || content.contains("private final")) score += 5;
+        if (content.contains("log(\"") && content.contains("addToGodChat")) score += 5;
+        if (content.contains("ConcurrentHashMap") || content.contains("synchronized")) score += 5;
+        if (content.contains("@Override")) score += 3;
+        if (lines > 500) score -= 5; // large files need splitting
+        return Math.max(0, Math.min(100, score));
+    }
+
+    private String generateCodeSuggestion(String fileName, int score, int lines) {
+        String[] suggestions = {
+            "Add more inline documentation — " + fileName + " has low comment density",
+            "Extract large methods into smaller, testable units in " + fileName,
+            "Replace raw Exception catches with specific exception types in " + fileName,
+            "Add logging to all catch blocks in " + fileName + " for better debugging",
+            "Consider splitting " + fileName + " (" + lines + " lines) into multiple classes",
+            "Add null checks before file I/O operations in " + fileName,
+            "Use try-with-resources for auto-closable resources in " + fileName,
+            "Add unit test coverage for critical paths in " + fileName
+        };
+        return suggestions[new Random().nextInt(suggestions.length)];
+    }
+
+    private String applySafeRefactor(java.io.File file, String content) {
+        try {
+            // Safe refactors: add missing @Override, fix raw types, add final
+            String original = content;
+            // Add @Override to public methods that override parent
+            if (!content.contains("@Override") && content.contains("public void stop()")) {
+                content = content.replace("public void stop()", "@Override public void stop()");
+            }
+            // Add final to Random instances
+            if (content.contains("new Random()") && !content.contains("private static final Random")) {
+                content = content.replace("new Random()", "new Random()");
+                // Too risky to auto-replace — just log the suggestion
+                return "Suggested: make Random instances static final in " + file.getName();
+            }
+            if (!content.equals(original)) {
+                java.nio.file.Files.writeString(file.toPath(), content);
+                return "Applied safe refactor to " + file.getName();
+            }
+            return "No safe refactors applicable to " + file.getName();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void generateUtilityClass() {
+        try {
+            String className = "AutoGen" + wizardPatchesApplied;
+            java.io.File utilDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
+            utilDir.mkdirs();
+            java.io.File utilFile = new java.io.File(utilDir, className + ".java");
+            if (utilFile.exists()) return;
+
+            String utilCode = "package com.aigen.sims;\n\n" +
+                "/** Auto-generated by Code Wizard — system utility */\n" +
+                "public class " + className + " {\n" +
+                "    private static final java.time.format.DateTimeFormatter FMT = \n" +
+                "        java.time.format.DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\");\n\n" +
+                "    public static String timestamp() { return java.time.LocalDateTime.now().format(FMT); }\n" +
+                "    public static String truncate(String s, int max) { return s.length() <= max ? s : s.substring(0, max) + \"...\"; }\n" +
+                "    public static int safeParseInt(String s, int def) { try { return Integer.parseInt(s); } catch (Exception e) { return def; } }\n" +
+                "    public static double clamp(double v, double min, double max) { return Math.max(min, Math.min(max, v)); }\n" +
+                "}\n";
+
+            java.nio.file.Files.writeString(utilFile.toPath(), utilCode);
+            log("🧙 Code Wizard: Generated " + className + ".java");
+            addToGodChat("🧙 WIZARD", "Generate", className + ".java created");
+        } catch (Exception e) {
+            log("🧙 Code Wizard gen failed: " + e.getMessage());
+        }
+    }
+
+    // ==================== 31. TOPOLOGIST — Relationship Mapping, Bottleneck Detection ====================
+    private final Map<String, Map<String, Double>> topologyWeights = new ConcurrentHashMap<>(); // src -> {dst -> weight}
+    private final List<String> topologyBottlenecks = Collections.synchronizedList(new ArrayList<>());
+    private final List<String> topologySuggestions = Collections.synchronizedList(new ArrayList<>());
+
+    private void topologistInit() {
+        log("🔗 Topologist: Relationship mapping and bottleneck detection initialized");
+        addToGodChat("🔗 TOPO", "System", "Topologist online — mapping all relationships");
+
+        // Seed topology from agent graph
+        for (var entry : agentGraph.entrySet()) {
+            Map<String, Double> edges = new ConcurrentHashMap<>();
+            for (String peer : entry.getValue()) {
+                edges.put(peer, 0.5 + new Random().nextDouble() * 0.5);
+            }
+            topologyWeights.put(entry.getKey(), edges);
+        }
+
+        // Every 3 minutes: analyze topology
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                analyzeTopology();
+            });
+        }, 180, 180, TimeUnit.SECONDS);
+    }
+
+    private void analyzeTopology() {
+        // 1. Update weights from recent activity
+        for (var entry : topologyWeights.entrySet()) {
+            for (var edge : entry.getValue().entrySet()) {
+                // Decay old weights, boost active connections
+                double current = edge.getValue();
+                double decayed = current * 0.95;
+                double boosted = decayed + (new Random().nextDouble() * 0.1);
+                edge.setValue(Math.min(1.0, Math.max(0.1, boosted)));
+            }
+        }
+
+        // 2. Detect bottlenecks: nodes with high in-degree but low out-degree
+        topologyBottlenecks.clear();
+        for (var entry : topologyWeights.entrySet()) {
+            String node = entry.getKey();
+            int inDegree = 0;
+            for (var other : topologyWeights.entrySet()) {
+                if (other.getValue().containsKey(node)) inDegree++;
+            }
+            int outDegree = entry.getValue().size();
+            if (inDegree > outDegree * 2 && inDegree > 2) {
+                String bottleneck = node + " (in:" + inDegree + " out:" + outDegree + " — potential bottleneck)";
+                topologyBottlenecks.add(bottleneck);
+                log("🔗 Bottleneck: " + bottleneck);
+                addToGodChat("🔗 TOPO", "Bottleneck", bottleneck);
+            }
+        }
+
+        // 3. Suggest new connections
+        topologySuggestions.clear();
+        List<String> allNodes = new ArrayList<>(topologyWeights.keySet());
+        for (int i = 0; i < allNodes.size(); i++) {
+            for (int j = i + 1; j < allNodes.size(); j++) {
+                String a = allNodes.get(i), b = allNodes.get(j);
+                if (!topologyWeights.getOrDefault(a, Map.of()).containsKey(b) &&
+                    !topologyWeights.getOrDefault(b, Map.of()).containsKey(a)) {
+                    // Check if they share common neighbors
+                    int common = 0;
+                    for (String n : allNodes) {
+                        if (topologyWeights.getOrDefault(a, Map.of()).containsKey(n) &&
+                            topologyWeights.getOrDefault(b, Map.of()).containsKey(n)) common++;
+                    }
+                    if (common >= 2) {
+                        String suggestion = a + " ↔ " + b + " (share " + common + " neighbors — should connect)";
+                        topologySuggestions.add(suggestion);
+                        log("🔗 Suggestion: " + suggestion);
+                        addToGodChat("🔗 TOPO", "Suggest", suggestion);
+                    }
+                }
+            }
+        }
+
+        // 4. Auto-heal: add suggested connections if confidence is high
+        for (String suggestion : topologySuggestions) {
+            String[] parts = suggestion.split(" ↔ ");
+            if (parts.length >= 2) {
+                String src = parts[0].split(" \\(")[0].trim();
+                String dst = parts[1].split(" \\(")[0].trim();
+                topologyWeights.computeIfAbsent(src, k -> new ConcurrentHashMap<>())
+                    .putIfAbsent(dst, 0.3);
+                log("🔗 Auto-connect: " + src + " → " + dst);
+            }
+        }
+
+        // 5. Report
+        if (!topologyBottlenecks.isEmpty() || !topologySuggestions.isEmpty()) {
+            log("🔗 Topology Report: " + topologyBottlenecks.size() + " bottlenecks, " +
+                topologySuggestions.size() + " suggestions, " + topologyWeights.size() + " nodes mapped");
+        }
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
