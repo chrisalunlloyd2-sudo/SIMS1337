@@ -2441,4 +2441,10 @@ public class GodHandApp extends Application {
     //     System.getProperty("user.home") + "/AIGEN_SYS/repos", "suggestions");
     // Night cycle at 19:00: MiningReport report = minerOrch.runMiningCycle();
     // === END PHASE2 INSERTION POINT ===
+
+    // === PHASE3: GATED DEPLOY PIPELINE INSERTION POINT ===
+    // DeployOrchestrator deployOrch = new DeployOrchestrator(
+    //     System.getProperty("user.home") + "/SIMS1337");
+    // Night cycle at 20:00: DeployCycleReport report = deployOrch.runDeployCycle(registry, repoPath);
+    // === END PHASE3 INSERTION POINT ===
 }
