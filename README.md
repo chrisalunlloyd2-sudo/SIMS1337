@@ -529,7 +529,7 @@ SIMS1337 v0.18.0 — GodHandApp.java (~2700 lines, 160KB)
 ## 💙 CREDITS
 
 Built by the Architect (chrisalunlloyd2) and Hermes Agent.
-A better OpenClaw. Pure JavaFX. No FXML. Everything works.
+Pure JavaFX. No FXML. Everything works.
 The system grows itself. Every night. Forever.
 
 <p align="center">
