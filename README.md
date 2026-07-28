@@ -522,7 +522,7 @@ SIMS1337 v0.18.0 — GodHandApp.java (~2700 lines, 160KB)
 | v0.15.0 | Next-gen: Real RAG, Fine-Tuning, Multi-Agent Topology, Web Dashboard, Plugins |
 | v0.16.0 | SLMs ready: Perfect Prompts, Map Guidance, Patterns, Tools, Memory (17 systems) |
 | v0.17.0 | 4D Hex Map: 61 translucent hexes, Q/R/Z + time pulse, FOW-ready |
-| v0.18.0 | FOW + Hex TODOs + Gist Context + Gist Sync + Night Cycle + Dream Engine + Role-Based Voting + Dynamic Tool/Station Registry + Deploy Implementation (22 systems) |
+| v0.18.0 | Hex TODOs + Gist Context + Gist Sync + Night Cycle + Dream Engine + Role-Based Voting + Dynamic Tool/Station Registry + Deploy Implementation (22 systems) |
 
 ---
 
