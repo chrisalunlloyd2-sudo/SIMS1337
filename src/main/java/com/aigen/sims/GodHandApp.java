@@ -183,6 +183,7 @@ public class GodHandApp extends Application {
         initCommandRegistry();
         initAgentPositions();
         initStationPipelines();
+        initStationRegistry();
         initNightCycleDefaults();
         initDefaultProposals();
         initDefaultTopology();
@@ -1224,19 +1225,51 @@ public class GodHandApp extends Application {
     }
 
     // ==================== STATIONS ====================
+    private final Map<String, String> stationRegistry = new ConcurrentHashMap<>(); // name -> description
+    private final Map<String, Runnable> stationHandlers = new ConcurrentHashMap<>(); // name -> handler
+
+    private void initStationRegistry() {
+        stationRegistry.put("Brute Foundry", "Autonomous code generation and review");
+        stationRegistry.put("A/B Lab", "Model comparison and evaluation");
+        stationRegistry.put("Knowledge Tree", "KG nodes + RAG pipeline");
+        stationRegistry.put("Research", "Self-exploration and analysis");
+        stationRegistry.put("Secrets", "Secure credential storage");
+        stationRegistry.put("Hospital", "Agent diagnostics and memory repair");
+        stationRegistry.put("GitHub", "Git sync and backup");
+
+        stationHandlers.put("Brute Foundry", () -> { log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); });
+        stationHandlers.put("Hospital", () -> { log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); });
+        stationHandlers.put("Knowledge Tree", () -> { log("🌳 Knowledge Tree: KG nodes + RAG online"); knowledgeGraphInit(); });
+        stationHandlers.put("Research", () -> { log("🔬 Research: Self-exploration + analysis online"); selfExplorationInit(); });
+        stationHandlers.put("Secrets", () -> { log("🔒 Secrets: Secure storage online"); });
+        stationHandlers.put("GitHub", () -> { log("📡 GitHub: Syncing + backup online"); pushToGitHub(); });
+        stationHandlers.put("A/B Lab", () -> { log("🧬 A/B Lab: Model comparison online"); });
+    }
+
+    /** Dynamically add a new station — callable from deploy phase or manual */
+    public void addStation(String name, String description) {
+        if (stationRegistry.containsKey(name)) return;
+        stationRegistry.put(name, description);
+        stationHandlers.put(name, () -> log("🏗️ [" + name + "]: " + description));
+        log("🏗️ NEW STATION: " + name + " — " + description);
+        addToGodChat("🏗️ STATION", "System", "Registered: " + name + " → " + description);
+    }
+
     private void triggerStation(String station) {
-        stationActive.putIfAbsent(station, false); boolean a = !stationActive.get(station); stationActive.put(station, a);
-        if (a) { log("🏗️ ["+station+"] ACTIVATED");
-            switch (station) {
-                case "Brute Foundry"->{ log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); }
-                case "Hospital"->{ log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); }
-                case "Knowledge Tree"->{ log("🌳 Knowledge Tree: KG nodes + RAG online"); knowledgeGraphInit(); }
-                case "Research"->{ log("🔬 Research: Self-exploration + analysis online"); selfExplorationInit(); }
-                case "Secrets"->{ log("🔒 Secrets: Secure storage online"); }
-                case "GitHub"->{ log("📡 GitHub: Syncing + backup online"); pushToGitHub(); }
-                default->log("🏗️ ["+station+"] Online");
+        stationActive.putIfAbsent(station, false);
+        boolean a = !stationActive.get(station);
+        stationActive.put(station, a);
+        if (a) {
+            log("🏗️ [" + station + "] ACTIVATED");
+            Runnable handler = stationHandlers.get(station);
+            if (handler != null) {
+                handler.run();
+            } else {
+                log("🏗️ [" + station + "] Online");
             }
-        } else log("⏹️ ["+station+"] DEACTIVATED");
+        } else {
+            log("⏹️ [" + station + "] DEACTIVATED");
+        }
     }
 
     // ==================== 1. HOSPITAL ADMISSION SYSTEM ====================
@@ -2099,11 +2132,9 @@ public class GodHandApp extends Application {
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 for (String model : modelChats.keySet()) {
-                    // Track which tools each model uses most
-                    String[] tools = {"terminal", "file_write", "web_search", "git", "pipeline"};
+                    String[] tools = availableTools.keySet().toArray(new String[0]);
                     String tool = tools[new Random().nextInt(tools.length)];
                     toolUsage.merge(tool, 1, Integer::sum);
-
                     if (new Random().nextInt(5) == 0) {
                         log("🔧 Tool: [" + model + "] used " + tool + " (" + toolUsage.get(tool) + " total uses)");
                         addToGodChat("🔧 TOOL", model, "Used: " + tool + " → " + availableTools.get(tool));
@@ -2111,6 +2142,15 @@ public class GodHandApp extends Application {
                 }
             });
         }, 70, 70, TimeUnit.SECONDS);
+    }
+
+    /** Dynamically add a new tool — callable from deploy phase or manual */
+    public void addTool(String name, String description) {
+        if (availableTools.containsKey(name)) return;
+        availableTools.put(name, description);
+        toolUsage.put(name, 0);
+        log("🔧 NEW TOOL: " + name + " — " + description);
+        addToGodChat("🔧 TOOL", "System", "Registered: " + name + " → " + description);
     }
 
     // ==================== 17. PERSISTENT MEMORY SYSTEM ====================
@@ -2437,8 +2477,9 @@ public class GodHandApp extends Application {
                     });
                 } else if (now.equals(deployTime)) {
                     Platform.runLater(() -> {
-                        log("🌙 Night Cycle: DEPLOY PHASE — pushing to GitHub...");
-                        addToGodChat("🌙 NIGHT", "Deploy", "Pushing approved changes to GitHub");
+                        log("🌙 Night Cycle: DEPLOY PHASE — implementing approved proposals...");
+                        addToGodChat("🌙 NIGHT", "Deploy", "Implementing approved proposals + pushing to GitHub");
+                        implementApprovedProposals();
                         pushToGitHub();
                     });
                 } else if (now.equals(emailTime)) {
@@ -2584,6 +2625,69 @@ public class GodHandApp extends Application {
         boolean approve = rng.nextDouble() < baseChance;
         log("🗳️ [" + modelName + "] " + (approve ? "✅" : "❌") + " [" + category + "] (chance: " + String.format("%.0f%%", baseChance*100) + ")");
         return approve;
+    }
+
+    // ==================== DEPLOY IMPLEMENTATION — Build Approved Proposals ====================
+    private void implementApprovedProposals() {
+        int implemented = 0;
+        for (String[] p : proposalTable) {
+            if (!"approved".equals(p[3])) continue;
+            String title = p[1];
+            String description = p[2];
+            String category = p.length > 6 ? p[6] : "unknown";
+
+            switch (category) {
+                case "tool" -> {
+                    // Extract tool name from title
+                    String toolName = title.toLowerCase().replace(" ", "_").replace("tool:", "").trim();
+                    if (toolName.contains("_tool")) toolName = toolName.replace("_tool", "");
+                    toolName = toolName.replaceAll("[^a-z0-9_]", "");
+                    if (!toolName.isEmpty() && !availableTools.containsKey(toolName)) {
+                        addTool(toolName, description.length() > 100 ? description.substring(0, 100) : description);
+                        implemented++;
+                    }
+                }
+                case "node" -> {
+                    String stationName = title.replace("Node Type:", "").replace("Station:", "").trim();
+                    if (!stationName.isEmpty() && !stationRegistry.containsKey(stationName)) {
+                        addStation(stationName, description.length() > 100 ? description.substring(0, 100) : description);
+                        implemented++;
+                    }
+                }
+                case "backend" -> {
+                    String backendName = title.replace("Backend:", "").trim();
+                    if (!backendName.isEmpty() && !stationRegistry.containsKey(backendName)) {
+                        addStation(backendName, description.length() > 100 ? description.substring(0, 100) : description);
+                        implemented++;
+                    }
+                }
+                case "logic" -> {
+                    // Logic systems become tools
+                    String logicName = title.replace("Logic System:", "").trim().toLowerCase().replace(" ", "_").replaceAll("[^a-z0-9_]", "");
+                    if (!logicName.isEmpty() && !availableTools.containsKey(logicName)) {
+                        addTool(logicName, description.length() > 100 ? description.substring(0, 100) : description);
+                        implemented++;
+                    }
+                }
+                case "ability", "grid" -> {
+                    // Abilities and grid mechanics become tools
+                    String abilityName = title.toLowerCase().replace(" ", "_").replace("agent_ability:", "").replace("grid_mechanic:", "").replaceAll("[^a-z0-9_]", "");
+                    if (!abilityName.isEmpty() && !availableTools.containsKey(abilityName)) {
+                        addTool(abilityName, description.length() > 100 ? description.substring(0, 100) : description);
+                        implemented++;
+                    }
+                }
+            }
+            // Mark as deployed
+            p[3] = "deployed";
+        }
+        if (implemented > 0) {
+            log("🚀 Deploy: " + implemented + " proposals implemented as tools/stations");
+            addToGodChat("🚀 DEPLOY", "System", implemented + " approved proposals built: " +
+                availableTools.size() + " tools, " + stationRegistry.size() + " stations now available");
+        } else {
+            log("🚀 Deploy: No approved proposals to implement");
+        }
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
