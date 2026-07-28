@@ -45,6 +45,16 @@ public class HeadlessOllamaPipeline {
             case "pipeline" -> runPipeline(input);
             case "vote" -> runVote(input);
             case "all" -> runAll(input);
+            // === PHASE2: CODE MINING INSERTION POINT ===
+            case "mine" -> {
+                com.aigen.sims.mining.CodeMinerOrchestrator orch =
+                    new com.aigen.sims.mining.CodeMinerOrchestrator(
+                        System.getProperty("user.home") + "/AIGEN_SYS/repos", "suggestions");
+                com.aigen.sims.mining.CodeMinerOrchestrator.MiningReport report =
+                    orch.runMiningCycle();
+                System.out.println(report.toEmailString());
+            }
+            // === END PHASE2 INSERTION POINT ===
             default -> System.out.println("Unknown mode: " + mode);
         }
     }

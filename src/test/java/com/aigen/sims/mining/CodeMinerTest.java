@@ -1,22 +1,29 @@
 package com.aigen.sims.mining;
-
-/**
- * CodeMinerTest — Phase 2 mining pipeline tests.
- */
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
 public class CodeMinerTest {
     private static int passed = 0, failed = 0;
+    static Path tmpDir;
 
-    public static void main(String[] args) {
-        System.out.println("=== CodeMiner — Phase 2 Tests ===\n");
+    public static void main(String[] args) throws Exception {
+        tmpDir = Files.createTempDirectory("miner-test");
+        System.out.println("=== CodeMiner Phase 2 Tests ===\n");
 
-        testRepoWatcher();
-        testPatternMatcher();
-        testCodeMinerPipeline();
-        testMiningStats();
-        testModelMine();
-        testHexAnchoring();
-        testDeduplication();
+        testEmptyDir();
+        testRepoDetect();
+        testPatterns();
+        testLifecycle();
+        testReject();
+        testPending();
+        testByRepo();
+        testByModel();
+        testSummary();
+        testHistory();
+        testHexDeterministic();
 
+        // Cleanup
+        deleteRecursive(tmpDir.toFile());
         System.out.println("\n=== RESULTS: " + passed + " passed, " + failed + " failed ===");
         System.exit(failed > 0 ? 1 : 0);
     }
@@ -26,116 +33,120 @@ public class CodeMinerTest {
         else { failed++; System.out.println("  ❌ " + n + " FAILED"); }
     }
 
-    // ── RepoWatcher ───────────────────────────────────────────
-    static void testRepoWatcher() {
-        System.out.println("RepoWatcher:");
-        RepoWatcher rw = new RepoWatcher();
-        rw.addRepo("TestRepo", "/tmp/test", "0,0", ".java", ".py");
-        rw.addRepo("AnotherRepo", "/tmp/other", "1,-1", ".sh");
-        check("2 repos registered", rw.getRepos().size() == 2);
-        check("no pending initially", rw.pendingCount() == 0);
-        check("hex anchored", rw.getRepos().get(0).hexKey.equals("0,0"));
-
-        // Add suggestion
-        PatternMatch pm = new PatternMatch("TestRepo", "/tmp/test/Foo.java",
-            "function", "doStuff()", "void doStuff() { }", 1, 0.85, "0,0");
-        rw.addSuggestion(pm);
-        check("1 pending after add", rw.pendingCount() == 1);
-        check("drain clears pending", rw.drainSuggestions().size() == 1);
-        check("pending empty after drain", rw.pendingCount() == 0);
+    static Path tempDir() throws Exception {
+        Path d = Files.createTempDirectory(tmpDir, "test");
+        return d;
     }
 
-    // ── PatternMatcher ────────────────────────────────────────
-    static void testPatternMatcher() {
-        System.out.println("\nPatternMatcher:");
-        PatternMatcher pm = new PatternMatcher();
-        RepoWatcher rw = new RepoWatcher();
-        RepoWatcher.WatchedRepo repo = rw.addRepo("Test", "/tmp/test", "0,0", ".java");
-
-        java.util.List<PatternMatch> matches = pm.matchRepo(repo);
-        check("found patterns", !matches.isEmpty());
-        check("found > 1 pattern", matches.size() > 1);
-        check("all have hexKey", matches.stream().allMatch(m -> m.hexKey.equals("0,0")));
-        check("all have confidence > 0", matches.stream().allMatch(m -> m.confidence > 0));
+    static void testEmptyDir() throws Exception {
+        System.out.println("testEmptyDir:");
+        Path d = tempDir();
+        check("empty dir = 0 repos", new CodeMiner(d.toString()).scanAllRepos().size() == 0);
     }
 
-    // ── CodeMiner Pipeline ────────────────────────────────────
-    static void testCodeMinerPipeline() {
-        System.out.println("\nCodeMiner Pipeline:");
-        CodeMiner miner = new CodeMiner();
-
-        // Mine once
-        CodeMiner.MiningResult r1 = miner.mine();
-        check("mine found patterns", r1.patternsFound.size() > 0);
-        check("mine generated suggestions", r1.suggestionsGenerated > 0);
-        check("pending drained", r1.pendingSuggestions.size() > 0);
-        check("history has 1 entry", miner.getHistory().size() == 1);
-
-        // Mine again
-        CodeMiner.MiningResult r2 = miner.mine();
-        check("history has 2 entries", miner.getHistory().size() == 2);
+    static void testRepoDetect() throws Exception {
+        System.out.println("\ntestRepoDetect:");
+        Path d = tempDir();
+        Files.createDirectories(d.resolve("r/.git"));
+        check("dir with .git = 1 repo", new CodeMiner(d.toString()).scanAllRepos().size() == 1);
     }
 
-    // ── Mining Stats ──────────────────────────────────────────
-    static void testMiningStats() {
-        System.out.println("\nMiningStats:");
-        CodeMiner miner = new CodeMiner();
-        miner.mine();
-
-        CodeMiner.MiningStats stats = miner.getStats();
-        check("repos watched = 6", stats.reposWatched == 6);
-        check("patterns found > 0", stats.patternsFound > 0);
-        check("mining runs = 1", stats.miningRuns == 1);
-
-        // Approve one
-        PatternMatch pm = new PatternMatch("test", "/x.java",
-            "function", "f()", "void f(){}", 1, 0.9, "0,0");
-        miner.approveSuggestion(pm);
-        stats = miner.getStats();
-        check("approved = 1", stats.approved == 1);
-        check("rejected = 0", stats.rejected == 0);
+    static void testPatterns() {
+        System.out.println("\ntestPatterns:");
+        Map<String,String> f = new HashMap<>();
+        f.put("T.java","package x;\nimport java.util.List;\npublic class T {\npublic void m() {}\n}\n");
+        List<String> p = new CodeMiner("/tmp").extractPatterns(f);
+        check("found class:T", p.contains("class:T"));
+        check("found method:m", p.contains("method:m"));
+        check("found import:java.util.List", p.contains("import:java.util.List"));
     }
 
-    // ── Model Mine ────────────────────────────────────────────
-    static void testModelMine() {
-        System.out.println("\nModelMine:");
-        CodeMiner miner = new CodeMiner();
-        java.util.List<PatternMatch> suggestions = miner.modelMine(
-            "qwen2.5:0.5b", "MatrixWinCE", "health_check");
-
-        check("generated 3 suggestions", suggestions.size() == 3);
-        check("all from MatrixWinCE", suggestions.stream().allMatch(m -> m.repoName.equals("MatrixWinCE")));
-        check("all actionable", suggestions.stream().allMatch(PatternMatch::isActionable));
-        check("pending = 3", miner.getWatcher().pendingCount() == 3);
+    static void testLifecycle() throws Exception {
+        System.out.println("\ntestLifecycle:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        String id = r.addSuggestion(new Suggestion("r","T.java","}","//c","m",0,0,"t"));
+        check("status = PENDING", "PENDING".equals(r.getSuggestion(id).status));
+        check("approve ok", r.approveSuggestion(id));
+        check("status = APPROVED", "APPROVED".equals(r.getSuggestion(id).status));
+        check("mark deploy ok", r.markDeployed(id));
+        check("status = DEPLOYED", "DEPLOYED".equals(r.getSuggestion(id).status));
+        check("can't re-approve deployed", !r.approveSuggestion(id));
     }
 
-    // ── Hex Anchoring ─────────────────────────────────────────
-    static void testHexAnchoring() {
-        System.out.println("\nHex Anchoring:");
-        CodeMiner miner = new CodeMiner();
-        // Check each repo has a distinct hex
-        java.util.Set<String> hexes = new java.util.HashSet<>();
-        for (RepoWatcher.WatchedRepo r : miner.getWatcher().getRepos()) {
-            hexes.add(r.hexKey);
-        }
-        check("all repos have hex", miner.getWatcher().getRepos().stream()
-            .allMatch(r -> r.hexKey != null && !r.hexKey.isEmpty()));
-        check("at least 3 distinct hexes", hexes.size() >= 3);
-        check("MatrixWinCE at (0,0)", miner.getWatcher().getRepos().get(0).hexKey.equals("0,0"));
+    static void testReject() throws Exception {
+        System.out.println("\ntestReject:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        String id = r.addSuggestion(new Suggestion("r","T.java","}","//c","m",0,0,"t"));
+        check("reject ok", r.rejectSuggestion(id));
+        check("status = REJECTED", "REJECTED".equals(r.getSuggestion(id).status));
+        check("can't approve rejected", !r.approveSuggestion(id));
     }
 
-    // ── Deduplication ─────────────────────────────────────────
-    static void testDeduplication() {
-        System.out.println("\nDeduplication:");
-        PatternMatcher pm = new PatternMatcher();
-        java.util.List<PatternMatch> input = new java.util.ArrayList<>();
-        input.add(new PatternMatch("a", "/a.java", "function", "run()", "...", 1, 0.7, "0,0"));
-        input.add(new PatternMatch("b", "/b.java", "function", "run()", "...", 2, 0.9, "1,0"));
-        input.add(new PatternMatch("c", "/c.java", "class", "Main", "...", 3, 0.8, "0,0"));
+    static void testPending() throws Exception {
+        System.out.println("\ntestPending:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        r.addSuggestion(new Suggestion("r1","A.java","}","c1","m1",0,0,"1"));
+        r.addSuggestion(new Suggestion("r2","B.java","}","c2","m2",1,0,"2"));
+        check("2 pending", r.getPendingSuggestions().size() == 2);
+        r.approveSuggestion(r.getPendingSuggestions().get(0).id);
+        check("1 pending after approve", r.getPendingSuggestions().size() == 1);
+    }
 
-        java.util.List<PatternMatch> dedup = pm.deduplicate(input);
-        check("deduplicated to 2", dedup.size() == 2);
-        check("kept higher confidence (0.9)", dedup.stream()
-            .anyMatch(m -> m.signature.equals("run()") && Math.abs(m.confidence - 0.9) < 0.01));
+    static void testByRepo() throws Exception {
+        System.out.println("\ntestByRepo:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        r.addSuggestion(new Suggestion("r1","A.java","}","c1","m1",0,0,"1"));
+        r.addSuggestion(new Suggestion("r1","B.java","}","c2","m2",0,0,"2"));
+        r.addSuggestion(new Suggestion("r2","C.java","}","c3","m3",1,0,"3"));
+        check("r1 has 2", r.getSuggestionsByRepo("r1").size() == 2);
+        check("r2 has 1", r.getSuggestionsByRepo("r2").size() == 1);
+    }
+
+    static void testByModel() throws Exception {
+        System.out.println("\ntestByModel:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        r.addSuggestion(new Suggestion("r1","A.java","}","c1","qwen2.5:0.5b",0,0,"1"));
+        r.addSuggestion(new Suggestion("r2","B.java","}","c2","deepseek-r1:1.5b",1,0,"2"));
+        check("qwen has 1", r.getSuggestionsByModel("qwen2.5:0.5b").size() == 1);
+    }
+
+    static void testSummary() throws Exception {
+        System.out.println("\ntestSummary:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        r.addSuggestion(new Suggestion("r1","A.java","}","c1","m1",0,0,"1"));
+        String id = r.addSuggestion(new Suggestion("r2","B.java","}","c2","m2",1,0,"2"));
+        r.approveSuggestion(id);
+        Map<String,Integer> s = r.getSummary();
+        check("total = 2", s.get("total") == 2);
+        check("pending = 1", s.get("pending") == 1);
+        check("approved = 1", s.get("approved") == 1);
+    }
+
+    static void testHistory() throws Exception {
+        System.out.println("\ntestHistory:");
+        Path d = tempDir();
+        SuggestionRegistry r = new SuggestionRegistry(d.toString());
+        String id = r.addSuggestion(new Suggestion("r","A.java","}","c","m",0,0,"t"));
+        r.approveSuggestion(id); r.markDeployed(id);
+        check("3 history entries", r.getHistory(id).size() == 3);
+    }
+
+    static void testHexDeterministic() {
+        System.out.println("\ntestHexDeterministic:");
+        CodeMiner m = new CodeMiner("/tmp");
+        int[] a = m.hashToHex("SIMS1337");
+        int[] b = m.hashToHex("SIMS1337");
+        check("hex deterministic", a[0] == b[0] && a[1] == b[1]);
+    }
+
+    static void deleteRecursive(File f) {
+        if (f.isDirectory()) for (File c : f.listFiles()) deleteRecursive(c);
+        f.delete();
     }
 }

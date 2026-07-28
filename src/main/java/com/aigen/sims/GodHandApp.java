@@ -2435,4 +2435,10 @@ public class GodHandApp extends Application {
     private Button styledButton(String t,String c){Button b=new Button(t);b.setStyle("-fx-background-color: "+c+"; -fx-text-fill: #000; -fx-font-size: 14px; -fx-padding: 10 20;");return b;}
 
     @Override public void stop(){chatScheduler.shutdown();log("⏹️ SIMS1337 shutting down...");}
+
+    // === PHASE2: CODE MINING PIPELINE INSERTION POINT ===
+    // CodeMinerOrchestrator minerOrch = new CodeMinerOrchestrator(
+    //     System.getProperty("user.home") + "/AIGEN_SYS/repos", "suggestions");
+    // Night cycle at 19:00: MiningReport report = minerOrch.runMiningCycle();
+    // === END PHASE2 INSERTION POINT ===
 }

@@ -1,142 +1,75 @@
 package com.aigen.sims.mining;
-
+import java.io.*;
+import java.nio.file.*;
 import java.util.*;
-
-/**
- * CodeMiner — FOW-gated code mining pipeline orchestrator.
- *
- * Pipeline: scan repos → extract patterns → deduplicate →
- * model-generate suggestions → FOW-gate by model visibility →
- * queue for voting → apply approved patterns.
- *
- * Integrates with:
- *   - RepoWatcher (repo registry + scanning)
- *   - PatternMatcher (regex extraction)
- *   - FOW voting (models only mine repos they can see)
- */
+import java.util.stream.*;
 public class CodeMiner {
-    private final RepoWatcher watcher;
-    private final PatternMatcher matcher;
-    private final List<MiningResult> history = new ArrayList<>();
-    private int suggestionsApproved;
-    private int suggestionsRejected;
-
-    public CodeMiner() {
-        this.watcher = new RepoWatcher();
-        this.matcher = new PatternMatcher();
-        initDefaultRepos();
-    }
-
-    /** Seed the default watched repos with FOW hex anchors */
-    private void initDefaultRepos() {
-        watcher.addRepo("MatrixWinCE",
-            "/data/data/com.termux/files/home/MatrixWinCE",
-            "0,0", ".java", ".py", ".sh");
-
-        watcher.addRepo("SIMS1337",
-            "/data/data/com.termux/files/home/sims1337",
-            "1,-1", ".java");
-
-        watcher.addRepo("brute-foundry",
-            "/data/data/com.termux/files/home/MatrixWinCE/modules/brute-foundry",
-            "-1,0", ".py");
-
-        watcher.addRepo("openrouter_manager",
-            "/data/data/com.termux/files/home/MatrixWinCE/modules/openrouter_manager",
-            "2,-1", ".py", ".java");
-
-        watcher.addRepo("heartbeat_server",
-            "/data/data/com.termux/files/home/MatrixWinCE/modules/heartbeat_server",
-            "-1,-1", ".py");
-
-        watcher.addRepo("kai-proxy",
-            "/data/data/com.termux/files/home",
-            "1,1", ".py", ".sh");
-    }
-
-    /** Run full mining pipeline: scan → deduplicate → suggest */
-    public MiningResult mine() {
-        MiningResult result = new MiningResult();
-        result.timestamp = System.currentTimeMillis();
-
-        // Phase 1: Scan all repos via watcher (adds actionable patterns as suggestions)
-        result.patternsFound = watcher.scan(matcher);
-
-        // Phase 2: Deduplicate
-        result.patternsFound = matcher.deduplicate(result.patternsFound);
-
-        // Phase 3: Count suggestions generated
-        result.suggestionsGenerated = (int) result.patternsFound.stream()
-            .filter(PatternMatch::isActionable).count();
-
-        // Phase 4: Drain pending for voting
-        result.pendingSuggestions = watcher.drainSuggestions();
-        history.add(result);
-        return result;
-    }
-
-    /** Model generates code suggestions and queues them for voting */
-    public List<PatternMatch> modelMine(String modelName, String repoName, String prompt) {
-        return watcher.modelSuggest(modelName, repoName, prompt);
-    }
-
-    /** Approve a pattern suggestion (after model voting passes) */
-    public void approveSuggestion(PatternMatch pm) {
-        suggestionsApproved++;
-        // In production: apply the pattern (write to file, create PR, etc.)
-    }
-
-    /** Reject a pattern suggestion */
-    public void rejectSuggestion(PatternMatch pm) {
-        suggestionsRejected++;
-    }
-
-    /** Get mining stats */
-    public MiningStats getStats() {
-        return new MiningStats(
-            watcher.getRepos().size(),
-            watcher.totalPatternsFound(),
-            suggestionsApproved,
-            suggestionsRejected,
-            history.size(),
-            watcher.pendingCount()
-        );
-    }
-
-    public RepoWatcher getWatcher() { return watcher; }
-    public List<MiningResult> getHistory() { return Collections.unmodifiableList(history); }
-
-    // ── Inner types ───────────────────────────────────────────
-
-    public static class MiningResult {
-        public long timestamp;
-        public List<PatternMatch> patternsFound = new ArrayList<>();
-        public List<PatternMatch> pendingSuggestions = new ArrayList<>();
-        public int suggestionsGenerated;
-
-        @Override public String toString() {
-            return String.format("MiningResult[%d patterns, %d suggestions, %d pending]",
-                patternsFound.size(), suggestionsGenerated, pendingSuggestions.size());
+    private final String basePath;
+    public CodeMiner(String basePath) { this.basePath = basePath; }
+    public List<RepoContext> scanAllRepos() {
+        List<RepoContext> repos = new ArrayList<>();
+        File baseDir = new File(basePath);
+        if (!baseDir.isDirectory()) return repos;
+        File[] dirs = baseDir.listFiles(File::isDirectory);
+        if (dirs == null) return repos;
+        for (File dir : dirs) {
+            if (new File(dir, ".git").isDirectory()) {
+                RepoContext ctx = scanRepo(dir.getName(), dir.getAbsolutePath());
+                if (ctx != null) repos.add(ctx);
+            }
         }
+        return repos;
     }
-
-    public static class MiningStats {
-        public final int reposWatched;
-        public final int patternsFound;
-        public final int approved;
-        public final int rejected;
-        public final int miningRuns;
-        public final int pending;
-
-        public MiningStats(int repos, int found, int approved, int rejected, int runs, int pending) {
-            this.reposWatched = repos; this.patternsFound = found;
-            this.approved = approved; this.rejected = rejected;
-            this.miningRuns = runs; this.pending = pending;
+    public RepoContext scanRepo(String name, String path) {
+        try {
+            String diff = execGit(path, "diff", "HEAD", "--stat");
+            List<String> commits = execGitLines(path, "log", "--oneline", "-5");
+            Map<String, String> contents = new HashMap<>();
+            Files.walk(Paths.get(path))
+                .filter(p -> p.toString().endsWith(".java"))
+                .limit(10)
+                .forEach(p -> {
+                    try { String rel = Paths.get(path).relativize(p).toString();
+                           contents.put(rel, Files.readString(p)); }
+                    catch (IOException e) {}
+                });
+            List<String> patterns = extractPatterns(contents);
+            int[] hex = hashToHex(name);
+            return new RepoContext(name, path, diff, commits, contents, patterns, hex[0], hex[1]);
+        } catch (Exception e) { return null; }
+    }
+    public List<String> extractPatterns(Map<String, String> fileContents) {
+        Set<String> patterns = new LinkedHashSet<>();
+        for (Map.Entry<String, String> entry : fileContents.entrySet()) {
+            String content = entry.getValue();
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?:public|private|protected)?\\s*(?:class|interface|enum)\\s+(\\w+)")
+                .matcher(content);
+            while (m.find()) patterns.add("class:" + m.group(1));
+            m = java.util.regex.Pattern
+                .compile("(?:public|private|protected)?\\s*\\w+\\s+(\\w+)\\s*\\([^)]*\\)\\s*\\{")
+                .matcher(content);
+            while (m.find()) patterns.add("method:" + m.group(1));
+            m = java.util.regex.Pattern.compile("import\\s+([\\w.]+);").matcher(content);
+            while (m.find()) patterns.add("import:" + m.group(1));
         }
-
-        @Override public String toString() {
-            return String.format("Mining: %d repos, %d patterns, %d✓/%d✗, %d runs, %d pending",
-                reposWatched, patternsFound, approved, rejected, miningRuns, pending);
-        }
+        return new ArrayList<>(patterns);
+    }
+    private String execGit(String repoPath, String... args) {
+        try {
+            List<String> cmd = new ArrayList<>(); cmd.add("git"); cmd.addAll(Arrays.asList(args));
+            ProcessBuilder pb = new ProcessBuilder(cmd); pb.directory(new File(repoPath));
+            pb.redirectErrorStream(true); Process p = pb.start();
+            String out = new String(p.getInputStream().readAllBytes());
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS); return out.trim();
+        } catch (Exception e) { return ""; }
+    }
+    private List<String> execGitLines(String repoPath, String... args) {
+        String out = execGit(repoPath, args);
+        return out.isEmpty() ? new ArrayList<>() : Arrays.asList(out.split("\n"));
+    }
+    int[] hashToHex(String name) {
+        int hash = Math.abs(name.hashCode());
+        return new int[]{(hash % 7) - 3, ((hash / 7) % 7) - 3};
     }
 }
