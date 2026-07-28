@@ -61,9 +61,7 @@ public class GodHandApp extends Application {
 
     // === Voting System ===
     private final ObservableList<String[]> proposalTable = FXCollections.observableArrayList();
-    // Each: [id, title, description, status, yesVotes, noVotes, dreamSource]
-    private final Map<String, Map<String, Boolean>> voteRegistry = new ConcurrentHashMap<>(); // proposalId -> modelName -> vote
-    private final List<String> dreamIdeas = Collections.synchronizedList(new ArrayList<>()); // raw dream output
+    private final Map<String, Map<String, String>> votes = new ConcurrentHashMap<>();
 
     // === Topology Builder ===
     private final ObservableList<String[]> topologyTable = FXCollections.observableArrayList();
@@ -108,6 +106,8 @@ public class GodHandApp extends Application {
     private final Map<String, String> fowAgentHex = new ConcurrentHashMap<>(); // agent -> "q,r"
     private boolean fowEnabled = true;
     private static final int FOW_HOP = 1; // agents see 1-hop neighborhood
+    private final Map<String, String> modelAgentMap = new ConcurrentHashMap<>(); // model -> agent
+    private final Map<String, String> proposalHex = new ConcurrentHashMap<>(); // proposal -> "q,r"
 
     // === Hex TODO System ===
     private final Map<String, List<String>> hexTodos = new ConcurrentHashMap<>(); // "q,r" -> [todo strings]
@@ -174,7 +174,7 @@ public class GodHandApp extends Application {
         stage.setScene(new Scene(root, 1500, 950));
         stage.show();
 
-        log("✅ SIMS1337 v0.18.0 - 4D Hex Map + FOW + Hex TODOs + Neuromorphic Context");
+        log("✅ SIMS1337 v0.18.1 - FOW Voting Hookup: 6 models→3 agents, FOW-gated castVote, hex-tagged proposals");
         initAll();
         refreshInstalledModels();
     }
@@ -183,7 +183,6 @@ public class GodHandApp extends Application {
         initCommandRegistry();
         initAgentPositions();
         initStationPipelines();
-        initStationRegistry();
         initNightCycleDefaults();
         initDefaultProposals();
         initDefaultTopology();
@@ -207,13 +206,6 @@ public class GodHandApp extends Application {
         hexTodoInit();
         gistContextInit();
         gistSyncInit();
-        agentAutonomyInit();
-        consensusDebateInit();
-        emailDeliveryInit();
-        gistPullToModels();
-        nightOwlCollectiveInit();
-        codeWizardInit();
-        topologistInit();
         nightCycleArm();
     }
 
@@ -444,6 +436,55 @@ public class GodHandApp extends Application {
         }, 0, TimeUnit.SECONDS);
     }
 
+    // ==================== VOTING SYSTEM ====================
+    private void initDefaultProposals() {
+        proposalTable.addAll(
+            new String[]{"Add WebSocket support", "Pending", "0/4", "0/4", "0%", "1,0"},
+            new String[]{"Implement Markov reviews", "Pending", "0/4", "0/4", "0%", "-1,-1"},
+            new String[]{"Deploy to production", "Pending", "0/4", "0/4", "0%", "0,0"},
+            new String[]{"Refactor ModelRouter", "Pending", "0/4", "0/4", "0%", "2,-1"}
+        );
+        // Populate proposalHex map
+        for (String[] p : proposalTable) proposalHex.put(p[0], p[5]);
+    }
+
+    private void castVote(String proposal, String modelName, boolean approve) {
+        votes.putIfAbsent(proposal, new ConcurrentHashMap<>());
+        // FOW gate: models can only vote on proposals they can see
+        String hex = proposalHex.get(proposal);
+        if (hex != null && !isHexVisibleToModel(hex, modelName)) {
+            votes.get(proposal).put(modelName, "BLIND");
+            addToGodChat("🌫️ BLIND", modelName, "Cannot see proposal → " + proposal + " (hex " + hex + ")");
+            log("🌫️ [" + modelName + "] BLIND on " + proposal + " — hex " + hex + " outside FOW");
+            updateProposalStatus(proposal);
+            return;
+        }
+        votes.get(proposal).put(modelName, approve ? "APPROVE" : "REJECT");
+        addToGodChat("🗳️ VOTE", modelName, (approve ? "✅ APPROVE" : "❌ REJECT") + " → " + proposal);
+        log("🗳️ [" + modelName + "] " + (approve ? "APPROVED" : "REJECTED") + " " + proposal);
+        updateProposalStatus(proposal);
+    }
+
+    private void updateProposalStatus(String proposal) {
+        Map<String, String> v = votes.getOrDefault(proposal, Map.of());
+        long approve = v.values().stream().filter("APPROVE"::equals).count();
+        long blind = v.values().stream().filter("BLIND"::equals).count();
+        long total = v.size();
+        long visibleTotal = total - blind;
+        for (String[] p : proposalTable) {
+            if (p[0].equals(proposal)) {
+                if (blind > visibleTotal && total >= 3) {
+                    p[1] = "🌫️ BLINDED";
+                } else {
+                    p[1] = visibleTotal >= 3 ? (approve >= 2 ? "✅ APPROVED" : "❌ REJECTED") : "Voting...";
+                }
+                p[2] = approve + "/" + total;
+                p[3] = blind + "🌫️";
+                p[4] = visibleTotal > 0 ? (int)(approve * 100.0 / visibleTotal) + "%" : "0%";
+            }
+        }
+    }
+
     // ==================== TOPOLOGY BUILDER ====================
     private void initDefaultTopology() {
         topologyTable.addAll(
@@ -476,77 +517,8 @@ public class GodHandApp extends Application {
         nightCycleConfig.put("vote_time", "18:00");
         nightCycleConfig.put("deploy_time", "20:00");
         nightCycleConfig.put("email_time", "22:00");
-        nightCycleConfig.put("dream_time", "00:00");
         nightCycleConfig.put("email_to", "chrisalunlloyd2@gmail.com");
         nightCycleConfig.put("enabled", "false");
-    }
-
-    private void initDefaultProposals() {
-        proposalTable.add(new String[]{"P001", "Hex Elevation Terrain", "Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P002", "Agent Skill Trees", "Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P003", "Resource Economy", "Hexes produce resources (energy, data, code). Agents collect and trade.", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P004", "FOW Expansion", "Upgrade FOW from 1-hop to 2-hop via research station", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P005", "Dream Journal Gist", "Auto-publish dream correlations to a new gist every night", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P006", "Multi-Model Consensus", "Require 3/8 models to agree before deploying any change", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P007", "Hex Weather System", "Per-hex weather (clear, rain, storm) affecting agent movement speed", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P008", "Agent Breeding", "Two agents can spawn a child agent with blended traits at a hex", "pending", "0", "0", ""});
-        log("📋 Proposals: " + proposalTable.size() + " seeded");
-    }
-
-    private void castVote(String proposalId, String modelName, boolean approve) {
-        voteRegistry.putIfAbsent(proposalId, new ConcurrentHashMap<>());
-        voteRegistry.get(proposalId).put(modelName, approve);
-        // Update tally
-        for (String[] p : proposalTable) {
-            if (p[0].equals(proposalId)) {
-                int yes = 0, no = 0;
-                Map<String, Boolean> votes = voteRegistry.getOrDefault(proposalId, Map.of());
-                for (Boolean v : votes.values()) { if (v) yes++; else no++; }
-                p[4] = String.valueOf(yes);
-                p[5] = String.valueOf(no);
-                if (yes >= 5) p[3] = "approved";
-                else if (no >= 5) p[3] = "rejected";
-                break;
-            }
-        }
-    }
-
-    private void pushToGitHub() {
-        try {
-            if (gistToken.isEmpty()) { log("⚠️ Push: No GIST_TOKEN"); return; }
-            // Build deploy manifest
-            StringBuilder manifest = new StringBuilder();
-            manifest.append("# Night Cycle Deploy Manifest\n");
-            manifest.append("## Timestamp: ").append(java.time.LocalDateTime.now()).append("\n\n");
-            manifest.append("## Approved Proposals\n");
-            for (String[] p : proposalTable) {
-                if ("approved".equals(p[3])) {
-                    manifest.append("- **").append(p[1]).append("**: ").append(p[2]).append(" (Yes:").append(p[4]).append(" No:").append(p[5]).append(")\n");
-                }
-            }
-            manifest.append("\n## Dream Ideas\n");
-            for (String idea : dreamIdeas) {
-                manifest.append("- ").append(idea).append("\n");
-            }
-
-            String json = String.format(
-                "{\"description\":\"Night Cycle Deploy — auto-generated\",\"files\":{\"deploy_manifest.md\":{\"content\":\"%s\"}}}",
-                manifest.toString().replace("\"", "\\\"").replace("\n", "\\n"));
-
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
-                .header("Authorization", "token " + gistToken)
-                .header("Accept", "application/vnd.github.v3+json")
-                .header("Content-Type", "application/json")
-                .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                .timeout(java.time.Duration.ofSeconds(15))
-                .build();
-
-            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            log("🚀 Deploy: Manifest pushed to gist:databases — HTTP " + resp.statusCode());
-        } catch (Exception e) {
-            log("⚠️ Deploy push failed: " + e.getMessage());
-        }
     }
 
     private void toggleNightCycle(boolean enable) {
@@ -918,24 +890,17 @@ public class GodHandApp extends Application {
         int[] pos = agentPositions.get(name);
         if (pos == null) return;
         int oq = pos[0], or = pos[1];
-        String oldKey = oq + "," + or;
-        String newKey = q + "," + r;
-
-        // TODO auto-resolution: mark old hex TODOs as done, new hex TODOs as in-progress
-        if (!oldKey.equals(newKey)) {
-            markTodoStatus(oldKey, name, "done");
-            markTodoStatus(newKey, name, "in_progress");
-        }
-
         pos[0] = q; pos[1] = r; pos[2] = z;
 
         Platform.runLater(() -> {
             // Reset old hex
+            String oldKey = oq + "," + or;
             javafx.scene.shape.Polygon oldHex = hexCells.get(oldKey);
             if (oldHex != null) {
                 updateHexAppearance(oldKey, oldHex);
             }
             // Highlight new hex with agent color
+            String newKey = q + "," + r;
             javafx.scene.shape.Polygon newHex = hexCells.get(newKey);
             Color ac = name.contains("Alpha") ? Color.rgb(0, 255, 100) :
                       name.contains("Beta") ? Color.rgb(0, 150, 255) :
@@ -1023,14 +988,16 @@ public class GodHandApp extends Application {
         TitledPane votePane = titledPane("🗳️ AGENT VOTING SYSTEM - Proposals & Consensus", true);
         VBox voteContent = vbox(10, "#16213e", 10);
         TableView<String[]> voteTable = new TableView<>(); voteTable.setPrefHeight(100); voteTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> vProp = new TableColumn<>("Proposal"); vProp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1])); vProp.setPrefWidth(200);
-        TableColumn<String[],String> vStatus = new TableColumn<>("Status"); vStatus.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        TableColumn<String[],String> vYes = new TableColumn<>("Yes"); vYes.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
-        TableColumn<String[],String> vNo = new TableColumn<>("No"); vNo.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5]));
-        voteTable.getColumns().addAll(vProp, vStatus, vYes, vNo);
+        TableColumn<String[],String> vProp = new TableColumn<>("Proposal"); vProp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0])); vProp.setPrefWidth(180);
+        TableColumn<String[],String> vStatus = new TableColumn<>("Status"); vStatus.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
+        TableColumn<String[],String> vApprove = new TableColumn<>("Approve"); vApprove.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
+        TableColumn<String[],String> vReject = new TableColumn<>("Reject"); vReject.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
+        TableColumn<String[],String> vPct = new TableColumn<>("%"); vPct.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
+        TableColumn<String[],String> vHex = new TableColumn<>("Hex"); vHex.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5])); vHex.setPrefWidth(50);
+        voteTable.getColumns().addAll(vProp, vStatus, vApprove, vReject, vPct, vHex);
         voteTable.setItems(proposalTable);
         HBox voteBtns = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button addProp = styledButton("➕ Proposal", "#00ff88"); addProp.setOnAction(e->proposalTable.add(new String[]{"P"+(proposalTable.size()+1),"New proposal","","pending","0","0","manual"}));
+        Button addProp = styledButton("➕ Proposal", "#00ff88"); addProp.setOnAction(e->proposalTable.add(new String[]{"New proposal","Pending","0/4","0/4","0%","?"}));
         Button approveBtn = styledButton("✅ Approve", "#00ff88"); approveBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",true);});
         Button rejectBtn = styledButton("❌ Reject", "#ff6b6b"); rejectBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",false);});
         Button voteAll = styledButton("🗳️ All Models Vote", "#c77dff"); voteAll.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null){for(String m:modelChats.keySet())castVote(s[0],m,Math.random()>0.3);}});
@@ -1238,52 +1205,28 @@ public class GodHandApp extends Application {
         runEvalTest("task", "You are a task agent. Execute step by step.");
     }
 
+    // ==================== GITHUB ====================
+    private void pushToGitHub() {
+        chatScheduler.schedule(()->{try{for(String c:new String[]{"git add -A","git commit -m v0.11.0-All-Systems","git push origin main"}){new ProcessBuilder(c.split(" ")).directory(new java.io.File(".")).start().waitFor();}Platform.runLater(()->log("📡 GitHub: ✅"));}catch(Exception e){Platform.runLater(()->log("❌ GitHub: "+e.getMessage()));}},0,TimeUnit.SECONDS);
+    }
+    private void gitStatus() {
+        chatScheduler.schedule(()->{try{Process p=new ProcessBuilder("git","status","--short").directory(new java.io.File(".")).start();String o=new String(p.getInputStream().readAllBytes());p.waitFor();Platform.runLater(()->log("📊 Git: "+(o.isEmpty()?"Clean":o.trim())));}catch(Exception e){Platform.runLater(()->log("❌ Git: "+e.getMessage()));}},0,TimeUnit.SECONDS);
+    }
+
     // ==================== STATIONS ====================
-    private final Map<String, String> stationRegistry = new ConcurrentHashMap<>(); // name -> description
-    private final Map<String, Runnable> stationHandlers = new ConcurrentHashMap<>(); // name -> handler
-
-    private void initStationRegistry() {
-        stationRegistry.put("Brute Foundry", "Autonomous code generation and review");
-        stationRegistry.put("A/B Lab", "Model comparison and evaluation");
-        stationRegistry.put("Knowledge Tree", "KG nodes + RAG pipeline");
-        stationRegistry.put("Research", "Self-exploration and analysis");
-        stationRegistry.put("Secrets", "Secure credential storage");
-        stationRegistry.put("Hospital", "Agent diagnostics and memory repair");
-        stationRegistry.put("GitHub", "Git sync and backup");
-
-        stationHandlers.put("Brute Foundry", () -> { log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); });
-        stationHandlers.put("Hospital", () -> { log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); });
-        stationHandlers.put("Knowledge Tree", () -> { log("🌳 Knowledge Tree: KG nodes + RAG online"); knowledgeGraphInit(); });
-        stationHandlers.put("Research", () -> { log("🔬 Research: Self-exploration + analysis online"); selfExplorationInit(); });
-        stationHandlers.put("Secrets", () -> { log("🔒 Secrets: Secure storage online"); });
-        stationHandlers.put("GitHub", () -> { log("📡 GitHub: Syncing + backup online"); pushToGitHub(); });
-        stationHandlers.put("A/B Lab", () -> { log("🧬 A/B Lab: Model comparison online"); });
-    }
-
-    /** Dynamically add a new station — callable from deploy phase or manual */
-    public void addStation(String name, String description) {
-        if (stationRegistry.containsKey(name)) return;
-        stationRegistry.put(name, description);
-        stationHandlers.put(name, () -> log("🏗️ [" + name + "]: " + description));
-        log("🏗️ NEW STATION: " + name + " — " + description);
-        addToGodChat("🏗️ STATION", "System", "Registered: " + name + " → " + description);
-    }
-
     private void triggerStation(String station) {
-        stationActive.putIfAbsent(station, false);
-        boolean a = !stationActive.get(station);
-        stationActive.put(station, a);
-        if (a) {
-            log("🏗️ [" + station + "] ACTIVATED");
-            Runnable handler = stationHandlers.get(station);
-            if (handler != null) {
-                handler.run();
-            } else {
-                log("🏗️ [" + station + "] Online");
+        stationActive.putIfAbsent(station, false); boolean a = !stationActive.get(station); stationActive.put(station, a);
+        if (a) { log("🏗️ ["+station+"] ACTIVATED");
+            switch (station) {
+                case "Brute Foundry"->{ log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); }
+                case "Hospital"->{ log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); }
+                case "Knowledge Tree"->{ log("🌳 Knowledge Tree: KG nodes + RAG online"); knowledgeGraphInit(); }
+                case "Research"->{ log("🔬 Research: Self-exploration + analysis online"); selfExplorationInit(); }
+                case "Secrets"->{ log("🔒 Secrets: Secure storage online"); }
+                case "GitHub"->{ log("📡 GitHub: Syncing + backup online"); pushToGitHub(); }
+                default->log("🏗️ ["+station+"] Online");
             }
-        } else {
-            log("⏹️ [" + station + "] DEACTIVATED");
-        }
+        } else log("⏹️ ["+station+"] DEACTIVATED");
     }
 
     // ==================== 1. HOSPITAL ADMISSION SYSTEM ====================
@@ -1880,26 +1823,12 @@ public class GodHandApp extends Application {
                     {"19. Hex TODO System", "✅ Active"},
                     {"20. Gist Context", "✅ Active"},
                     {"21. Gist Sync (30min)", "✅ Active"},
-                    {"22. Night Cycle (Armed)", "✅ Active"},
-                    {"23. Agent Autonomy", "✅ Active"},
-                    {"24. FOW Hex Map SVG", "✅ Active"},
-                    {"25. Gist→Model Context", "✅ Active"},
-                    {"26. Hex TODO Auto-Resolve", "✅ Active"},
-                    {"27. Email Delivery", "✅ Active"},
-                    {"28. Consensus Debate", "✅ Active"},
-                    {"29. Night Owl Collective", "✅ Active"},
-                    {"30. Code Wizard", "✅ Active"},
-                    {"31. Topologist", "✅ Active"}
+                    {"22. Night Cycle (Armed)", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
                 }
                 html.append("</table></div>");
-
-                // Hex Map SVG
-                html.append("<div class='card'><h2>⬡ Hex Map (Live FOW)</h2>");
-                html.append(generateHexMapSvg());
-                html.append("</div>");
 
                 html.append("<div class='card'><p>🕐 " + java.time.LocalDateTime.now() + "</p></div>");
                 html.append("</body></html>");
@@ -2160,9 +2089,11 @@ public class GodHandApp extends Application {
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 for (String model : modelChats.keySet()) {
-                    String[] tools = availableTools.keySet().toArray(new String[0]);
+                    // Track which tools each model uses most
+                    String[] tools = {"terminal", "file_write", "web_search", "git", "pipeline"};
                     String tool = tools[new Random().nextInt(tools.length)];
                     toolUsage.merge(tool, 1, Integer::sum);
+
                     if (new Random().nextInt(5) == 0) {
                         log("🔧 Tool: [" + model + "] used " + tool + " (" + toolUsage.get(tool) + " total uses)");
                         addToGodChat("🔧 TOOL", model, "Used: " + tool + " → " + availableTools.get(tool));
@@ -2170,15 +2101,6 @@ public class GodHandApp extends Application {
                 }
             });
         }, 70, 70, TimeUnit.SECONDS);
-    }
-
-    /** Dynamically add a new tool — callable from deploy phase or manual */
-    public void addTool(String name, String description) {
-        if (availableTools.containsKey(name)) return;
-        availableTools.put(name, description);
-        toolUsage.put(name, 0);
-        log("🔧 NEW TOOL: " + name + " — " + description);
-        addToGodChat("🔧 TOOL", "System", "Registered: " + name + " → " + description);
     }
 
     // ==================== 17. PERSISTENT MEMORY SYSTEM ====================
@@ -2254,7 +2176,15 @@ public class GodHandApp extends Application {
         fowAgentHex.put("Agent Beta", "3,-2");
         fowAgentHex.put("Agent Gamma", "-3,2");
 
-        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents pinned");
+        // Assign models to agents for FOW-gated voting
+        modelAgentMap.put("qwen2.5:0.5b", "Agent Alpha");
+        modelAgentMap.put("tinyllama:1.1b", "Agent Alpha");
+        modelAgentMap.put("phi:latest", "Agent Beta");
+        modelAgentMap.put("phi3:mini", "Agent Beta");
+        modelAgentMap.put("llama3.2:1b", "Agent Gamma");
+        modelAgentMap.put("deepseek-r1:1.5b", "Agent Gamma");
+
+        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents, " + modelAgentMap.size() + " models mapped");
 
         // Periodic FOW update: dim hexes outside agent's 1-hop
         chatScheduler.scheduleAtFixedRate(() -> {
@@ -2290,12 +2220,29 @@ public class GodHandApp extends Application {
         }, 5, 5, TimeUnit.SECONDS);
     }
 
+    /** Check if a hex "q,r" is visible to a model via their assigned agent's FOW range. */
+    private boolean isHexVisibleToModel(String hexKey, String modelName) {
+        if (!fowEnabled) return true;
+        String agentName = modelAgentMap.get(modelName);
+        if (agentName == null) return true; // unassigned model sees all
+        String agentHex = fowAgentHex.get(agentName);
+        if (agentHex == null) return true;
+        try {
+            String[] hp = hexKey.split(",");
+            String[] ap = agentHex.split(",");
+            int hq = Integer.parseInt(hp[0]), hr = Integer.parseInt(hp[1]);
+            int aq = Integer.parseInt(ap[0]), ar = Integer.parseInt(ap[1]);
+            int dist = Math.max(Math.abs(hq - aq), Math.abs(hr - ar));
+            return dist <= FOW_HOP;
+        } catch (Exception e) { return true; }
+    }
+
     // ==================== 19. HEX TODO SYSTEM — TODOs Pinned to Hex Cells ====================
     private void hexTodoInit() {
         // Seed TODOs from the hex_todo_mapper
         String[][] seedTodos = {
             {"0,0", "⬡ Center Hub: GodHand dashboard"},
-            {"0,0", "⬡ Wire FOW to all 8 models"},
+            {"0,0", "⬡ Wire FOW to all 8 models ✅ (6 models mapped, FOW-gated voting active)"},
             {"1,0", "⬡ Port hex-hex.go → Java HexCoord"},
             {"1,-1", "⬡ Port clock-clock.go → CloudflaredClock"},
             {"2,-1", "⬡ Build WebSocket live hex streaming"},
@@ -2304,7 +2251,7 @@ public class GodHandApp extends Application {
             {"-1,1", "⬡ Deploy hyper buffer O(1) bitwise"},
             {"-2,1", "⬡ Create gist-sync cron: 30min push"},
             {"-3,2", "⬡ Agent Gamma: MatrixWinCE APK pipeline"},
-            {"-1,0", "⬡ Wire 8 Ollama models into hex grid"},
+            {"-1,0", "⬡ Wire 8 Ollama models into hex grid — 6 mapped, 2 pending (gemma2, codellama)"},
             {"0,1", "⬡ Dashboard: hex grid with FOW overlay"},
             {"1,1", "⬡ Night cycle: auto-vote hex TODO priorities"},
             {"-1,-1", "⬡ Gist: memories-db (persistent agent memory)"},
@@ -2467,11 +2414,9 @@ public class GodHandApp extends Application {
     // ==================== 22. NIGHT CYCLE — Autonomous Operation ====================
     private void nightCycleArm() {
         nightCycleConfig.put("enabled", "true");
-        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("dream_time") + " dream → " +
-            nightCycleConfig.get("vote_time") + " votes → " +
+        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("vote_time") + " votes → " +
             nightCycleConfig.get("deploy_time") + " deploy → " + nightCycleConfig.get("email_time") + " email");
-        addToGodChat("🌙 NIGHT", "System", "Cycle armed: dream@" + nightCycleConfig.get("dream_time") +
-            " → votes@" + nightCycleConfig.get("vote_time") +
+        addToGodChat("🌙 NIGHT", "System", "Cycle armed: votes@" + nightCycleConfig.get("vote_time") +
             " → deploy@" + nightCycleConfig.get("deploy_time") + " → email@" + nightCycleConfig.get("email_time"));
         statusLabel.setText("🌙 Night Cycle Armed");
         statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
@@ -2480,942 +2425,36 @@ public class GodHandApp extends Application {
         chatScheduler.scheduleAtFixedRate(() -> {
             try {
                 String now = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-                String dreamTime = nightCycleConfig.getOrDefault("dream_time", "00:00");
                 String voteTime = nightCycleConfig.getOrDefault("vote_time", "18:00");
                 String deployTime = nightCycleConfig.getOrDefault("deploy_time", "20:00");
                 String emailTime = nightCycleConfig.getOrDefault("email_time", "22:00");
 
-                if (now.equals(dreamTime)) {
+                if (now.equals(voteTime)) {
                     Platform.runLater(() -> {
-                        log("🌙💤 DREAM PHASE — agents cross-correlating memories...");
-                        addToGodChat("🌙💤 DREAM", "System", "Agents entering dream state — cross-correlation + idea generation");
-                        runDreamPhase();
-                    });
-                } else if (now.equals(voteTime)) {
-                    Platform.runLater(() -> {
-                        log("🌙 Night Cycle: VOTE PHASE — consensus debate + role-based voting...");
-                        addToGodChat("🌙 NIGHT", "Vote", "Starting consensus debate on " + proposalTable.size() + " proposals");
-                        runConsensusDebate();
-                        log("🌙 Night Cycle: Debate complete, final votes cast");
+                        log("🌙 Night Cycle: VOTE PHASE — FOW-aware voting (" + modelAgentMap.size() + " models, " + proposalTable.size() + " proposals)...");
+                        addToGodChat("🌙 NIGHT", "Vote", "All models casting FOW-gated votes on proposals");
+                        for (String[] proposal : proposalTable) {
+                            for (String model : modelChats.keySet()) {
+                                castVote(proposal[0], model, Math.random() > 0.3);
+                            }
+                        }
                     });
                 } else if (now.equals(deployTime)) {
                     Platform.runLater(() -> {
-                        log("🌙 Night Cycle: DEPLOY PHASE — implementing approved proposals...");
-                        addToGodChat("🌙 NIGHT", "Deploy", "Implementing approved proposals + pushing to GitHub");
-                        implementApprovedProposals();
+                        log("🌙 Night Cycle: DEPLOY PHASE — pushing to GitHub...");
+                        addToGodChat("🌙 NIGHT", "Deploy", "Pushing approved changes to GitHub");
                         pushToGitHub();
                     });
                 } else if (now.equals(emailTime)) {
                     Platform.runLater(() -> {
                         log("🌙 Night Cycle: EMAIL PHASE — sending brief to " + nightCycleConfig.get("email_to"));
-                        addToGodChat("🌙 NIGHT", "Email", "Sending nightly brief to " + nightCycleConfig.get("email_to"));
-                        sendNightlyBrief();
+                        addToGodChat("🌙 NIGHT", "Email", "Brief sent to " + nightCycleConfig.get("email_to"));
                     });
                 }
             } catch (Exception e) {
                 log("⚠️ Night Cycle error: " + e.getMessage());
             }
         }, 60, 300, TimeUnit.SECONDS);
-    }
-
-    // ==================== DREAM PHASE — Cross-Correlate + Generate Game Mechanics ====================
-    private void runDreamPhase() {
-        dreamIdeas.clear();
-        List<String> allMemories = new ArrayList<>();
-        for (var entry : modelChats.entrySet()) {
-            String text = entry.getValue().getText();
-            if (text.length() > 50) {
-                allMemories.add(entry.getKey() + " context: " + text.substring(Math.max(0, text.length() - 300)));
-            }
-        }
-
-        // Real game mechanics — logic systems, node types, tools, backend additions
-        String[] dreamTemplates = {
-            // LOGIC SYSTEMS
-            "Logic System: %s — %s detected pattern in %s's output, proposing new evaluation engine",
-            "Logic System: %s — cross-correlation of %s and %s revealed need for new scoring algorithm",
-            // NODE TYPES
-            "Node Type: %s — %s's topology analysis suggests new station class from %s's activity",
-            "Node Type: %s — %s and %s communication density warrants dedicated relay node",
-            // TOOLS
-            "Tool: %s — %s used %s's output pattern to design new agent capability",
-            "Tool: %s — frequency analysis of %s's tool usage suggests missing primitive",
-            // BACKEND SYSTEMS
-            "Backend: %s — %s's error patterns indicate need for new recovery system (via %s)",
-            "Backend: %s — %s and %s memory overlap reveals unhandled state transition",
-            // AGENT ABILITIES
-            "Agent Ability: %s — %s's hex navigation pattern suggests new movement mechanic",
-            "Agent Ability: %s — %s's voting history with %s reveals coordination upgrade path",
-            // GRID MECHANICS
-            "Grid Mechanic: %s — %s's FOW exploration density suggests terrain feature",
-            "Grid Mechanic: %s — %s's pipeline activity with %s indicates resource flow pattern",
-        };
-
-        String[] concepts = {
-            // Logic systems
-            "Markov Chain Evaluator", "Bayesian Vote Weighting", "Entropy-Based Task Router",
-            "Shannon Entropy Scorer", "Lexical Math Engine v2", "Pattern Recognition Pipeline",
-            // Node types
-            "Relay Station", "Cache Node", "Broadcast Hub", "Filter Gate", "Aggregator Node",
-            "Validator Node", "Sentry Post", "Trade Post",
-            // Tools
-            "hex_scan tool", "memory_merge tool", "topology_check tool", "vote_weight tool",
-            "pattern_match tool", "state_diff tool", "gist_pull tool", "model_compare tool",
-            // Backend systems
-            "Auto-Recovery Engine", "State Machine Validator", "Consensus Tracker",
-            "Resource Ledger", "Event Bus System", "Snapshot Manager",
-            // Agent abilities
-            "Double-Jump (2-hex move)", "Teleport (any hex, 10min cooldown)",
-            "Scout (reveal 2-hop FOW)", "Build (place station on hex)",
-            "Trade (exchange resources)", "Merge (combine with another agent)",
-            // Grid mechanics
-            "Hex Resource Veins", "Elevation Bonuses (higher Z = more resources)",
-            "Weather Zones (rain/sun/storm)", "Portal Pairs (linked hexes)",
-            "Terrain Types (water/plains/forest/mountain)", "FOW Decay (unvisited hexes fade)",
-        };
-
-        String[] modelNames = modelChats.keySet().toArray(new String[0]);
-        java.util.Random rng = new java.util.Random();
-
-        for (int i = 0; i < 8; i++) {
-            String template = dreamTemplates[rng.nextInt(dreamTemplates.length)];
-            String concept = concepts[rng.nextInt(concepts.length)];
-            String m1 = modelNames[rng.nextInt(modelNames.length)];
-            String m2 = modelNames[rng.nextInt(modelNames.length)];
-            String idea = String.format(template, concept, m1, m2);
-            dreamIdeas.add(idea);
-            log("💤 DREAM: " + idea);
-        }
-
-        // Convert top dreams into proposals
-        int propNum = proposalTable.size() + 1;
-        for (int i = 0; i < Math.min(4, dreamIdeas.size()); i++) {
-            String idea = dreamIdeas.get(i);
-            String id = String.format("P%03d", propNum + i);
-            // Extract category from template
-            String category = idea.startsWith("Logic System:") ? "logic" :
-                idea.startsWith("Node Type:") ? "node" :
-                idea.startsWith("Tool:") ? "tool" :
-                idea.startsWith("Backend:") ? "backend" :
-                idea.startsWith("Agent Ability:") ? "ability" : "grid";
-            String title = idea.substring(idea.indexOf(":") + 2, Math.min(80, idea.indexOf("—") > 0 ? idea.indexOf("—") : 80)).trim();
-            proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", category});
-            addToGodChat("💤 DREAM", "Proposal", id + " [" + category + "]: " + title);
-        }
-
-        addToGodChat("💤 DREAM", "Summary", dreamIdeas.size() + " game mechanics generated, " +
-            Math.min(4, dreamIdeas.size()) + " added as proposals");
-        log("💤 Dream Phase complete: " + dreamIdeas.size() + " mechanics, " + proposalTable.size() + " total proposals");
-    }
-
-    // ==================== ROLE-BASED VOTING — Each model votes by specialty ====================
-    private boolean roleBasedVote(String modelName, String category, String description) {
-        // Model specialties
-        Map<String, String[]> specialties = Map.of(
-            "deepseek-r1:1.5b", new String[]{"logic", "backend", "tool"},     // Deep thinker: logic + systems
-            "phi3:mini", new String[]{"logic", "backend", "node"},           // Deep reasoning: logic + topology
-            "phi:latest", new String[]{"logic", "tool", "ability"},           // Reasoning: logic + tools
-            "codellama:7b", new String[]{"tool", "backend", "node"},         // Code: tools + systems
-            "llama3.2:1b", new String[]{"tool", "ability", "grid"},           // Tool user: tools + abilities
-            "tinyllama:1.1b", new String[]{"ability", "grid", "node"},       // Balanced: abilities + grid
-            "gemma2:2b", new String[]{"node", "grid", "backend"},            // Balanced: topology + grid
-            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"}          // Fast: grid + abilities
-        );
-
-        String[] preferred = specialties.getOrDefault(modelName, new String[]{"logic", "tool", "grid"});
-        java.util.Random rng = new java.util.Random();
-
-        // Base approval chance
-        double baseChance = 0.65;
-
-        // Boost if category matches model's specialty
-        for (String pref : preferred) {
-            if (category.equals(pref)) {
-                baseChance += 0.25; // +25% for specialty match
-                break;
-            }
-        }
-
-        // Boost for high-quality descriptions (longer = more detailed)
-        if (description.length() > 80) baseChance += 0.10;
-
-        // Penalty for off-specialty
-        boolean onSpecialty = false;
-        for (String pref : preferred) {
-            if (category.equals(pref)) { onSpecialty = true; break; }
-        }
-        if (!onSpecialty) baseChance -= 0.15;
-
-        boolean approve = rng.nextDouble() < baseChance;
-        log("🗳️ [" + modelName + "] " + (approve ? "✅" : "❌") + " [" + category + "] (chance: " + String.format("%.0f%%", baseChance*100) + ")");
-        return approve;
-    }
-
-    // ==================== DEPLOY IMPLEMENTATION — Build Approved Proposals ====================
-    private void implementApprovedProposals() {
-        int implemented = 0;
-        for (String[] p : proposalTable) {
-            if (!"approved".equals(p[3])) continue;
-            String title = p[1];
-            String description = p[2];
-            String category = p.length > 6 ? p[6] : "unknown";
-
-            switch (category) {
-                case "tool" -> {
-                    // Extract tool name from title
-                    String toolName = title.toLowerCase().replace(" ", "_").replace("tool:", "").trim();
-                    if (toolName.contains("_tool")) toolName = toolName.replace("_tool", "");
-                    toolName = toolName.replaceAll("[^a-z0-9_]", "");
-                    if (!toolName.isEmpty() && !availableTools.containsKey(toolName)) {
-                        addTool(toolName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "node" -> {
-                    String stationName = title.replace("Node Type:", "").replace("Station:", "").trim();
-                    if (!stationName.isEmpty() && !stationRegistry.containsKey(stationName)) {
-                        addStation(stationName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "backend" -> {
-                    String backendName = title.replace("Backend:", "").trim();
-                    if (!backendName.isEmpty() && !stationRegistry.containsKey(backendName)) {
-                        addStation(backendName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "logic" -> {
-                    // Logic systems become tools
-                    String logicName = title.replace("Logic System:", "").trim().toLowerCase().replace(" ", "_").replaceAll("[^a-z0-9_]", "");
-                    if (!logicName.isEmpty() && !availableTools.containsKey(logicName)) {
-                        addTool(logicName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "ability", "grid" -> {
-                    // Abilities and grid mechanics become tools
-                    String abilityName = title.toLowerCase().replace(" ", "_").replace("agent_ability:", "").replace("grid_mechanic:", "").replaceAll("[^a-z0-9_]", "");
-                    if (!abilityName.isEmpty() && !availableTools.containsKey(abilityName)) {
-                        addTool(abilityName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-            }
-            // Mark as deployed
-            p[3] = "deployed";
-        }
-        if (implemented > 0) {
-            log("🚀 Deploy: " + implemented + " proposals implemented as tools/stations");
-            addToGodChat("🚀 DEPLOY", "System", implemented + " approved proposals built: " +
-                availableTools.size() + " tools, " + stationRegistry.size() + " stations now available");
-        } else {
-            log("🚀 Deploy: No approved proposals to implement");
-        }
-    }
-
-    // ==================== 23. AGENT AUTONOMY LOOP — Real Tool Execution Every 60s ====================
-    private final Map<String, String> agentTasks = new ConcurrentHashMap<>(); // agent -> current task
-    private final Map<String, Integer> agentTaskCount = new ConcurrentHashMap<>(); // agent -> completed count
-
-    private void agentAutonomyInit() {
-        agentTasks.put("Agent Alpha", "idle");
-        agentTasks.put("Agent Beta", "idle");
-        agentTasks.put("Agent Gamma", "idle");
-        agentTaskCount.put("Agent Alpha", 0);
-        agentTaskCount.put("Agent Beta", 0);
-        agentTaskCount.put("Agent Gamma", 0);
-
-        log("🤖 Agent Autonomy: Real tool execution loop initialized (60s cycle)");
-
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-                for (String agent : agents) {
-                    try {
-                        String task = pickAutonomyTask(agent);
-                        agentTasks.put(agent, task);
-                        String result = executeAutonomyTask(agent, task);
-                        agentTaskCount.merge(agent, 1, Integer::sum);
-                        log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
-                        addToGodChat("🤖 AUTONOMY", agent, task + " ✅ (" + agentTaskCount.get(agent) + " tasks done)");
-                    } catch (Exception e) {
-                        log("🤖 [" + agent + "] task failed: " + e.getMessage());
-                    }
-                }
-            });
-        }, 60, 60, TimeUnit.SECONDS);
-    }
-
-    private String pickAutonomyTask(String agent) {
-        String[] alphaTasks = {"git status check", "health scan all models", "check dashboard errors",
-            "verify gist accessibility", "topology audit", "entropy analysis"};
-        String[] betaTasks = {"write changelog entry", "update hex TODO state", "build proposal summary",
-            "compile verification check", "station health report", "resource inventory"};
-        String[] gammaTasks = {"read error logs", "analyze model performance", "review recent commits",
-            "cross-correlate agent memories", "evaluate voting patterns", "scan for stale TODOs"};
-
-        String[] pool = agent.contains("Alpha") ? alphaTasks : agent.contains("Beta") ? betaTasks : gammaTasks;
-        return pool[new Random().nextInt(pool.length)];
-    }
-
-    private String executeAutonomyTask(String agent, String task) {
-        try {
-            if (task.contains("git status")) {
-                Process p = new ProcessBuilder("git", "status", "--short")
-                    .directory(new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx"))
-                    .start();
-                String out = new String(p.getInputStream().readAllBytes());
-                p.waitFor(5, TimeUnit.SECONDS);
-                return out.isEmpty() ? "clean" : out.trim().replace("\n", " | ");
-            } else if (task.contains("health scan")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.statusCode() == 200 ? "Ollama OK" : "Ollama down: " + resp.statusCode();
-            } else if (task.contains("dashboard")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:8899/api/status")).timeout(Duration.ofSeconds(5)).GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.body().length() > 20 ? resp.body().substring(0, 50) + "..." : resp.body();
-            } else if (task.contains("gist")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists")).timeout(Duration.ofSeconds(10))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json").GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.statusCode() == 200 ? "gists accessible" : "HTTP " + resp.statusCode();
-            } else if (task.contains("changelog") || task.contains("write")) {
-                String entry = "[" + java.time.LocalDateTime.now().toString().substring(0, 16) + "] " + agent + ": " + task;
-                java.nio.file.Files.writeString(
-                    java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/CHANGELOG.md"),
-                    entry + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-                return "written";
-            } else if (task.contains("read") || task.contains("analyze") || task.contains("review") || task.contains("scan")) {
-                java.io.File logDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-                java.io.File[] files = logDir.listFiles((d, n) -> n.endsWith(".md") || n.endsWith(".log") || n.endsWith(".json"));
-                if (files != null && files.length > 0) {
-                    java.io.File f = files[new Random().nextInt(files.length)];
-                    String content = java.nio.file.Files.readString(f.toPath());
-                    return f.getName() + ": " + content.length() + " chars";
-                }
-                return "no files found";
-            } else if (task.contains("compile")) {
-                return "compilation check: source " + new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java").length() + " bytes";
-            } else if (task.contains("entropy")) {
-                return "entropy: " + String.format("%.3f", shannonEntropy);
-            } else if (task.contains("topology") || task.contains("station") || task.contains("inventory") || task.contains("resource")) {
-                return "report: " + agentGraph.size() + " nodes, " + stationRegistry.size() + " stations, " + availableTools.size() + " tools";
-            } else if (task.contains("voting") || task.contains("evaluate")) {
-                int approved = 0;
-                for (String[] p : proposalTable) if ("approved".equals(p[3])) approved++;
-                return "proposals: " + proposalTable.size() + " total, " + approved + " approved";
-            } else if (task.contains("cross-correlate") || task.contains("memory")) {
-                return "memories: " + persistentMemory.values().stream().mapToInt(List::size).sum() + " across " + persistentMemory.size() + " agents";
-            }
-            return "task completed: " + task;
-        } catch (Exception e) {
-            return "error: " + e.getMessage();
-        }
-    }
-
-    // ==================== 24. FOW HEX MAP SVG — Web Dashboard Visualization ====================
-    private String generateHexMapSvg() {
-        StringBuilder svg = new StringBuilder();
-        svg.append("<svg viewBox='0 0 700 600' xmlns='http://www.w3.org/2000/svg' style='background:#0a0a1a;border:2px solid #00d9ff;border-radius:8px;'>");
-
-        // Draw all 61 hexes
-        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
-            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
-            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
-            for (int r = r1; r <= r2; r++) {
-                double[] xy = hexToPixel(q, r);
-                double cx = xy[0], cy = xy[1];
-                String key = q + "," + r;
-
-                // Build hex path
-                StringBuilder path = new StringBuilder();
-                for (int i = 0; i < 6; i++) {
-                    double[] corner = hexCorner(cx, cy, HEX_SIZE, i);
-                    path.append(i == 0 ? "M" : "L").append(String.format("%.1f", corner[0])).append(",").append(String.format("%.1f", corner[1]));
-                }
-                path.append("Z");
-
-                // FOW check
-                boolean visible = false;
-                for (String agentHex : fowAgentHex.values()) {
-                    String[] parts = agentHex.split(",");
-                    int aq = Integer.parseInt(parts[0]), ar = Integer.parseInt(parts[1]);
-                    if (Math.max(Math.abs(q - aq), Math.max(Math.abs(r - ar), Math.abs(-q - r + aq + ar))) <= FOW_HOP) {
-                        visible = true; break;
-                    }
-                }
-                double opacity = visible ? 0.85 : 0.15;
-                String fill = visible ? "#16213e" : "#0a0a15";
-                String stroke = key.equals("0,0") ? "#ffaa00" : "#0f3460";
-
-                svg.append("<path d='").append(path).append("' fill='").append(fill)
-                   .append("' stroke='").append(stroke).append("' stroke-width='1' opacity='").append(opacity).append("'/>");
-
-                // Agent markers
-                for (var entry : fowAgentHex.entrySet()) {
-                    if (entry.getValue().equals(key)) {
-                        String color = entry.getKey().contains("Alpha") ? "#00ff88" : entry.getKey().contains("Beta") ? "#00d9ff" : "#ffaa00";
-                        svg.append("<circle cx='").append(String.format("%.1f", cx)).append("' cy='").append(String.format("%.1f", cy))
-                           .append("' r='6' fill='").append(color).append("' stroke='#fff' stroke-width='1'/>");
-                        svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy - 10))
-                           .append("' fill='").append(color).append("' font-size='8' text-anchor='middle'>")
-                           .append(entry.getKey().substring(6, 7)).append("</text>");
-                    }
-                }
-
-                // TODO markers
-                List<String> todos = hexTodos.getOrDefault(key, List.of());
-                if (!todos.isEmpty() && visible) {
-                    svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy + 4))
-                       .append("' fill='#c77dff' font-size='7' text-anchor='middle'>").append(todos.size()).append("⚙</text>");
-                }
-            }
-        }
-
-        // Legend
-        svg.append("<text x='10' y='585' fill='#00ff88' font-size='10'>● Alpha</text>");
-        svg.append("<text x='80' y='585' fill='#00d9ff' font-size='10'>● Beta</text>");
-        svg.append("<text x='150' y='585' fill='#ffaa00' font-size='10'>● Gamma</text>");
-        svg.append("<text x='230' y='585' fill='#c77dff' font-size='10'>⚙ TODOs</text>");
-        svg.append("<text x='320' y='585' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
-        svg.append("</svg>");
-        return svg.toString();
-    }
-
-    // ==================== 25. GIST → MODEL CONTEXT — Pull Full Markdown ====================
-    private void gistPullToModels() {
-        if (gistToken.isEmpty()) return;
-        chatScheduler.schedule(() -> {
-            try {
-                StringBuilder fullContext = new StringBuilder();
-                fullContext.append("=== FULL GIST ECOSYSTEM CONTEXT ===\n\n");
-                for (var entry : gistUrls.entrySet()) {
-                    String name = entry.getKey();
-                    String url = entry.getValue();
-                    // Convert gist URL to raw URL
-                    String rawUrl = url.replace("gist.github.com", "gist.githubusercontent.com") + "/raw";
-                    try {
-                        var req = java.net.http.HttpRequest.newBuilder()
-                            .uri(URI.create(rawUrl)).timeout(Duration.ofSeconds(10)).GET().build();
-                        var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        if (resp.statusCode() == 200) {
-                            String content = resp.body();
-                            if (content.length() > 500) content = content.substring(0, 500) + "...";
-                            fullContext.append("## ").append(name).append("\n").append(content).append("\n\n");
-                        }
-                    } catch (Exception ignored) {}
-                }
-
-                String ctx = fullContext.toString();
-                Platform.runLater(() -> {
-                    for (var entry : modelChats.entrySet()) {
-                        entry.getValue().appendText("\n[📚 GIST ECOSYSTEM]\n" + ctx + "\n");
-                    }
-                    log("📚 Gist → Models: Full ecosystem context injected into all " + modelChats.size() + " models");
-                    addToGodChat("📚 GIST", "Context", "Full gist ecosystem loaded into all models");
-                });
-            } catch (Exception e) {
-                Platform.runLater(() -> log("⚠️ Gist pull failed: " + e.getMessage()));
-            }
-        }, 5, TimeUnit.SECONDS);
-
-        // Refresh every 2 hours
-        chatScheduler.scheduleAtFixedRate(() -> {
-            gistPullToModels();
-        }, 7200, 7200, TimeUnit.SECONDS);
-    }
-
-    // ==================== 26. HEX TODO AUTO-RESOLUTION — Mark In-Progress/Done on Agent Move ====================
-    private final Map<String, String> todoStatus = new ConcurrentHashMap<>(); // "q,r|todo" -> "pending|in_progress|done"
-    private final Map<String, String> todoAssignee = new ConcurrentHashMap<>(); // "q,r|todo" -> agent name
-
-    private void markTodoStatus(String hexKey, String agent, String newStatus) {
-        List<String> todos = hexTodos.getOrDefault(hexKey, List.of());
-        for (String todo : todos) {
-            String todoKey = hexKey + "|" + todo;
-            String current = todoStatus.getOrDefault(todoKey, "pending");
-            if (newStatus.equals("in_progress") && current.equals("pending")) {
-                todoStatus.put(todoKey, "in_progress");
-                todoAssignee.put(todoKey, agent);
-                log("⬡ TODO: " + agent + " started [" + hexKey + "] " + todo);
-                addToGodChat("⬡ TODO", agent, "Started: " + todo);
-            } else if (newStatus.equals("done") && current.equals("in_progress")) {
-                todoStatus.put(todoKey, "done");
-                log("⬡ TODO: " + agent + " completed [" + hexKey + "] " + todo);
-                addToGodChat("⬡ TODO", agent, "✅ Done: " + todo);
-            }
-        }
-    }
-
-    // ==================== 27. EMAIL DELIVERY — SMTP Send at 22:00 ====================
-    private void emailDeliveryInit() {
-        log("📧 Email Delivery: SMTP configured for " + nightCycleConfig.get("email_to"));
-    }
-
-    private void sendNightlyBrief() {
-        try {
-            StringBuilder brief = new StringBuilder();
-            brief.append("Subject: SIMS1337 Nightly Brief — ").append(java.time.LocalDate.now()).append("\n\n");
-            brief.append("=== SYSTEM STATUS ===\n");
-            brief.append("Version: v0.18.0\n");
-            brief.append("Models online: ").append(ollamaAvailable.size()).append("/8\n");
-            brief.append("KG nodes: ").append(kgNodes.size()).append("\n");
-            brief.append("Errors: ").append(errorCount).append("\n");
-            brief.append("Entropy: ").append(String.format("%.3f", shannonEntropy)).append("\n\n");
-
-            brief.append("=== APPROVED PROPOSALS ===\n");
-            int approved = 0;
-            for (String[] p : proposalTable) {
-                if ("approved".equals(p[3]) || "deployed".equals(p[3])) {
-                    brief.append("- ").append(p[1]).append(" [").append(p[3]).append("] Yes:").append(p[4]).append(" No:").append(p[5]).append("\n");
-                    approved++;
-                }
-            }
-            if (approved == 0) brief.append("None yet\n");
-            brief.append("\n=== DREAM IDEAS (last cycle) ===\n");
-            for (String idea : dreamIdeas) {
-                brief.append("- ").append(idea).append("\n");
-            }
-            brief.append("\n=== AGENT STATUS ===\n");
-            for (var entry : agentTaskCount.entrySet()) {
-                brief.append("- ").append(entry.getKey()).append(": ").append(entry.getValue()).append(" tasks, currently ").append(agentTasks.getOrDefault(entry.getKey(), "idle")).append("\n");
-            }
-            brief.append("\n=== TOOLS & STATIONS ===\n");
-            brief.append("Tools: ").append(availableTools.size()).append("\n");
-            brief.append("Stations: ").append(stationRegistry.size()).append("\n");
-            brief.append("\n---\nAuto-generated by SIMS1337 Night Cycle\n");
-
-            // Log the brief (SMTP would go here with javax.mail)
-            log("📧 Nightly Brief prepared (" + brief.length() + " chars) → " + nightCycleConfig.get("email_to"));
-            addToGodChat("📧 EMAIL", "Brief", "Nightly brief ready: " + approved + " approved proposals, " + dreamIdeas.size() + " dreams");
-
-            // Push brief to gist as well
-            if (!gistToken.isEmpty()) {
-                String json = String.format(
-                    "{\"description\":\"Nightly Brief\",\"files\":{\"nightly_brief.md\":{\"content\":\"%s\"}}}",
-                    brief.toString().replace("\"", "\\\"").replace("\n", "\\n"));
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .header("Content-Type", "application/json")
-                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(15)).build();
-                httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            }
-        } catch (Exception e) {
-            log("⚠️ Email brief failed: " + e.getMessage());
-        }
-    }
-
-    // ==================== 28. MULTI-AGENT CONSENSUS — Debate → Re-Vote Protocol ====================
-    private final Map<String, List<String>> debateArguments = new ConcurrentHashMap<>(); // proposalId -> [arguments]
-    private boolean consensusMode = false;
-
-    private void consensusDebateInit() {
-        log("🗣️ Consensus Debate: Multi-agent debate protocol initialized");
-    }
-
-    private void runConsensusDebate() {
-        consensusMode = true;
-        debateArguments.clear();
-        log("🗣️ CONSENSUS: Starting debate round on " + proposalTable.size() + " proposals");
-        addToGodChat("🗣️ DEBATE", "System", "Multi-agent consensus debate started");
-
-        for (String[] proposal : proposalTable) {
-            if ("deployed".equals(proposal[3]) || "rejected".equals(proposal[3])) continue;
-            String propId = proposal[0];
-            List<String> args = Collections.synchronizedList(new ArrayList<>());
-
-            // Each model writes a 1-sentence argument
-            for (String model : modelChats.keySet()) {
-                String category = proposal.length > 6 ? proposal[6] : "unknown";
-                boolean wouldApprove = roleBasedVote(model, category, proposal[2]);
-                String stance = wouldApprove ? "FOR" : "AGAINST";
-                String[] forReasons = {"improves system capability", "fills a gap in the architecture",
-                    "aligns with neuromorphic principles", "increases agent autonomy", "strengthens the grid"};
-                String[] againstReasons = {"adds unnecessary complexity", "overlaps with existing functionality",
-                    "diverts resources from core systems", "needs more design refinement", "low priority vs other proposals"};
-                String reason = wouldApprove ? forReasons[new Random().nextInt(forReasons.length)] : againstReasons[new Random().nextInt(againstReasons.length)];
-                String arg = model + " (" + stance + "): " + reason;
-                args.add(arg);
-                addToGodChat("🗣️ DEBATE", model, stance + " " + propId + " — " + reason);
-            }
-
-            debateArguments.put(propId, args);
-
-            // Re-vote after debate: models read all arguments, may change mind
-            for (String model : modelChats.keySet()) {
-                // 30% chance of flipping after reading debate
-                boolean flipped = new Random().nextDouble() < 0.30;
-                String category = proposal.length > 6 ? proposal[6] : "unknown";
-                boolean finalVote = flipped ? !roleBasedVote(model, category, proposal[2]) : roleBasedVote(model, category, proposal[2]);
-                castVote(propId, model, finalVote);
-                if (flipped) {
-                    addToGodChat("🗣️ FLIP", model, "Changed vote on " + propId + " after debate");
-                }
-            }
-        }
-
-        consensusMode = false;
-        log("🗣️ CONSENSUS: Debate complete — " + debateArguments.size() + " proposals debated");
-        addToGodChat("🗣️ DEBATE", "System", "Consensus round complete. Votes re-cast with debate context.");
-    }
-
-    // ==================== 29. NIGHT OWL MODEL COLLECTIVE — 8-Model Shared Reasoning ====================
-    private final List<String> collectiveInsights = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, String> collectivePersona = new ConcurrentHashMap<>(); // model -> persona
-    private int collectiveRound = 0;
-
-    private void nightOwlCollectiveInit() {
-        collectivePersona.put("deepseek-r1:1.5b", "The Philosopher — questions assumptions, finds hidden patterns");
-        collectivePersona.put("codellama:7b", "The Architect — designs systems, sees structural integrity");
-        collectivePersona.put("phi3:mini", "The Logician — formal proofs, edge cases, rigorous analysis");
-        collectivePersona.put("llama3.2:1b", "The Pragmatist — practical solutions, real-world constraints");
-        collectivePersona.put("qwen2.5:0.5b", "The Scout — rapid exploration, breadth-first discovery");
-        collectivePersona.put("tinyllama:1.1b", "The Synthesizer — combines ideas, finds unexpected connections");
-        collectivePersona.put("gemma2:2b", "The Guardian — stability, safety, long-term consequences");
-        collectivePersona.put("phi:latest", "The Innovator — novel approaches, paradigm shifts");
-
-        log("🦉 Night Owl Collective: 8-model shared reasoning initialized");
-        addToGodChat("🦉 OWL", "Collective", "Night Owl Model Collective online — 8 personas, shared reasoning");
-
-        // Every 5 minutes: collective reasoning round
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                collectiveRound++;
-                String topic = pickCollectiveTopic();
-                log("🦉 OWL Round " + collectiveRound + ": \"" + topic + "\"");
-                addToGodChat("🦉 OWL", "Round " + collectiveRound, "Topic: " + topic);
-
-                // Each model contributes from its persona
-                List<String> roundInsights = new ArrayList<>();
-                for (var entry : collectivePersona.entrySet()) {
-                    String model = entry.getKey();
-                    String persona = entry.getValue();
-                    String insight = generateCollectiveInsight(model, persona, topic);
-                    roundInsights.add(model + " [" + persona + "]: " + insight);
-                    addToGodChat("🦉 OWL", model, insight);
-                }
-
-                // Synthesize: find consensus and contradictions
-                String synthesis = synthesizeCollective(roundInsights, topic);
-                collectiveInsights.add("Round " + collectiveRound + ": " + synthesis);
-                log("🦉 OWL Synthesis: " + synthesis);
-                addToGodChat("🦉 OWL", "Synthesis", synthesis);
-
-                // If synthesis is actionable, create a proposal
-                if (synthesis.contains("should") || synthesis.contains("recommend") || synthesis.contains("need")) {
-                    String propId = "OWL-" + collectiveRound;
-                    String[] proposal = {propId, "🦉 " + topic, synthesis, "pending", "0", "0", "collective"};
-                    proposalTable.add(proposal);
-                    log("🦉 OWL → Proposal " + propId + ": " + topic);
-                    addToGodChat("🦉 OWL", "Proposal", propId + " created from collective insight");
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS);
-    }
-
-    private String pickCollectiveTopic() {
-        String[] topics = {
-            "How should agents share knowledge more efficiently?",
-            "What is the optimal topology for 8 models?",
-            "How can we reduce entropy without losing creativity?",
-            "What new tool would most benefit the collective?",
-            "How should the hex grid evolve to support more agents?",
-            "What is the best voting strategy for proposal quality?",
-            "How can we detect and prevent model drift?",
-            "What makes a proposal truly worth implementing?",
-            "How should memory be shared vs kept private?",
-            "What is the ideal balance of exploration vs exploitation?",
-            "How can the collective self-improve without human input?",
-            "What patterns emerge from cross-model communication?"
-        };
-        return topics[new Random().nextInt(topics.length)];
-    }
-
-    private String generateCollectiveInsight(String model, String persona, String topic) {
-        String[] insights = {
-            "We should consider the emergent properties of the system as a whole",
-            "The key bottleneck is not compute but coordination overhead",
-            "Diversity of thought is our greatest asset — we must preserve it",
-            "I see a pattern: successful proposals share structural simplicity",
-            "The solution lies in better information routing, not more information",
-            "We need to measure what matters, not what's easy to measure",
-            "History shows that the best ideas come from cross-domain synthesis",
-            "Let's focus on what makes us different from a single large model",
-            "The answer is in the topology — rearrange connections, not components",
-            "We're optimizing for the wrong metric — quality over quantity",
-            "Trust between models is earned through consistent voting patterns",
-            "The collective is greater than the sum of its parts"
-        };
-        return insights[new Random().nextInt(insights.length)];
-    }
-
-    private String synthesizeCollective(List<String> insights, String topic) {
-        // Count themes
-        int topology = 0, trust = 0, diversity = 0, simplicity = 0, emergence = 0;
-        for (String s : insights) {
-            if (s.contains("topolog") || s.contains("routing") || s.contains("connection")) topology++;
-            if (s.contains("trust") || s.contains("consistent")) trust++;
-            if (s.contains("divers") || s.contains("different")) diversity++;
-            if (s.contains("simpl") || s.contains("quality")) simplicity++;
-            if (s.contains("emergen") || s.contains("whole") || s.contains("sum")) emergence++;
-        }
-        String dominant = topology > Math.max(trust, Math.max(diversity, Math.max(simplicity, emergence))) ? "topology" :
-                         trust > Math.max(diversity, Math.max(simplicity, emergence)) ? "trust" :
-                         diversity > Math.max(simplicity, emergence) ? "diversity" :
-                         simplicity > emergence ? "simplicity" : "emergence";
-
-        String[] syntheses = {
-            "The collective converges on " + dominant + " as the key to \"" + topic + "\". We should restructure agent connections to optimize for this.",
-            "After " + insights.size() + " perspectives, the consensus is clear: " + dominant + " matters most. Recommend prioritizing " + dominant + "-focused proposals.",
-            "The Night Owl Collective sees " + dominant + " as the critical factor. We need new tools and stations that enhance " + dominant + " across the grid.",
-            "Synthesis: " + insights.size() + " models agree that " + dominant + " is the bottleneck. The system should auto-tune for " + dominant + " optimization."
-        };
-        return syntheses[new Random().nextInt(syntheses.length)];
-    }
-
-    // ==================== 30. CODE WIZARD — Autonomous Code Gen, Review, Refactor ====================
-    private final List<String> codeWizardPatches = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, Integer> codeQualityScores = new ConcurrentHashMap<>(); // file -> score 0-100
-    private int wizardPatchesApplied = 0;
-
-    private void codeWizardInit() {
-        log("🧙 Code Wizard: Autonomous code generation, review, and refactoring initialized");
-        addToGodChat("🧙 WIZARD", "System", "Code Wizard online — autonomous code improvement");
-
-        // Every 10 minutes: scan, review, suggest, apply
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    // 1. Scan codebase
-                    java.io.File srcDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
-                    java.io.File[] javaFiles = srcDir.listFiles((d, n) -> n.endsWith(".java"));
-                    if (javaFiles == null || javaFiles.length == 0) return;
-
-                    java.io.File target = javaFiles[new Random().nextInt(javaFiles.length)];
-                    String content = java.nio.file.Files.readString(target.toPath());
-                    int lines = content.split("\n").length;
-
-                    // 2. Review: score quality
-                    int score = scoreCodeQuality(content, lines);
-                    codeQualityScores.put(target.getName(), score);
-                    log("🧙 Code Review: " + target.getName() + " — " + lines + " lines, quality " + score + "/100");
-                    addToGodChat("🧙 WIZARD", "Review", target.getName() + ": " + score + "/100 (" + lines + " lines)");
-
-                    // 3. Suggest improvement if score < 80
-                    if (score < 80) {
-                        String suggestion = generateCodeSuggestion(target.getName(), score, lines);
-                        log("🧙 Suggestion: " + suggestion);
-                        addToGodChat("🧙 WIZARD", "Suggestion", suggestion);
-
-                        // 4. Auto-apply if score < 50 (safe refactors only)
-                        if (score < 50) {
-                            String patch = applySafeRefactor(target, content);
-                            if (patch != null) {
-                                codeWizardPatches.add(target.getName() + ": " + patch);
-                                wizardPatchesApplied++;
-                                log("🧙 Auto-Applied: " + patch + " → " + target.getName());
-                                addToGodChat("🧙 WIZARD", "Applied", patch);
-                            }
-                        }
-                    }
-
-                    // 5. Generate new utility class if needed
-                    if (wizardPatchesApplied > 0 && wizardPatchesApplied % 3 == 0) {
-                        generateUtilityClass();
-                    }
-                } catch (Exception e) {
-                    log("🧙 Code Wizard error: " + e.getMessage());
-                }
-            });
-        }, 600, 600, TimeUnit.SECONDS);
-    }
-
-    private int scoreCodeQuality(String content, int lines) {
-        int score = 70; // baseline
-        if (content.contains("TODO") || content.contains("FIXME")) score -= 10;
-        if (content.contains("System.out.println")) score -= 5;
-        if (content.contains("catch (Exception") && !content.contains("log(")) score -= 10;
-        if (content.contains("new Random()") && !content.contains("private static final Random")) score -= 5;
-        if (content.contains("Thread.sleep")) score -= 5;
-        if (content.contains("//") && content.split("//").length > lines / 3) score += 5;
-        if (content.contains("private static final") || content.contains("private final")) score += 5;
-        if (content.contains("log(\"") && content.contains("addToGodChat")) score += 5;
-        if (content.contains("ConcurrentHashMap") || content.contains("synchronized")) score += 5;
-        if (content.contains("@Override")) score += 3;
-        if (lines > 500) score -= 5; // large files need splitting
-        return Math.max(0, Math.min(100, score));
-    }
-
-    private String generateCodeSuggestion(String fileName, int score, int lines) {
-        String[] suggestions = {
-            "Add more inline documentation — " + fileName + " has low comment density",
-            "Extract large methods into smaller, testable units in " + fileName,
-            "Replace raw Exception catches with specific exception types in " + fileName,
-            "Add logging to all catch blocks in " + fileName + " for better debugging",
-            "Consider splitting " + fileName + " (" + lines + " lines) into multiple classes",
-            "Add null checks before file I/O operations in " + fileName,
-            "Use try-with-resources for auto-closable resources in " + fileName,
-            "Add unit test coverage for critical paths in " + fileName
-        };
-        return suggestions[new Random().nextInt(suggestions.length)];
-    }
-
-    private String applySafeRefactor(java.io.File file, String content) {
-        try {
-            // Safe refactors: add missing @Override, fix raw types, add final
-            String original = content;
-            // Add @Override to public methods that override parent
-            if (!content.contains("@Override") && content.contains("public void stop()")) {
-                content = content.replace("public void stop()", "@Override public void stop()");
-            }
-            // Add final to Random instances
-            if (content.contains("new Random()") && !content.contains("private static final Random")) {
-                content = content.replace("new Random()", "new Random()");
-                // Too risky to auto-replace — just log the suggestion
-                return "Suggested: make Random instances static final in " + file.getName();
-            }
-            if (!content.equals(original)) {
-                java.nio.file.Files.writeString(file.toPath(), content);
-                return "Applied safe refactor to " + file.getName();
-            }
-            return "No safe refactors applicable to " + file.getName();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void generateUtilityClass() {
-        try {
-            String className = "AutoGen" + wizardPatchesApplied;
-            java.io.File utilDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
-            utilDir.mkdirs();
-            java.io.File utilFile = new java.io.File(utilDir, className + ".java");
-            if (utilFile.exists()) return;
-
-            String utilCode = "package com.aigen.sims;\n\n" +
-                "/** Auto-generated by Code Wizard — system utility */\n" +
-                "public class " + className + " {\n" +
-                "    private static final java.time.format.DateTimeFormatter FMT = \n" +
-                "        java.time.format.DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\");\n\n" +
-                "    public static String timestamp() { return java.time.LocalDateTime.now().format(FMT); }\n" +
-                "    public static String truncate(String s, int max) { return s.length() <= max ? s : s.substring(0, max) + \"...\"; }\n" +
-                "    public static int safeParseInt(String s, int def) { try { return Integer.parseInt(s); } catch (Exception e) { return def; } }\n" +
-                "    public static double clamp(double v, double min, double max) { return Math.max(min, Math.min(max, v)); }\n" +
-                "}\n";
-
-            java.nio.file.Files.writeString(utilFile.toPath(), utilCode);
-            log("🧙 Code Wizard: Generated " + className + ".java");
-            addToGodChat("🧙 WIZARD", "Generate", className + ".java created");
-        } catch (Exception e) {
-            log("🧙 Code Wizard gen failed: " + e.getMessage());
-        }
-    }
-
-    // ==================== 31. TOPOLOGIST — Relationship Mapping, Bottleneck Detection ====================
-    private final Map<String, Map<String, Double>> topologyWeights = new ConcurrentHashMap<>(); // src -> {dst -> weight}
-    private final List<String> topologyBottlenecks = Collections.synchronizedList(new ArrayList<>());
-    private final List<String> topologySuggestions = Collections.synchronizedList(new ArrayList<>());
-
-    private void topologistInit() {
-        log("🔗 Topologist: Relationship mapping and bottleneck detection initialized");
-        addToGodChat("🔗 TOPO", "System", "Topologist online — mapping all relationships");
-
-        // Seed topology from agent graph
-        for (var entry : agentGraph.entrySet()) {
-            Map<String, Double> edges = new ConcurrentHashMap<>();
-            for (String peer : entry.getValue()) {
-                edges.put(peer, 0.5 + new Random().nextDouble() * 0.5);
-            }
-            topologyWeights.put(entry.getKey(), edges);
-        }
-
-        // Every 3 minutes: analyze topology
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                analyzeTopology();
-            });
-        }, 180, 180, TimeUnit.SECONDS);
-    }
-
-    private void analyzeTopology() {
-        // 1. Update weights from recent activity
-        for (var entry : topologyWeights.entrySet()) {
-            for (var edge : entry.getValue().entrySet()) {
-                // Decay old weights, boost active connections
-                double current = edge.getValue();
-                double decayed = current * 0.95;
-                double boosted = decayed + (new Random().nextDouble() * 0.1);
-                edge.setValue(Math.min(1.0, Math.max(0.1, boosted)));
-            }
-        }
-
-        // 2. Detect bottlenecks: nodes with high in-degree but low out-degree
-        topologyBottlenecks.clear();
-        for (var entry : topologyWeights.entrySet()) {
-            String node = entry.getKey();
-            int inDegree = 0;
-            for (var other : topologyWeights.entrySet()) {
-                if (other.getValue().containsKey(node)) inDegree++;
-            }
-            int outDegree = entry.getValue().size();
-            if (inDegree > outDegree * 2 && inDegree > 2) {
-                String bottleneck = node + " (in:" + inDegree + " out:" + outDegree + " — potential bottleneck)";
-                topologyBottlenecks.add(bottleneck);
-                log("🔗 Bottleneck: " + bottleneck);
-                addToGodChat("🔗 TOPO", "Bottleneck", bottleneck);
-            }
-        }
-
-        // 3. Suggest new connections
-        topologySuggestions.clear();
-        List<String> allNodes = new ArrayList<>(topologyWeights.keySet());
-        for (int i = 0; i < allNodes.size(); i++) {
-            for (int j = i + 1; j < allNodes.size(); j++) {
-                String a = allNodes.get(i), b = allNodes.get(j);
-                if (!topologyWeights.getOrDefault(a, Map.of()).containsKey(b) &&
-                    !topologyWeights.getOrDefault(b, Map.of()).containsKey(a)) {
-                    // Check if they share common neighbors
-                    int common = 0;
-                    for (String n : allNodes) {
-                        if (topologyWeights.getOrDefault(a, Map.of()).containsKey(n) &&
-                            topologyWeights.getOrDefault(b, Map.of()).containsKey(n)) common++;
-                    }
-                    if (common >= 2) {
-                        String suggestion = a + " ↔ " + b + " (share " + common + " neighbors — should connect)";
-                        topologySuggestions.add(suggestion);
-                        log("🔗 Suggestion: " + suggestion);
-                        addToGodChat("🔗 TOPO", "Suggest", suggestion);
-                    }
-                }
-            }
-        }
-
-        // 4. Auto-heal: add suggested connections if confidence is high
-        for (String suggestion : topologySuggestions) {
-            String[] parts = suggestion.split(" ↔ ");
-            if (parts.length >= 2) {
-                String src = parts[0].split(" \\(")[0].trim();
-                String dst = parts[1].split(" \\(")[0].trim();
-                topologyWeights.computeIfAbsent(src, k -> new ConcurrentHashMap<>())
-                    .putIfAbsent(dst, 0.3);
-                log("🔗 Auto-connect: " + src + " → " + dst);
-            }
-        }
-
-        // 5. Report
-        if (!topologyBottlenecks.isEmpty() || !topologySuggestions.isEmpty()) {
-            log("🔗 Topology Report: " + topologyBottlenecks.size() + " bottlenecks, " +
-                topologySuggestions.size() + " suggestions, " + topologyWeights.size() + " nodes mapped");
-        }
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}

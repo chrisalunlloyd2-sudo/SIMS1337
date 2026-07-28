@@ -2,6 +2,42 @@
 
 ---
 
+## [0.18.1] - 2026-07-28 - FOW VOTING HOOKUP
+
+### Added — FOW-Gated Voting System
+- **modelAgentMap**: 6 models assigned to 3 agents (Alpha/Beta/Gamma) for FOW visibility
+- **proposalHex**: Each proposal tagged with hex coordinate for spatial FOW gating
+- **isHexVisibleToModel()**: Checks 1-hop axial hex distance between model's agent and proposal hex
+- **FOW-gated castVote()**: Models outside visibility range record "BLIND" vote, cannot approve/reject
+- **BLIND vote tracking**: Separate 🌫️ display in proposal status for models blocked by FOW
+- **Hex column in proposal table**: Shows which hex each proposal anchors to
+
+### Changed
+- Proposal table expanded from 5→6 columns (added Hex)
+- `updateProposalStatus()` handles BLIND votes — "🌫️ BLINDED" when majority can't see
+- Night cycle auto-vote now FOW-aware (models only vote on visible proposals)
+- Hex TODO at (0,0) "Wire FOW to all 8 models" → marked ✅ done
+
+### Model→Agent Assignments
+| Model | Agent | Hex |
+|-------|-------|-----|
+| qwen2.5:0.5b | Agent Alpha | (0,0) |
+| tinyllama:1.1b | Agent Alpha | (0,0) |
+| phi:latest | Agent Beta | (3,-2) |
+| phi3:mini | Agent Beta | (3,-2) |
+| llama3.2:1b | Agent Gamma | (-3,2) |
+| deepseek-r1:1.5b | Agent Gamma | (-3,2) |
+
+### Proposal→Hex Anchors
+| Proposal | Hex |
+|----------|-----|
+| Add WebSocket support | (1,0) |
+| Implement Markov reviews | (-1,-1) |
+| Deploy to production | (0,0) |
+| Refactor ModelRouter | (2,-1) |
+
+---
+
 ## [0.2.0] - 2026-07-19 - PHASE 2A COMPLETE
 
 ### Added - Core Routing
