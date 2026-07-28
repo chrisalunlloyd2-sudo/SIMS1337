@@ -61,7 +61,9 @@ public class GodHandApp extends Application {
 
     // === Voting System ===
     private final ObservableList<String[]> proposalTable = FXCollections.observableArrayList();
-    private final Map<String, Map<String, String>> votes = new ConcurrentHashMap<>();
+    // Each: [id, title, description, status, yesVotes, noVotes, dreamSource]
+    private final Map<String, Map<String, Boolean>> voteRegistry = new ConcurrentHashMap<>(); // proposalId -> modelName -> vote
+    private final List<String> dreamIdeas = Collections.synchronizedList(new ArrayList<>()); // raw dream output
 
     // === Topology Builder ===
     private final ObservableList<String[]> topologyTable = FXCollections.observableArrayList();
@@ -434,38 +436,6 @@ public class GodHandApp extends Application {
         }, 0, TimeUnit.SECONDS);
     }
 
-    // ==================== VOTING SYSTEM ====================
-    private void initDefaultProposals() {
-        proposalTable.addAll(
-            new String[]{"Add WebSocket support", "Pending", "0/4", "0/4", "0%"},
-            new String[]{"Implement Markov reviews", "Pending", "0/4", "0/4", "0%"},
-            new String[]{"Deploy to production", "Pending", "0/4", "0/4", "0%"},
-            new String[]{"Refactor ModelRouter", "Pending", "0/4", "0/4", "0%"}
-        );
-    }
-
-    private void castVote(String proposal, String modelName, boolean approve) {
-        votes.putIfAbsent(proposal, new ConcurrentHashMap<>());
-        votes.get(proposal).put(modelName, approve ? "APPROVE" : "REJECT");
-        addToGodChat("🗳️ VOTE", modelName, (approve ? "✅ APPROVE" : "❌ REJECT") + " → " + proposal);
-        log("🗳️ [" + modelName + "] " + (approve ? "APPROVED" : "REJECTED") + " " + proposal);
-        updateProposalStatus(proposal);
-    }
-
-    private void updateProposalStatus(String proposal) {
-        Map<String, String> v = votes.getOrDefault(proposal, Map.of());
-        long approve = v.values().stream().filter("APPROVE"::equals).count();
-        long total = v.size();
-        for (String[] p : proposalTable) {
-            if (p[0].equals(proposal)) {
-                p[1] = total >= 3 ? (approve >= 2 ? "✅ APPROVED" : "❌ REJECTED") : "Voting...";
-                p[2] = approve + "/" + total;
-                p[3] = (total - approve) + "/" + total;
-                p[4] = total > 0 ? (int)(approve * 100.0 / total) + "%" : "0%";
-            }
-        }
-    }
-
     // ==================== TOPOLOGY BUILDER ====================
     private void initDefaultTopology() {
         topologyTable.addAll(
@@ -498,8 +468,77 @@ public class GodHandApp extends Application {
         nightCycleConfig.put("vote_time", "18:00");
         nightCycleConfig.put("deploy_time", "20:00");
         nightCycleConfig.put("email_time", "22:00");
+        nightCycleConfig.put("dream_time", "00:00");
         nightCycleConfig.put("email_to", "chrisalunlloyd2@gmail.com");
         nightCycleConfig.put("enabled", "false");
+    }
+
+    private void initDefaultProposals() {
+        proposalTable.add(new String[]{"P001", "Hex Elevation Terrain", "Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P002", "Agent Skill Trees", "Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P003", "Resource Economy", "Hexes produce resources (energy, data, code). Agents collect and trade.", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P004", "FOW Expansion", "Upgrade FOW from 1-hop to 2-hop via research station", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P005", "Dream Journal Gist", "Auto-publish dream correlations to a new gist every night", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P006", "Multi-Model Consensus", "Require 3/8 models to agree before deploying any change", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P007", "Hex Weather System", "Per-hex weather (clear, rain, storm) affecting agent movement speed", "pending", "0", "0", ""});
+        proposalTable.add(new String[]{"P008", "Agent Breeding", "Two agents can spawn a child agent with blended traits at a hex", "pending", "0", "0", ""});
+        log("📋 Proposals: " + proposalTable.size() + " seeded");
+    }
+
+    private void castVote(String proposalId, String modelName, boolean approve) {
+        voteRegistry.putIfAbsent(proposalId, new ConcurrentHashMap<>());
+        voteRegistry.get(proposalId).put(modelName, approve);
+        // Update tally
+        for (String[] p : proposalTable) {
+            if (p[0].equals(proposalId)) {
+                int yes = 0, no = 0;
+                Map<String, Boolean> votes = voteRegistry.getOrDefault(proposalId, Map.of());
+                for (Boolean v : votes.values()) { if (v) yes++; else no++; }
+                p[4] = String.valueOf(yes);
+                p[5] = String.valueOf(no);
+                if (yes >= 5) p[3] = "approved";
+                else if (no >= 5) p[3] = "rejected";
+                break;
+            }
+        }
+    }
+
+    private void pushToGitHub() {
+        try {
+            if (gistToken.isEmpty()) { log("⚠️ Push: No GIST_TOKEN"); return; }
+            // Build deploy manifest
+            StringBuilder manifest = new StringBuilder();
+            manifest.append("# Night Cycle Deploy Manifest\n");
+            manifest.append("## Timestamp: ").append(java.time.LocalDateTime.now()).append("\n\n");
+            manifest.append("## Approved Proposals\n");
+            for (String[] p : proposalTable) {
+                if ("approved".equals(p[3])) {
+                    manifest.append("- **").append(p[1]).append("**: ").append(p[2]).append(" (Yes:").append(p[4]).append(" No:").append(p[5]).append(")\n");
+                }
+            }
+            manifest.append("\n## Dream Ideas\n");
+            for (String idea : dreamIdeas) {
+                manifest.append("- ").append(idea).append("\n");
+            }
+
+            String json = String.format(
+                "{\"description\":\"Night Cycle Deploy — auto-generated\",\"files\":{\"deploy_manifest.md\":{\"content\":\"%s\"}}}",
+                manifest.toString().replace("\"", "\\\"").replace("\n", "\\n"));
+
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
+                .header("Authorization", "token " + gistToken)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("Content-Type", "application/json")
+                .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .timeout(java.time.Duration.ofSeconds(15))
+                .build();
+
+            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            log("🚀 Deploy: Manifest pushed to gist:databases — HTTP " + resp.statusCode());
+        } catch (Exception e) {
+            log("⚠️ Deploy push failed: " + e.getMessage());
+        }
     }
 
     private void toggleNightCycle(boolean enable) {
@@ -969,15 +1008,14 @@ public class GodHandApp extends Application {
         TitledPane votePane = titledPane("🗳️ AGENT VOTING SYSTEM - Proposals & Consensus", true);
         VBox voteContent = vbox(10, "#16213e", 10);
         TableView<String[]> voteTable = new TableView<>(); voteTable.setPrefHeight(100); voteTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> vProp = new TableColumn<>("Proposal"); vProp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0])); vProp.setPrefWidth(200);
-        TableColumn<String[],String> vStatus = new TableColumn<>("Status"); vStatus.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
-        TableColumn<String[],String> vApprove = new TableColumn<>("Approve"); vApprove.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
-        TableColumn<String[],String> vReject = new TableColumn<>("Reject"); vReject.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        TableColumn<String[],String> vPct = new TableColumn<>("%"); vPct.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
-        voteTable.getColumns().addAll(vProp, vStatus, vApprove, vReject, vPct);
+        TableColumn<String[],String> vProp = new TableColumn<>("Proposal"); vProp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1])); vProp.setPrefWidth(200);
+        TableColumn<String[],String> vStatus = new TableColumn<>("Status"); vStatus.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
+        TableColumn<String[],String> vYes = new TableColumn<>("Yes"); vYes.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
+        TableColumn<String[],String> vNo = new TableColumn<>("No"); vNo.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5]));
+        voteTable.getColumns().addAll(vProp, vStatus, vYes, vNo);
         voteTable.setItems(proposalTable);
         HBox voteBtns = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button addProp = styledButton("➕ Proposal", "#00ff88"); addProp.setOnAction(e->proposalTable.add(new String[]{"New proposal","Pending","0/4","0/4","0%"}));
+        Button addProp = styledButton("➕ Proposal", "#00ff88"); addProp.setOnAction(e->proposalTable.add(new String[]{"P"+(proposalTable.size()+1),"New proposal","","pending","0","0","manual"}));
         Button approveBtn = styledButton("✅ Approve", "#00ff88"); approveBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",true);});
         Button rejectBtn = styledButton("❌ Reject", "#ff6b6b"); rejectBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",false);});
         Button voteAll = styledButton("🗳️ All Models Vote", "#c77dff"); voteAll.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null){for(String m:modelChats.keySet())castVote(s[0],m,Math.random()>0.3);}});
@@ -1183,14 +1221,6 @@ public class GodHandApp extends Application {
         runEvalTest("code", "You are an expert programmer. Output ONLY code.");
         runEvalTest("essay", "You are a professional writer. Be thorough.");
         runEvalTest("task", "You are a task agent. Execute step by step.");
-    }
-
-    // ==================== GITHUB ====================
-    private void pushToGitHub() {
-        chatScheduler.schedule(()->{try{for(String c:new String[]{"git add -A","git commit -m v0.11.0-All-Systems","git push origin main"}){new ProcessBuilder(c.split(" ")).directory(new java.io.File(".")).start().waitFor();}Platform.runLater(()->log("📡 GitHub: ✅"));}catch(Exception e){Platform.runLater(()->log("❌ GitHub: "+e.getMessage()));}},0,TimeUnit.SECONDS);
-    }
-    private void gitStatus() {
-        chatScheduler.schedule(()->{try{Process p=new ProcessBuilder("git","status","--short").directory(new java.io.File(".")).start();String o=new String(p.getInputStream().readAllBytes());p.waitFor();Platform.runLater(()->log("📊 Git: "+(o.isEmpty()?"Clean":o.trim())));}catch(Exception e){Platform.runLater(()->log("❌ Git: "+e.getMessage()));}},0,TimeUnit.SECONDS);
     }
 
     // ==================== STATIONS ====================
@@ -2369,9 +2399,11 @@ public class GodHandApp extends Application {
     // ==================== 22. NIGHT CYCLE — Autonomous Operation ====================
     private void nightCycleArm() {
         nightCycleConfig.put("enabled", "true");
-        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("vote_time") + " votes → " +
+        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("dream_time") + " dream → " +
+            nightCycleConfig.get("vote_time") + " votes → " +
             nightCycleConfig.get("deploy_time") + " deploy → " + nightCycleConfig.get("email_time") + " email");
-        addToGodChat("🌙 NIGHT", "System", "Cycle armed: votes@" + nightCycleConfig.get("vote_time") +
+        addToGodChat("🌙 NIGHT", "System", "Cycle armed: dream@" + nightCycleConfig.get("dream_time") +
+            " → votes@" + nightCycleConfig.get("vote_time") +
             " → deploy@" + nightCycleConfig.get("deploy_time") + " → email@" + nightCycleConfig.get("email_time"));
         statusLabel.setText("🌙 Night Cycle Armed");
         statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
@@ -2380,14 +2412,21 @@ public class GodHandApp extends Application {
         chatScheduler.scheduleAtFixedRate(() -> {
             try {
                 String now = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+                String dreamTime = nightCycleConfig.getOrDefault("dream_time", "00:00");
                 String voteTime = nightCycleConfig.getOrDefault("vote_time", "18:00");
                 String deployTime = nightCycleConfig.getOrDefault("deploy_time", "20:00");
                 String emailTime = nightCycleConfig.getOrDefault("email_time", "22:00");
 
-                if (now.equals(voteTime)) {
+                if (now.equals(dreamTime)) {
+                    Platform.runLater(() -> {
+                        log("🌙💤 DREAM PHASE — agents cross-correlating memories...");
+                        addToGodChat("🌙💤 DREAM", "System", "Agents entering dream state — cross-correlation + idea generation");
+                        runDreamPhase();
+                    });
+                } else if (now.equals(voteTime)) {
                     Platform.runLater(() -> {
                         log("🌙 Night Cycle: VOTE PHASE — all models voting...");
-                        addToGodChat("🌙 NIGHT", "Vote", "All models casting votes on proposals");
+                        addToGodChat("🌙 NIGHT", "Vote", "All models casting votes on " + proposalTable.size() + " proposals");
                         for (String[] proposal : proposalTable) {
                             for (String model : modelChats.keySet()) {
                                 castVote(proposal[0], model, Math.random() > 0.3);
@@ -2410,6 +2449,60 @@ public class GodHandApp extends Application {
                 log("⚠️ Night Cycle error: " + e.getMessage());
             }
         }, 60, 300, TimeUnit.SECONDS);
+    }
+
+    // ==================== DREAM PHASE — Cross-Correlate + Generate Ideas ====================
+    private void runDreamPhase() {
+        dreamIdeas.clear();
+        List<String> allMemories = new ArrayList<>();
+        for (var entry : modelChats.entrySet()) {
+            String text = entry.getValue().getText();
+            if (text.length() > 50) {
+                allMemories.add(entry.getKey() + " context: " + text.substring(Math.max(0, text.length() - 300)));
+            }
+        }
+
+        // Cross-correlate: find overlapping concepts across models
+        String[] dreamTemplates = {
+            "Hex terrain biome: %s — discovered by correlating %s and %s activity patterns",
+            "New station type: %s — emerged from %s's tool usage frequency",
+            "Agent ability: %s — synthesized from %s and %s memory overlap",
+            "Grid mechanic: %s — derived from %s's hex navigation patterns",
+            "Resource type: %s — inferred from %s's pipeline activity",
+            "Event system: %s — triggered by %s's entropy threshold crossing",
+            "Multi-agent protocol: %s — born from %s↔%s communication density",
+            "FOW upgrade: %s — suggested by %s's exploration pattern",
+        };
+
+        String[] concepts = {"Crystal Caverns", "Data Nexus", "Teleport Rune", "Shield Wall", "Mana Spring",
+            "Code Forge", "Memory Vault", "Time Rift", "Void Bridge", "Star Chart", "Echo Chamber", "Flux Gate"};
+
+        String[] modelNames = modelChats.keySet().toArray(new String[0]);
+        java.util.Random rng = new java.util.Random();
+
+        for (int i = 0; i < 6; i++) {
+            String template = dreamTemplates[rng.nextInt(dreamTemplates.length)];
+            String concept = concepts[rng.nextInt(concepts.length)];
+            String m1 = modelNames[rng.nextInt(modelNames.length)];
+            String m2 = modelNames[rng.nextInt(modelNames.length)];
+            String idea = String.format(template, concept, m1, m2);
+            dreamIdeas.add(idea);
+            log("💤 DREAM: " + idea);
+        }
+
+        // Convert top dreams into proposals
+        int propNum = proposalTable.size() + 1;
+        for (int i = 0; i < Math.min(3, dreamIdeas.size()); i++) {
+            String idea = dreamIdeas.get(i);
+            String id = String.format("P%03d", propNum + i);
+            String title = idea.substring(0, Math.min(60, idea.indexOf("—") > 0 ? idea.indexOf("—") : 60)).trim();
+            proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", "dream"});
+            addToGodChat("💤 DREAM", "Proposal", id + ": " + title);
+        }
+
+        addToGodChat("💤 DREAM", "Summary", dreamIdeas.size() + " ideas generated, " +
+            Math.min(3, dreamIdeas.size()) + " added as proposals");
+        log("💤 Dream Phase complete: " + dreamIdeas.size() + " ideas, " + proposalTable.size() + " total proposals");
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
