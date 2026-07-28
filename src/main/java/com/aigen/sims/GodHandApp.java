@@ -2425,11 +2425,13 @@ public class GodHandApp extends Application {
                     });
                 } else if (now.equals(voteTime)) {
                     Platform.runLater(() -> {
-                        log("🌙 Night Cycle: VOTE PHASE — all models voting...");
-                        addToGodChat("🌙 NIGHT", "Vote", "All models casting votes on " + proposalTable.size() + " proposals");
+                        log("🌙 Night Cycle: VOTE PHASE — models voting by role...");
+                        addToGodChat("🌙 NIGHT", "Vote", "All models casting role-based votes on " + proposalTable.size() + " proposals");
                         for (String[] proposal : proposalTable) {
+                            String category = proposal.length > 6 ? proposal[6] : "unknown";
                             for (String model : modelChats.keySet()) {
-                                castVote(proposal[0], model, Math.random() > 0.3);
+                                boolean approve = roleBasedVote(model, category, proposal[2]);
+                                castVote(proposal[0], model, approve);
                             }
                         }
                     });
@@ -2451,7 +2453,7 @@ public class GodHandApp extends Application {
         }, 60, 300, TimeUnit.SECONDS);
     }
 
-    // ==================== DREAM PHASE — Cross-Correlate + Generate Ideas ====================
+    // ==================== DREAM PHASE — Cross-Correlate + Generate Game Mechanics ====================
     private void runDreamPhase() {
         dreamIdeas.clear();
         List<String> allMemories = new ArrayList<>();
@@ -2462,25 +2464,55 @@ public class GodHandApp extends Application {
             }
         }
 
-        // Cross-correlate: find overlapping concepts across models
+        // Real game mechanics — logic systems, node types, tools, backend additions
         String[] dreamTemplates = {
-            "Hex terrain biome: %s — discovered by correlating %s and %s activity patterns",
-            "New station type: %s — emerged from %s's tool usage frequency",
-            "Agent ability: %s — synthesized from %s and %s memory overlap",
-            "Grid mechanic: %s — derived from %s's hex navigation patterns",
-            "Resource type: %s — inferred from %s's pipeline activity",
-            "Event system: %s — triggered by %s's entropy threshold crossing",
-            "Multi-agent protocol: %s — born from %s↔%s communication density",
-            "FOW upgrade: %s — suggested by %s's exploration pattern",
+            // LOGIC SYSTEMS
+            "Logic System: %s — %s detected pattern in %s's output, proposing new evaluation engine",
+            "Logic System: %s — cross-correlation of %s and %s revealed need for new scoring algorithm",
+            // NODE TYPES
+            "Node Type: %s — %s's topology analysis suggests new station class from %s's activity",
+            "Node Type: %s — %s and %s communication density warrants dedicated relay node",
+            // TOOLS
+            "Tool: %s — %s used %s's output pattern to design new agent capability",
+            "Tool: %s — frequency analysis of %s's tool usage suggests missing primitive",
+            // BACKEND SYSTEMS
+            "Backend: %s — %s's error patterns indicate need for new recovery system (via %s)",
+            "Backend: %s — %s and %s memory overlap reveals unhandled state transition",
+            // AGENT ABILITIES
+            "Agent Ability: %s — %s's hex navigation pattern suggests new movement mechanic",
+            "Agent Ability: %s — %s's voting history with %s reveals coordination upgrade path",
+            // GRID MECHANICS
+            "Grid Mechanic: %s — %s's FOW exploration density suggests terrain feature",
+            "Grid Mechanic: %s — %s's pipeline activity with %s indicates resource flow pattern",
         };
 
-        String[] concepts = {"Crystal Caverns", "Data Nexus", "Teleport Rune", "Shield Wall", "Mana Spring",
-            "Code Forge", "Memory Vault", "Time Rift", "Void Bridge", "Star Chart", "Echo Chamber", "Flux Gate"};
+        String[] concepts = {
+            // Logic systems
+            "Markov Chain Evaluator", "Bayesian Vote Weighting", "Entropy-Based Task Router",
+            "Shannon Entropy Scorer", "Lexical Math Engine v2", "Pattern Recognition Pipeline",
+            // Node types
+            "Relay Station", "Cache Node", "Broadcast Hub", "Filter Gate", "Aggregator Node",
+            "Validator Node", "Sentry Post", "Trade Post",
+            // Tools
+            "hex_scan tool", "memory_merge tool", "topology_check tool", "vote_weight tool",
+            "pattern_match tool", "state_diff tool", "gist_pull tool", "model_compare tool",
+            // Backend systems
+            "Auto-Recovery Engine", "State Machine Validator", "Consensus Tracker",
+            "Resource Ledger", "Event Bus System", "Snapshot Manager",
+            // Agent abilities
+            "Double-Jump (2-hex move)", "Teleport (any hex, 10min cooldown)",
+            "Scout (reveal 2-hop FOW)", "Build (place station on hex)",
+            "Trade (exchange resources)", "Merge (combine with another agent)",
+            // Grid mechanics
+            "Hex Resource Veins", "Elevation Bonuses (higher Z = more resources)",
+            "Weather Zones (rain/sun/storm)", "Portal Pairs (linked hexes)",
+            "Terrain Types (water/plains/forest/mountain)", "FOW Decay (unvisited hexes fade)",
+        };
 
         String[] modelNames = modelChats.keySet().toArray(new String[0]);
         java.util.Random rng = new java.util.Random();
 
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < 8; i++) {
             String template = dreamTemplates[rng.nextInt(dreamTemplates.length)];
             String concept = concepts[rng.nextInt(concepts.length)];
             String m1 = modelNames[rng.nextInt(modelNames.length)];
@@ -2492,17 +2524,66 @@ public class GodHandApp extends Application {
 
         // Convert top dreams into proposals
         int propNum = proposalTable.size() + 1;
-        for (int i = 0; i < Math.min(3, dreamIdeas.size()); i++) {
+        for (int i = 0; i < Math.min(4, dreamIdeas.size()); i++) {
             String idea = dreamIdeas.get(i);
             String id = String.format("P%03d", propNum + i);
-            String title = idea.substring(0, Math.min(60, idea.indexOf("—") > 0 ? idea.indexOf("—") : 60)).trim();
-            proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", "dream"});
-            addToGodChat("💤 DREAM", "Proposal", id + ": " + title);
+            // Extract category from template
+            String category = idea.startsWith("Logic System:") ? "logic" :
+                idea.startsWith("Node Type:") ? "node" :
+                idea.startsWith("Tool:") ? "tool" :
+                idea.startsWith("Backend:") ? "backend" :
+                idea.startsWith("Agent Ability:") ? "ability" : "grid";
+            String title = idea.substring(idea.indexOf(":") + 2, Math.min(80, idea.indexOf("—") > 0 ? idea.indexOf("—") : 80)).trim();
+            proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", category});
+            addToGodChat("💤 DREAM", "Proposal", id + " [" + category + "]: " + title);
         }
 
-        addToGodChat("💤 DREAM", "Summary", dreamIdeas.size() + " ideas generated, " +
-            Math.min(3, dreamIdeas.size()) + " added as proposals");
-        log("💤 Dream Phase complete: " + dreamIdeas.size() + " ideas, " + proposalTable.size() + " total proposals");
+        addToGodChat("💤 DREAM", "Summary", dreamIdeas.size() + " game mechanics generated, " +
+            Math.min(4, dreamIdeas.size()) + " added as proposals");
+        log("💤 Dream Phase complete: " + dreamIdeas.size() + " mechanics, " + proposalTable.size() + " total proposals");
+    }
+
+    // ==================== ROLE-BASED VOTING — Each model votes by specialty ====================
+    private boolean roleBasedVote(String modelName, String category, String description) {
+        // Model specialties
+        Map<String, String[]> specialties = Map.of(
+            "deepseek-r1:1.5b", new String[]{"logic", "backend", "tool"},     // Deep thinker: logic + systems
+            "phi3:mini", new String[]{"logic", "backend", "node"},           // Deep reasoning: logic + topology
+            "phi:latest", new String[]{"logic", "tool", "ability"},           // Reasoning: logic + tools
+            "codellama:7b", new String[]{"tool", "backend", "node"},         // Code: tools + systems
+            "llama3.2:1b", new String[]{"tool", "ability", "grid"},           // Tool user: tools + abilities
+            "tinyllama:1.1b", new String[]{"ability", "grid", "node"},       // Balanced: abilities + grid
+            "gemma2:2b", new String[]{"node", "grid", "backend"},            // Balanced: topology + grid
+            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"}          // Fast: grid + abilities
+        );
+
+        String[] preferred = specialties.getOrDefault(modelName, new String[]{"logic", "tool", "grid"});
+        java.util.Random rng = new java.util.Random();
+
+        // Base approval chance
+        double baseChance = 0.65;
+
+        // Boost if category matches model's specialty
+        for (String pref : preferred) {
+            if (category.equals(pref)) {
+                baseChance += 0.25; // +25% for specialty match
+                break;
+            }
+        }
+
+        // Boost for high-quality descriptions (longer = more detailed)
+        if (description.length() > 80) baseChance += 0.10;
+
+        // Penalty for off-specialty
+        boolean onSpecialty = false;
+        for (String pref : preferred) {
+            if (category.equals(pref)) { onSpecialty = true; break; }
+        }
+        if (!onSpecialty) baseChance -= 0.15;
+
+        boolean approve = rng.nextDouble() < baseChance;
+        log("🗳️ [" + modelName + "] " + (approve ? "✅" : "❌") + " [" + category + "] (chance: " + String.format("%.0f%%", baseChance*100) + ")");
+        return approve;
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
