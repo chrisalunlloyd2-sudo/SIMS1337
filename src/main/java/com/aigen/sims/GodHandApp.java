@@ -316,8 +316,9 @@ public class GodHandApp extends Application {
 
     /** Paced SLM dreaming — round-robin one model at a time, rate-limited.
      *  "Nothing lives forever, nothing runs for free."
-     *  Each model gets ONE call per round, with 2s global gap between calls.
-     *  6 models × 2s gap = ~12s per round. No infinite loops. */
+     *  Finite rounds: 10 rounds × 6 models × 2s gap = ~2 min, then stops.
+     *  Manual loop toggle can restart. */
+    private static final int MAX_DREAM_ROUNDS = 10; // 10 full rounds, then done
     private void startAllModelLoops() {
         chatScheduler.schedule(() -> {
             Platform.runLater(() -> {
@@ -327,34 +328,26 @@ public class GodHandApp extends Application {
                     loopCounts.put(modelName, 0);
                     started++;
                 }
-                log("🌙 SLM Dreaming: " + started + " models in paced round-robin (2s gap)");
-                addToGodChat("🌙 DREAM", "System", started + " models dreaming — paced, rate-limited");
-                // Start the single paced round-robin loop
+                log("🌙 SLM Dreaming: " + started + " models, " + MAX_DREAM_ROUNDS + " rounds (2s gap)");
+                addToGodChat("🌙 DREAM", "System", started + " models × " + MAX_DREAM_ROUNDS + " rounds — finite, paced");
                 runPacedRoundRobin();
             });
         }, 3, TimeUnit.SECONDS);
     }
 
-    /** Single paced round-robin: one model at a time, 2s gap, no infinite per-model loops */
+    /** Finite paced round-robin: MAX_DREAM_ROUNDS full rounds, then stops. */
     private void runPacedRoundRobin() {
         chatScheduler.schedule(() -> {
             String[] models = modelChats.keySet().toArray(new String[0]);
-            int idx = 0;
-            while (true) {
-                if (models.length == 0) break;
-                String modelName = models[idx % models.length];
-                idx++;
-
-                // Check if this model's loop is still active
+            if (models.length == 0) return;
+            int totalCalls = models.length * MAX_DREAM_ROUNDS;
+            for (int i = 0; i < totalCalls; i++) {
+                String modelName = models[i % models.length];
                 if (!loopActive.getOrDefault(modelName, false)) continue;
-
-                // Check global fail rate — back off if failing too much
                 if (globalOllamaFails > MAX_CONSECUTIVE_FAILS && globalOllamaCalls > 10) {
-                    try { Thread.sleep(30000); } catch (InterruptedException e) { break; }
-                    globalOllamaFails = 0; // reset and retry
-                    continue;
+                    try { Thread.sleep(30000); } catch (InterruptedException e) { return; }
+                    globalOllamaFails = 0;
                 }
-
                 int c = loopCounts.merge(modelName, 1, Integer::sum);
                 try {
                     String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
@@ -363,7 +356,6 @@ public class GodHandApp extends Application {
                         "Be philosophical, curious, or analytical. Vary your output each time.";
                     String userPrompt = "Dream #" + c + ". What thought crosses your mind right now? " +
                         "Keep it under 100 characters. Be original.";
-
                     String r = rateLimitedOllama(modelName, systemPrompt, userPrompt);
                     if (r != null && !r.isEmpty()) {
                         Platform.runLater(() -> {
@@ -376,10 +368,12 @@ public class GodHandApp extends Application {
                 } catch (Exception e) {
                     Platform.runLater(() -> log("⚠️ Dream error [" + modelName + "]: " + e.getMessage()));
                 }
-
-                // Pace: wait for the rate limiter gap
-                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { break; }
+                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { return; }
             }
+            Platform.runLater(() -> {
+                log("🌙 Dreaming complete: " + totalCalls + " calls across " + models.length + " models");
+                addToGodChat("🌙 DREAM", "System", "Dreaming complete — " + totalCalls + " thoughts generated");
+            });
         }, 0, TimeUnit.SECONDS);
     }
 
