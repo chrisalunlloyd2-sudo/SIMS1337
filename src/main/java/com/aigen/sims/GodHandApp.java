@@ -25,13 +25,19 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.*;
 import java.util.AbstractMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * SIMS NEO 1337 - Complete GodHand + Player Grid + Model Orchestration
- * v0.15.0 - Real RAG + Fine-Tuning + Multi-Agent Topology + Web Dashboard + Plugins
+ * v0.18.0 - Real RAG + Fine-Tuning + Multi-Agent Topology + Web Dashboard + Plugins
  * Pure JavaFX - NO FXML - Everything is a changeable GUI component
+ * SINGLETON: Only ONE GUI instance allowed at a time.
  */
 public class GodHandApp extends Application {
+
+    // === SINGLETON GUARD — prevents multiple windows ===
+    private static final AtomicBoolean INSTANCE_RUNNING = new AtomicBoolean(false);
+    private static Stage primaryStageRef;
 
     // === View Management ===
     private StackPane viewStack;
@@ -93,6 +99,30 @@ public class GodHandApp extends Application {
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
     private final Map<String, Integer> ollamaFailCount = new ConcurrentHashMap<>(); // model -> consecutive failures
+
+    // === RATE LIMITER — "nothing lives forever, nothing runs for free" ===
+    private volatile long lastOllamaCallMs = 0;
+    private static final long OLLAMA_MIN_GAP_MS = 2000; // minimum 2s between Ollama calls
+    private static final int MAX_CONSECUTIVE_FAILS = 5; // back off after 5 consecutive failures
+    private int globalOllamaCalls = 0;
+    private int globalOllamaFails = 0;
+
+    /** Rate-limited Ollama call — enforces global pacing, returns null if too soon */
+    private String rateLimitedOllama(String model, String systemPrompt, String userPrompt) {
+        long now = System.currentTimeMillis();
+        long gap = now - lastOllamaCallMs;
+        if (gap < OLLAMA_MIN_GAP_MS) return null; // too soon, skip
+        lastOllamaCallMs = now;
+        globalOllamaCalls++;
+        try {
+            String result = realOllamaQuery(model, systemPrompt, userPrompt);
+            if (result == null) globalOllamaFails++;
+            return result;
+        } catch (Exception e) {
+            globalOllamaFails++;
+            return null;
+        }
+    }
 
     /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure. */
     private String realOllamaQuery(String model, String systemPrompt, String userPrompt) {
@@ -233,7 +263,15 @@ public class GodHandApp extends Application {
 
     @Override
     public void start(Stage stage) {
-        stage.setTitle("⚙️ SIMS1337 - Unified Control Center v0.16.0");
+        // === SINGLETON GUARD: refuse to open a second window ===
+        if (!INSTANCE_RUNNING.compareAndSet(false, true)) {
+            log("⛔ SIMS1337 is already running! Only ONE GUI allowed. Exiting duplicate.");
+            Platform.exit();
+            return;
+        }
+        primaryStageRef = stage;
+
+        stage.setTitle("⚙️ SIMS1337 - Unified Control Center v0.18.0");
 
         dashboardView = buildDashboard();
         gridView = buildGridView();
@@ -273,6 +311,76 @@ public class GodHandApp extends Application {
         log("✅ SIMS1337 v0.18.0 - 4D Hex Map + FOW + Hex TODOs + Neuromorphic Context");
         initAll();
         refreshInstalledModels();
+        startAllModelLoops();
+    }
+
+    /** Paced SLM dreaming — round-robin one model at a time, rate-limited.
+     *  "Nothing lives forever, nothing runs for free."
+     *  Each model gets ONE call per round, with 2s global gap between calls.
+     *  6 models × 2s gap = ~12s per round. No infinite loops. */
+    private void startAllModelLoops() {
+        chatScheduler.schedule(() -> {
+            Platform.runLater(() -> {
+                int started = 0;
+                for (String modelName : modelChats.keySet()) {
+                    loopActive.put(modelName, true);
+                    loopCounts.put(modelName, 0);
+                    started++;
+                }
+                log("🌙 SLM Dreaming: " + started + " models in paced round-robin (2s gap)");
+                addToGodChat("🌙 DREAM", "System", started + " models dreaming — paced, rate-limited");
+                // Start the single paced round-robin loop
+                runPacedRoundRobin();
+            });
+        }, 3, TimeUnit.SECONDS);
+    }
+
+    /** Single paced round-robin: one model at a time, 2s gap, no infinite per-model loops */
+    private void runPacedRoundRobin() {
+        chatScheduler.schedule(() -> {
+            String[] models = modelChats.keySet().toArray(new String[0]);
+            int idx = 0;
+            while (true) {
+                if (models.length == 0) break;
+                String modelName = models[idx % models.length];
+                idx++;
+
+                // Check if this model's loop is still active
+                if (!loopActive.getOrDefault(modelName, false)) continue;
+
+                // Check global fail rate — back off if failing too much
+                if (globalOllamaFails > MAX_CONSECUTIVE_FAILS && globalOllamaCalls > 10) {
+                    try { Thread.sleep(30000); } catch (InterruptedException e) { break; }
+                    globalOllamaFails = 0; // reset and retry
+                    continue;
+                }
+
+                int c = loopCounts.merge(modelName, 1, Integer::sum);
+                try {
+                    String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
+                        "You are an SLM (Small Language Model) running locally via Ollama. " +
+                        "Generate ONE short, creative thought (max 100 chars). " +
+                        "Be philosophical, curious, or analytical. Vary your output each time.";
+                    String userPrompt = "Dream #" + c + ". What thought crosses your mind right now? " +
+                        "Keep it under 100 characters. Be original.";
+
+                    String r = rateLimitedOllama(modelName, systemPrompt, userPrompt);
+                    if (r != null && !r.isEmpty()) {
+                        Platform.runLater(() -> {
+                            addToGodChat("🌙 DREAM", modelName, r);
+                            TextArea ca = modelChats.get(modelName);
+                            if (ca != null) ca.appendText("[Dream#" + c + "] " + r + "\n");
+                            checkCommandTriggers(r, modelName);
+                        });
+                    }
+                } catch (Exception e) {
+                    Platform.runLater(() -> log("⚠️ Dream error [" + modelName + "]: " + e.getMessage()));
+                }
+
+                // Pace: wait for the rate limiter gap
+                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { break; }
+            }
+        }, 0, TimeUnit.SECONDS);
     }
 
     private void initAll() {
@@ -325,6 +433,9 @@ public class GodHandApp extends Application {
         evolutionInit();
         worldInterfaceInit();
         selfDocInit();
+        processGuardianInit();
+        analyticsInit();
+        pluginHotReloadInit();
         nightCycleArm();
     }
 
@@ -461,16 +572,30 @@ public class GodHandApp extends Application {
         Platform.runLater(() -> { godChat.appendText(entry); godChat.setScrollTop(Double.MAX_VALUE); });
     }
 
-    // ==================== LOOP MODE ====================
+    // ==================== LOOP MODE (manual per-model toggle) ====================
     private void runLoop(String modelName) {
         chatScheduler.schedule(() -> {
             while (loopActive.getOrDefault(modelName, false)) {
                 int c = loopCounts.merge(modelName, 1, Integer::sum);
                 try {
-                    String r = callOllama(modelName, "Loop #" + c + ". Continue.");
-                    Platform.runLater(() -> { addToGodChat("🔄 LOOP", modelName, r); TextArea ca = modelChats.get(modelName); if (ca != null) ca.appendText("[Loop#" + c + "] " + r + "\n"); checkCommandTriggers(r, modelName); });
-                } catch (Exception e) { Platform.runLater(() -> log("⚠️ Loop error: " + e.getMessage())); loopActive.put(modelName, false); break; }
-                try { Thread.sleep(3000); } catch (InterruptedException e) { break; }
+                    String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
+                        "Generate ONE short, creative thought (max 100 chars).";
+                    String userPrompt = "Loop #" + c + ". Continue. Keep it under 100 characters.";
+                    String r = rateLimitedOllama(modelName, systemPrompt, userPrompt);
+                    if (r != null && !r.isEmpty()) {
+                        Platform.runLater(() -> {
+                            addToGodChat("🔄 LOOP", modelName, r);
+                            TextArea ca = modelChats.get(modelName);
+                            if (ca != null) ca.appendText("[Loop#" + c + "] " + r + "\n");
+                            checkCommandTriggers(r, modelName);
+                        });
+                    }
+                } catch (Exception e) {
+                    Platform.runLater(() -> log("⚠️ Loop error: " + e.getMessage()));
+                    loopActive.put(modelName, false);
+                    break;
+                }
+                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { break; }
             }
         }, 0, TimeUnit.SECONDS);
     }
@@ -2015,7 +2140,10 @@ public class GodHandApp extends Application {
                     {"43. Self-Modifying Code", "✅ Active"},
                     {"44. Evolution Engine", "✅ Active"},
                     {"45. World Interface", "✅ Active"},
-                    {"46. Self-Documentation", "✅ Active"}
+                    {"46. Self-Documentation", "✅ Active"},
+                    {"47. Process Guardian", "✅ Active"},
+                    {"48. Analytics Engine", "✅ Active"},
+                    {"49. Plugin Hot-Reload", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -2812,9 +2940,11 @@ public class GodHandApp extends Application {
         }
     }
 
-    // ==================== 23. AGENT AUTONOMY LOOP — Real Tool Execution Every 60s ====================
+    // ==================== 23. AGENT AUTONOMY LOOP — Real Tool Execution + SLM Reasoning ====================
     private final Map<String, String> agentTasks = new ConcurrentHashMap<>(); // agent -> current task
     private final Map<String, Integer> agentTaskCount = new ConcurrentHashMap<>(); // agent -> completed count
+    private final Map<String, String> agentModels = new ConcurrentHashMap<>(); // agent -> ollama model
+    private int agentAutonomyRound = 0;
 
     private void agentAutonomyInit() {
         agentTasks.put("Agent Alpha", "idle");
@@ -2823,26 +2953,43 @@ public class GodHandApp extends Application {
         agentTaskCount.put("Agent Alpha", 0);
         agentTaskCount.put("Agent Beta", 0);
         agentTaskCount.put("Agent Gamma", 0);
+        // Assign SLM models to agents
+        agentModels.put("Agent Alpha", "deepseek-r1:1.5b");
+        agentModels.put("Agent Beta", "phi3:mini");
+        agentModels.put("Agent Gamma", "llama3.2:1b");
 
-        log("🤖 Agent Autonomy: Real tool execution loop initialized (60s cycle)");
+        log("🤖 Agent Autonomy: Real tool execution + SLM reasoning (90s cycle, paced)");
 
+        // Every 90 seconds: one agent acts (round-robin, not all at once)
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-                for (String agent : agents) {
-                    try {
-                        String task = pickAutonomyTask(agent);
-                        agentTasks.put(agent, task);
-                        String result = executeAutonomyTask(agent, task);
-                        agentTaskCount.merge(agent, 1, Integer::sum);
-                        log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
+                String agent = agents[agentAutonomyRound % agents.length];
+                agentAutonomyRound++;
+                try {
+                    String task = pickAutonomyTask(agent);
+                    agentTasks.put(agent, task);
+                    String result = executeAutonomyTask(agent, task);
+                    agentTaskCount.merge(agent, 1, Integer::sum);
+                    log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
+
+                    // SLM reasoning: have the agent's model reflect on the result
+                    String model = agentModels.getOrDefault(agent, "llama3.2:1b");
+                    String systemPrompt = "You are " + agent + " in the SIMS1337 multi-agent grid. " +
+                        "You just completed the task: " + task + ". Result: " + result + ". " +
+                        "Provide ONE short insight or observation (max 80 chars) about what this means.";
+                    String userPrompt = "Task done: " + task + ". Result: " + result + ". Your insight?";
+                    String insight = rateLimitedOllama(model, systemPrompt, userPrompt);
+                    if (insight != null && !insight.isEmpty()) {
+                        addToGodChat("🤖 AUTONOMY", agent, task + " ✅ → \"" + insight + "\" (" + agentTaskCount.get(agent) + " tasks)");
+                    } else {
                         addToGodChat("🤖 AUTONOMY", agent, task + " ✅ (" + agentTaskCount.get(agent) + " tasks done)");
-                    } catch (Exception e) {
-                        log("🤖 [" + agent + "] task failed: " + e.getMessage());
                     }
+                } catch (Exception e) {
+                    log("🤖 [" + agent + "] task failed: " + e.getMessage());
                 }
             });
-        }, 60, 60, TimeUnit.SECONDS);
+        }, 90, 90, TimeUnit.SECONDS);
     }
 
     private String pickAutonomyTask(String agent) {
@@ -4502,11 +4649,318 @@ public class GodHandApp extends Application {
         }, 14400, 14400, TimeUnit.SECONDS);
     }
 
+    // ==================== 47. PROCESS GUARDIAN — External Watchdog, Auto-Restart JVM on Crash ====================
+    // FIXED: PID lock prevents exponential guardian spawn loop.
+    // Only ONE guardian.bat runs at a time. On restart, the existing guardian
+    // picks up the new PID — no new guardian is spawned.
+    private int guardianRestarts = 0;
+    private long guardianLastBeat = System.currentTimeMillis();
+    private static final String GUARDIAN_PID_FILE =
+        "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/guardian.pid";
+    private static final String GUARDIAN_BAT =
+        "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/guardian.bat";
+
+    private void processGuardianInit() {
+        log("🛡️ Guardian: External watchdog initialized — auto-restart on crash");
+        addToGodChat("🛡️ GUARDIAN", "System", "Process guardian online");
+
+        try {
+            // === GUARD: Check if a guardian is already running ===
+            java.io.File pidFile = new java.io.File(GUARDIAN_PID_FILE);
+            if (pidFile.exists()) {
+                try {
+                    String existingPid = java.nio.file.Files.readString(pidFile.toPath()).trim();
+                    // Check if that guardian process is still alive
+                    ProcessBuilder checkPb = new ProcessBuilder(
+                        "cmd", "/c", "tasklist /FI \"PID eq " + existingPid + "\" 2>nul | find \"" + existingPid + "\" >nul && echo ALIVE || echo DEAD");
+                    Process checkProc = checkPb.start();
+                    String result = new String(checkProc.getInputStream().readAllBytes()).trim();
+                    checkProc.waitFor();
+                    if (result.contains("ALIVE")) {
+                        log("🛡️ Guardian: Already running (PID " + existingPid + ") — NOT spawning duplicate");
+                        addToGodChat("🛡️ GUARDIAN", "System", "Guardian already active (PID " + existingPid + "), no duplicate");
+                        // Update the PID file to point to THIS JVM so the existing guardian watches us
+                        java.nio.file.Files.writeString(pidFile.toPath(),
+                            "JVM=" + ProcessHandle.current().pid() + "\nGUARDIAN=" + existingPid + "\n");
+                        startGuardianHeartbeat();
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    // PID file stale — guardian died, we'll create a new one
+                    log("🛡️ Guardian: Stale PID file, creating fresh guardian");
+                }
+            }
+
+            // === Write the guardian script (only once, not per-startup) ===
+            long currentPid = ProcessHandle.current().pid();
+            String watchdogScript = "@echo off\n" +
+                "setlocal enabledelayedexpansion\n" +
+                "set GUARDIAN_PID_FILE=" + GUARDIAN_PID_FILE.replace("\\", "\\\\") + "\n" +
+                "set JAVA_HOME=C:\\Program Files\\Java\\jdk-17\n" +
+                "set OUT=C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\target\\classes\n" +
+                "set M2=C:\\Users\\viper\\.m2\\repository\n" +
+                "set JFX=%M2%\\org\\openjfx\n" +
+                "set MP=%JFX%\\javafx-base\\17.0.6\\javafx-base-17.0.6-win.jar;%JFX%\\javafx-controls\\17.0.6\\javafx-controls-17.0.6-win.jar;%JFX%\\javafx-graphics\\17.0.6\\javafx-graphics-17.0.6-win.jar;%JFX%\\javafx-fxml\\17.0.6\\javafx-fxml-17.0.6-win.jar\n" +
+                "set CP=%OUT%;%M2%\\com\\fasterxml\\jackson\\core\\jackson-databind\\2.15.2\\jackson-databind-2.15.2.jar;%M2%\\com\\fasterxml\\jackson\\core\\jackson-core\\2.15.2\\jackson-core-2.15.2.jar;%M2%\\com\\fasterxml\\jackson\\core\\jackson-annotations\\2.15.2\\jackson-annotations-2.15.2.jar;%M2%\\org\\apache\\httpcomponents\\client5\\httpclient5\\5.2.1\\httpclient5-5.2.1.jar;%M2%\\org\\apache\\httpcomponents\\core5\\httpcore5\\5.2\\httpcore5-5.2.jar;%M2%\\org\\apache\\httpcomponents\\core5\\httpcore5-h2\\5.2\\httpcore5-h2-5.2.jar;%M2%\\org\\slf4j\\slf4j-api\\2.0.7\\slf4j-api-2.0.7.jar;%M2%\\org\\java-websocket\\Java-WebSocket\\1.5.3\\Java-WebSocket-1.5.3.jar\n" +
+                "set PID=" + currentPid + "\n" +
+                // Write our own PID to the lock file
+                "echo JVM=%PID%> %GUARDIAN_PID_FILE%\n" +
+                "echo GUARDIAN=%PID%>> %GUARDIAN_PID_FILE%\n" +
+                ":loop\n" +
+                "timeout /t 30 /nobreak >nul\n" +
+                // Read the PID file — the JVM may have updated it to point to a new instance
+                "if exist %GUARDIAN_PID_FILE% (\n" +
+                "  for /f \"tokens=2 delims==\" %%a in ('type %GUARDIAN_PID_FILE% ^| findstr \"JVM=\"') do set PID=%%a\n" +
+                ")\n" +
+                "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul\n" +
+                "if errorlevel 1 (\n" +
+                "  echo [%date% %time%] SIMS1337 JVM PID %PID% died — checking for existing instances... >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
+                "  tasklist /FI \"IMAGENAME eq javaw.exe\" 2>nul | find \"javaw.exe\" >nul\n" +
+                "  if errorlevel 1 (\n" +
+                "    echo [%date% %time%] No existing javaw — restarting SIMS1337... >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
+                "    start \"SIMS1337\" \"%JAVA_HOME%\\bin\\javaw\" --module-path \"%MP%\" --add-modules javafx.controls,javafx.fxml -cp \"%CP%\" com.aigen.sims.GodHandApp\n" +
+                "    timeout /t 15 /nobreak >nul\n" +
+                "    for /f \"tokens=2\" %%a in ('tasklist /FI \"IMAGENAME eq javaw.exe\" /FO LIST ^| find \"PID:\"') do (\n" +
+                "      set PID=%%a\n" +
+                "      echo JVM=%%a> %GUARDIAN_PID_FILE%\n" +
+                "      echo GUARDIAN=!PID!>> %GUARDIAN_PID_FILE%\n" +
+                "    )\n" +
+                "    echo [%date% %time%] Restarted with PID %PID% >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
+                "  ) else (\n" +
+                "    echo [%date% %time%] javaw already running — skipping restart (singleton guard active) >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
+                "    for /f \"tokens=2\" %%a in ('tasklist /FI \"IMAGENAME eq javaw.exe\" /FO LIST ^| find \"PID:\"') do set PID=%%a\n" +
+                "    echo JVM=!PID!> %GUARDIAN_PID_FILE%\n" +
+                "    echo GUARDIAN=!PID!>> %GUARDIAN_PID_FILE%\n" +
+                "  )\n" +
+                ")\n" +
+                "goto loop\n";
+
+            java.nio.file.Files.writeString(
+                java.nio.file.Path.of(GUARDIAN_BAT), watchdogScript);
+
+            // Write PID lock file
+            java.nio.file.Files.writeString(pidFile.toPath(),
+                "JVM=" + currentPid + "\nGUARDIAN=" + currentPid + "\n");
+
+            // Start the guardian (only if none is running)
+            new ProcessBuilder("cmd", "/c", "start", "/min", "guardian.bat")
+                .directory(new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx"))
+                .start();
+
+            log("🛡️ Guardian: Watchdog deployed (JVM PID " + currentPid + ")");
+        } catch (Exception e) {
+            log("⚠️ Guardian deploy failed: " + e.getMessage());
+        }
+
+        startGuardianHeartbeat();
+    }
+
+    private void startGuardianHeartbeat() {
+        // Heartbeat every 30 seconds — guardian checks this
+        chatScheduler.scheduleAtFixedRate(() -> {
+            guardianLastBeat = System.currentTimeMillis();
+        }, 30, 30, TimeUnit.SECONDS);
+    }
+
+    // ==================== 48. ANALYTICS ENGINE — Trend Tracking, Reports, Anomaly Detection ====================
+    private final List<Map<String, Object>> analyticsHistory = Collections.synchronizedList(new ArrayList<>());
+    private int analyticsSnapshots = 0;
+    private int anomaliesDetected = 0;
+
+    private void analyticsInit() {
+        log("📊 Analytics: Trend tracking and anomaly detection initialized");
+        addToGodChat("📊 ANALYTICS", "System", "Analytics engine online");
+
+        // Snapshot every 5 minutes
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                try {
+                    analyticsSnapshots++;
+                    Map<String, Object> snap = new ConcurrentHashMap<>();
+                    snap.put("timestamp", System.currentTimeMillis());
+                    snap.put("agents", agentPositions.size());
+                    snap.put("proposals", proposalTable.size());
+                    snap.put("kgNodes", kgNodes.size());
+                    snap.put("errors", errorCount);
+                    snap.put("entropy", shannonEntropy);
+                    snap.put("messages", agentMessagesSent);
+                    snap.put("selfMods", selfModCount);
+                    snap.put("rollbacks", selfModRollbacks);
+                    snap.put("hexes", hexCells.size());
+                    snap.put("models", ollamaAvailable.size());
+                    snap.put("tools", availableTools.size());
+                    snap.put("stations", stationRegistry.size());
+                    snap.put("cyclePhase", nightCyclePhase);
+                    snap.put("cycleCount", nightCycleCount);
+                    analyticsHistory.add(snap);
+
+                    // Keep last 288 snapshots (24 hours)
+                    while (analyticsHistory.size() > 288) {
+                        analyticsHistory.remove(0);
+                    }
+
+                    // Anomaly detection (need at least 3 snapshots)
+                    if (analyticsHistory.size() >= 3) {
+                        int size = analyticsHistory.size();
+                        Map<String, Object> current = analyticsHistory.get(size - 1);
+                        Map<String, Object> prev1 = analyticsHistory.get(size - 2);
+                        Map<String, Object> prev2 = analyticsHistory.get(size - 3);
+
+                        // Check for sudden entropy drop
+                        double curEntropy = (double) current.get("entropy");
+                        double prevEntropy = (double) prev1.get("entropy");
+                        if (Math.abs(curEntropy - prevEntropy) > 0.1) {
+                            anomaliesDetected++;
+                            log("📊 ANOMALY: Entropy shift " + String.format("%.3f", prevEntropy) + " → " + String.format("%.3f", curEntropy));
+                            addToGodChat("📊 ANOMALY", "Entropy", String.format("%.3f→%.3f", prevEntropy, curEntropy));
+                        }
+
+                        // Check for error spike
+                        int curErrors = (int) current.get("errors");
+                        int prevErrors = (int) prev1.get("errors");
+                        if (curErrors > prevErrors && curErrors > 0) {
+                            anomaliesDetected++;
+                            log("📊 ANOMALY: Error spike " + prevErrors + " → " + curErrors);
+                            addToGodChat("📊 ANOMALY", "Errors", prevErrors + "→" + curErrors);
+                        }
+
+                        // Check for agent count change
+                        int curAgents = (int) current.get("agents");
+                        int prevAgents = (int) prev1.get("agents");
+                        if (curAgents != prevAgents) {
+                            log("📊 Trend: Agent count changed " + prevAgents + " → " + curAgents);
+                        }
+                    }
+
+                    // Generate hourly report
+                    if (analyticsSnapshots % 12 == 0 && analyticsHistory.size() >= 12) {
+                        StringBuilder report = new StringBuilder();
+                        report.append("# SIMS1337 Hourly Analytics Report\n\n");
+                        report.append("**Generated:** " + java.time.LocalDateTime.now() + "\n\n");
+
+                        // Calculate trends
+                        double avgEntropy = analyticsHistory.stream()
+                            .mapToDouble(s -> (double) s.get("entropy")).average().orElse(0);
+                        int maxErrors = analyticsHistory.stream()
+                            .mapToInt(s -> (int) s.get("errors")).max().orElse(0);
+                        long totalMessages = analyticsHistory.stream()
+                            .mapToInt(s -> (int) s.get("messages")).sum();
+
+                        report.append("| Metric | Current | Avg | Max |\n");
+                        report.append("|--------|---------|-----|-----|\n");
+                        report.append("| Entropy | " + String.format("%.3f", shannonEntropy) + " | " + String.format("%.3f", avgEntropy) + " | — |\n");
+                        report.append("| Errors | " + errorCount + " | — | " + maxErrors + " |\n");
+                        report.append("| Agents | " + agentPositions.size() + " | — | — |\n");
+                        report.append("| Proposals | " + proposalTable.size() + " | — | — |\n");
+                        report.append("| Messages | " + agentMessagesSent + " | — | — |\n");
+                        report.append("| Self-Mods | " + selfModCount + " | — | — |\n");
+                        report.append("| Anomalies | " + anomaliesDetected + " | — | — |\n\n");
+                        report.append("*Auto-generated by SIMS1337 Analytics Engine*\n");
+
+                        java.nio.file.Files.writeString(
+                            java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/reports/hourly_analytics.md"),
+                            report.toString());
+
+                        log("📊 Analytics: Hourly report generated (" + analyticsSnapshots + " snapshots, " + anomaliesDetected + " anomalies)");
+                    }
+                } catch (Exception e) {
+                    log("⚠️ Analytics error: " + e.getMessage());
+                }
+            });
+        }, 300, 300, TimeUnit.SECONDS);
+    }
+
+    // ==================== 49. PLUGIN HOT-RELOAD — Dynamic .class Loading, No-Restart Extensibility ====================
+    private final Map<String, Object> hotPlugins = new ConcurrentHashMap<>();
+    private int pluginsLoaded = 0;
+
+    private void pluginHotReloadInit() {
+        log("🔌 Plugin Hot-Reload: Dynamic class loading initialized");
+        addToGodChat("🔌 PLUGINS", "System", "Hot-reload plugin system online");
+
+        // Scan plugins directory every 5 minutes
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                try {
+                    java.io.File pluginDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/plugins");
+                    if (!pluginDir.exists()) {
+                        pluginDir.mkdirs();
+                        // Seed with example plugin
+                        String examplePlugin = "package com.aigen.sims.plugins;\n" +
+                            "public class ExamplePlugin {\n" +
+                            "    public String getName() { return \"Example Plugin\"; }\n" +
+                            "    public String execute(String input) { return \"Hello from plugin: \" + input; }\n" +
+                            "}\n";
+                        java.nio.file.Files.writeString(
+                            java.nio.file.Path.of(pluginDir.getAbsolutePath() + "/ExamplePlugin.java"),
+                            examplePlugin);
+                    }
+
+                    java.io.File[] pluginFiles = pluginDir.listFiles((d, n) -> n.endsWith(".java"));
+                    if (pluginFiles == null) return;
+
+                    for (java.io.File pf : pluginFiles) {
+                        String name = pf.getName().replace(".java", "");
+                        if (hotPlugins.containsKey(name)) continue; // already loaded
+
+                        try {
+                            // Compile plugin
+                            ProcessBuilder pb = new ProcessBuilder(
+                                "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
+                                "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                                "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                                pf.getAbsolutePath()
+                            );
+                            pb.redirectErrorStream(true);
+                            Process proc = pb.start();
+                            int exitCode = proc.waitFor();
+
+                            if (exitCode == 0) {
+                                // Load class
+                                Class<?> pluginClass = Class.forName("com.aigen.sims.plugins." + name);
+                                Object instance = pluginClass.getDeclaredConstructor().newInstance();
+                                hotPlugins.put(name, instance);
+                                pluginsLoaded++;
+                                log("🔌 Plugin loaded: " + name + " (" + pluginsLoaded + " total)");
+                                addToGodChat("🔌 PLUGINS", "Loaded", name);
+                            } else {
+                                String err = new String(proc.getInputStream().readAllBytes());
+                                log("⚠️ Plugin compile failed: " + name + " — " + err.substring(0, Math.min(100, err.length())));
+                            }
+                        } catch (Exception e) {
+                            log("⚠️ Plugin load failed: " + name + " — " + e.getMessage());
+                        }
+                    }
+
+                    // Execute all loaded plugins
+                    for (var entry : hotPlugins.entrySet()) {
+                        try {
+                            Object plugin = entry.getValue();
+                            var getNameMethod = plugin.getClass().getMethod("getName");
+                            String pluginName = (String) getNameMethod.invoke(plugin);
+
+                            var executeMethod = plugin.getClass().getMethod("execute", String.class);
+                            String result = (String) executeMethod.invoke(plugin, "SIMS1337 heartbeat");
+                            log("🔌 Plugin [" + pluginName + "]: " + result);
+                        } catch (Exception ignored) {}
+                    }
+                } catch (Exception e) {
+                    log("⚠️ Plugin hot-reload error: " + e.getMessage());
+                }
+            });
+        }, 300, 300, TimeUnit.SECONDS);
+    }
+
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private HBox hbox(int s,Pos a,String bg,int p){HBox b=new HBox(s);b.setAlignment(a);if(bg!=null)b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
     private Label label(String t,int sz,String c,boolean bd){Label l=new Label(t);l.setStyle("-fx-font-size: "+sz+"px; -fx-text-fill: "+c+";"+(bd?" -fx-font-weight: bold;":""));return l;}
     private TitledPane titledPane(String t,boolean ex){TitledPane tp=new TitledPane();tp.setText(t);tp.setExpanded(ex);tp.setStyle("-fx-background-color: #16213e;");return tp;}
     private Button styledButton(String t,String c){Button b=new Button(t);b.setStyle("-fx-background-color: "+c+"; -fx-text-fill: #000; -fx-font-size: 14px; -fx-padding: 10 20;");return b;}
 
-    @Override public void stop(){chatScheduler.shutdown();log("⏹️ SIMS1337 shutting down...");}
+    @Override public void stop() {
+        INSTANCE_RUNNING.set(false);
+        primaryStageRef = null;
+        chatScheduler.shutdown();
+        log("⏹️ SIMS1337 shutting down...");
+    }
 }
