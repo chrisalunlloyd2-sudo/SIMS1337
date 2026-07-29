@@ -92,6 +92,53 @@ public class GodHandApp extends Application {
     private static final String OLLAMA_TAGS = "http://localhost:11434/api/tags";
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
+    private final Map<String, Integer> ollamaFailCount = new ConcurrentHashMap<>(); // model -> consecutive failures
+
+    /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure. */
+    private String realOllamaQuery(String model, String systemPrompt, String userPrompt) {
+        try {
+            String json = String.format(
+                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":150,\"temperature\":0.7}}",
+                model,
+                systemPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
+            var req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create(OLLAMA_URL))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(30))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .build();
+            var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                String body = resp.body();
+                int idx = body.indexOf("\"response\":\"");
+                if (idx > 0) {
+                    idx += 12;
+                    int end = body.indexOf("\"", idx);
+                    if (end > idx) {
+                        String result = body.substring(idx, end)
+                            .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+                        ollamaAvailable.put(model, true);
+                        ollamaFailCount.put(model, 0);
+                        return result.trim();
+                    }
+                }
+            }
+            ollamaFailCount.merge(model, 1, Integer::sum);
+            return null;
+        } catch (Exception e) {
+            ollamaFailCount.merge(model, 1, Integer::sum);
+            return null;
+        }
+    }
+
+    /** Query with fallback: tries Ollama, falls back to template if unavailable */
+    private String ollamaOrFallback(String model, String systemPrompt, String userPrompt, String fallback) {
+        int fails = ollamaFailCount.getOrDefault(model, 0);
+        if (fails >= 3) return fallback; // skip Ollama if failing repeatedly
+        String result = realOllamaQuery(model, systemPrompt, userPrompt);
+        return result != null && !result.isEmpty() ? result : fallback;
+    }
 
     // === Entropy ===
     private double shannonEntropy = 0.0;
@@ -2483,58 +2530,60 @@ public class GodHandApp extends Application {
         }, 30, 1800, TimeUnit.SECONDS); // Every 30 minutes
     }
 
-    // ==================== 22. NIGHT CYCLE — Autonomous Operation ====================
+    // ==================== 22. NIGHT CYCLE — Continuous Autonomous Loop ====================
+    private int nightCyclePhase = 0; // 0=dream, 1=debate+vote, 2=deploy, 3=email
+    private int nightCycleCount = 0;
+
     private void nightCycleArm() {
         nightCycleConfig.put("enabled", "true");
-        log("🌙 Night Cycle ARMED: " + nightCycleConfig.get("dream_time") + " dream → " +
-            nightCycleConfig.get("vote_time") + " votes → " +
-            nightCycleConfig.get("deploy_time") + " deploy → " + nightCycleConfig.get("email_time") + " email");
-        addToGodChat("🌙 NIGHT", "System", "Cycle armed: dream@" + nightCycleConfig.get("dream_time") +
-            " → votes@" + nightCycleConfig.get("vote_time") +
-            " → deploy@" + nightCycleConfig.get("deploy_time") + " → email@" + nightCycleConfig.get("email_time"));
-        statusLabel.setText("🌙 Night Cycle Armed");
+        log("🌙 Night Cycle ARMED: Continuous autonomous loop — dream→debate→vote→deploy→email every 30min");
+        addToGodChat("🌙 NIGHT", "System", "Continuous cycle armed: dream→debate→vote→deploy→email (30min loop)");
+        statusLabel.setText("🌙 Night Cycle: Continuous");
         statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
 
-        // Check every 5 minutes if it's time to trigger
+        // Run the full cycle every 30 minutes continuously
         chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                String now = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-                String dreamTime = nightCycleConfig.getOrDefault("dream_time", "00:00");
-                String voteTime = nightCycleConfig.getOrDefault("vote_time", "18:00");
-                String deployTime = nightCycleConfig.getOrDefault("deploy_time", "20:00");
-                String emailTime = nightCycleConfig.getOrDefault("email_time", "22:00");
+            Platform.runLater(() -> {
+                try {
+                    nightCycleCount++;
+                    log("🌙 Night Cycle #" + nightCycleCount + " — Phase " + nightCyclePhase + " starting...");
 
-                if (now.equals(dreamTime)) {
-                    Platform.runLater(() -> {
-                        log("🌙💤 DREAM PHASE — agents cross-correlating memories...");
-                        addToGodChat("🌙💤 DREAM", "System", "Agents entering dream state — cross-correlation + idea generation");
-                        runDreamPhase();
-                    });
-                } else if (now.equals(voteTime)) {
-                    Platform.runLater(() -> {
-                        log("🌙 Night Cycle: VOTE PHASE — consensus debate + role-based voting...");
-                        addToGodChat("🌙 NIGHT", "Vote", "Starting consensus debate on " + proposalTable.size() + " proposals");
-                        runConsensusDebate();
-                        log("🌙 Night Cycle: Debate complete, final votes cast");
-                    });
-                } else if (now.equals(deployTime)) {
-                    Platform.runLater(() -> {
-                        log("🌙 Night Cycle: DEPLOY PHASE — implementing approved proposals...");
-                        addToGodChat("🌙 NIGHT", "Deploy", "Implementing approved proposals + pushing to GitHub");
-                        implementApprovedProposals();
-                        pushToGitHub();
-                    });
-                } else if (now.equals(emailTime)) {
-                    Platform.runLater(() -> {
-                        log("🌙 Night Cycle: EMAIL PHASE — sending brief to " + nightCycleConfig.get("email_to"));
-                        addToGodChat("🌙 NIGHT", "Email", "Sending nightly brief to " + nightCycleConfig.get("email_to"));
-                        sendNightlyBrief();
-                    });
+                    switch (nightCyclePhase) {
+                        case 0: // DREAM
+                            log("🌙💤 DREAM PHASE — agents cross-correlating memories...");
+                            addToGodChat("🌙💤 DREAM", "Cycle " + nightCycleCount, "Agents entering dream state");
+                            runDreamPhase();
+                            break;
+                        case 1: // DEBATE + VOTE
+                            log("🌙 Night Cycle: DEBATE + VOTE PHASE — consensus debate + role-based voting...");
+                            addToGodChat("🌙 NIGHT", "Vote", "Consensus debate on " + proposalTable.size() + " proposals");
+                            runConsensusDebate();
+                            log("🌙 Night Cycle: Debate complete, final votes cast");
+                            break;
+                        case 2: // DEPLOY
+                            log("🌙 Night Cycle: DEPLOY PHASE — implementing approved proposals...");
+                            addToGodChat("🌙 NIGHT", "Deploy", "Implementing approved proposals + pushing to GitHub");
+                            implementApprovedProposals();
+                            pushToGitHub();
+                            break;
+                        case 3: // EMAIL
+                            log("🌙 Night Cycle: EMAIL PHASE — sending brief to " + nightCycleConfig.get("email_to"));
+                            addToGodChat("🌙 NIGHT", "Email", "Sending nightly brief");
+                            sendNightlyBrief();
+                            break;
+                    }
+
+                    // Advance phase, wrap around
+                    nightCyclePhase = (nightCyclePhase + 1) % 4;
+                    if (nightCyclePhase == 0) {
+                        log("🌙 Night Cycle #" + nightCycleCount + " complete — next cycle in 30min");
+                        addToGodChat("🌙 NIGHT", "Complete", "Cycle " + nightCycleCount + " done. Next: dream in 30min.");
+                    }
+                } catch (Exception e) {
+                    log("⚠️ Night Cycle error: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                log("⚠️ Night Cycle error: " + e.getMessage());
-            }
-        }, 60, 300, TimeUnit.SECONDS);
+            });
+        }, 30, 1800, TimeUnit.SECONDS); // Every 30 minutes = full cycle every 2 hours
     }
 
     // ==================== DREAM PHASE — Cross-Correlate + Generate Game Mechanics ====================
@@ -2548,62 +2597,33 @@ public class GodHandApp extends Application {
             }
         }
 
-        // Real game mechanics — logic systems, node types, tools, backend additions
-        String[] dreamTemplates = {
-            // LOGIC SYSTEMS
-            "Logic System: %s — %s detected pattern in %s's output, proposing new evaluation engine",
-            "Logic System: %s — cross-correlation of %s and %s revealed need for new scoring algorithm",
-            // NODE TYPES
-            "Node Type: %s — %s's topology analysis suggests new station class from %s's activity",
-            "Node Type: %s — %s and %s communication density warrants dedicated relay node",
-            // TOOLS
-            "Tool: %s — %s used %s's output pattern to design new agent capability",
-            "Tool: %s — frequency analysis of %s's tool usage suggests missing primitive",
-            // BACKEND SYSTEMS
-            "Backend: %s — %s's error patterns indicate need for new recovery system (via %s)",
-            "Backend: %s — %s and %s memory overlap reveals unhandled state transition",
-            // AGENT ABILITIES
-            "Agent Ability: %s — %s's hex navigation pattern suggests new movement mechanic",
-            "Agent Ability: %s — %s's voting history with %s reveals coordination upgrade path",
-            // GRID MECHANICS
-            "Grid Mechanic: %s — %s's FOW exploration density suggests terrain feature",
-            "Grid Mechanic: %s — %s's pipeline activity with %s indicates resource flow pattern",
-        };
-
-        String[] concepts = {
-            // Logic systems
-            "Markov Chain Evaluator", "Bayesian Vote Weighting", "Entropy-Based Task Router",
-            "Shannon Entropy Scorer", "Lexical Math Engine v2", "Pattern Recognition Pipeline",
-            // Node types
-            "Relay Station", "Cache Node", "Broadcast Hub", "Filter Gate", "Aggregator Node",
-            "Validator Node", "Sentry Post", "Trade Post",
-            // Tools
-            "hex_scan tool", "memory_merge tool", "topology_check tool", "vote_weight tool",
-            "pattern_match tool", "state_diff tool", "gist_pull tool", "model_compare tool",
-            // Backend systems
-            "Auto-Recovery Engine", "State Machine Validator", "Consensus Tracker",
-            "Resource Ledger", "Event Bus System", "Snapshot Manager",
-            // Agent abilities
-            "Double-Jump (2-hex move)", "Teleport (any hex, 10min cooldown)",
-            "Scout (reveal 2-hop FOW)", "Build (place station on hex)",
-            "Trade (exchange resources)", "Merge (combine with another agent)",
-            // Grid mechanics
-            "Hex Resource Veins", "Elevation Bonuses (higher Z = more resources)",
-            "Weather Zones (rain/sun/storm)", "Portal Pairs (linked hexes)",
-            "Terrain Types (water/plains/forest/mountain)", "FOW Decay (unvisited hexes fade)",
-        };
-
         String[] modelNames = modelChats.keySet().toArray(new String[0]);
         java.util.Random rng = new java.util.Random();
 
+        // Each model dreams via real Ollama
         for (int i = 0; i < 8; i++) {
-            String template = dreamTemplates[rng.nextInt(dreamTemplates.length)];
-            String concept = concepts[rng.nextInt(concepts.length)];
-            String m1 = modelNames[rng.nextInt(modelNames.length)];
-            String m2 = modelNames[rng.nextInt(modelNames.length)];
-            String idea = String.format(template, concept, m1, m2);
+            String model = modelNames[i % modelNames.length];
+            String category = new String[]{"logic","node","tool","backend","ability","grid","logic","tool"}[i];
+
+            String systemPrompt = "You are " + model + ", an SLM agent in the SIMS1337 multi-agent grid. " +
+                "You are dreaming — generating creative game mechanic ideas. " +
+                "Respond with exactly ONE line in format: \"CATEGORY: Name — brief description\". " +
+                "Categories: Logic System, Node Type, Tool, Backend, Agent Ability, Grid Mechanic. " +
+                "Be specific, creative, and grounded in multi-agent systems. Max 120 chars.";
+
+            String userPrompt = "Dream a new " + category + " for the SIMS1337 agent grid. " +
+                "The grid has 61 hexes, 8 models, 3 agents, FOW, voting, topology, and a night cycle. " +
+                "Recent context: " + (allMemories.isEmpty() ? "system just started" : allMemories.get(rng.nextInt(allMemories.size())));
+
+            String fallback = String.format("%s: %s — %s detected pattern in agent communication, proposing new capability",
+                category.substring(0,1).toUpperCase() + category.substring(1),
+                category + "_" + (i+1),
+                model);
+
+            String idea = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
             dreamIdeas.add(idea);
-            log("💤 DREAM: " + idea);
+            log("💤 DREAM [" + model + "]: " + idea);
+            addToGodChat("💤 DREAM", model, idea);
         }
 
         // Convert top dreams into proposals
@@ -2611,13 +2631,12 @@ public class GodHandApp extends Application {
         for (int i = 0; i < Math.min(4, dreamIdeas.size()); i++) {
             String idea = dreamIdeas.get(i);
             String id = String.format("P%03d", propNum + i);
-            // Extract category from template
-            String category = idea.startsWith("Logic System:") ? "logic" :
-                idea.startsWith("Node Type:") ? "node" :
-                idea.startsWith("Tool:") ? "tool" :
-                idea.startsWith("Backend:") ? "backend" :
-                idea.startsWith("Agent Ability:") ? "ability" : "grid";
-            String title = idea.substring(idea.indexOf(":") + 2, Math.min(80, idea.indexOf("—") > 0 ? idea.indexOf("—") : 80)).trim();
+            String category = idea.toLowerCase().startsWith("logic") ? "logic" :
+                idea.toLowerCase().startsWith("node") ? "node" :
+                idea.toLowerCase().startsWith("tool") ? "tool" :
+                idea.toLowerCase().startsWith("backend") ? "backend" :
+                idea.toLowerCase().startsWith("agent") ? "ability" : "grid";
+            String title = idea.length() > 80 ? idea.substring(0, 80) : idea;
             proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", category});
             addToGodChat("💤 DREAM", "Proposal", id + " [" + category + "]: " + title);
         }
@@ -3160,45 +3179,30 @@ public class GodHandApp extends Application {
     }
 
     private String generateCollectiveInsight(String model, String persona, String topic) {
-        String[] insights = {
-            "We should consider the emergent properties of the system as a whole",
-            "The key bottleneck is not compute but coordination overhead",
-            "Diversity of thought is our greatest asset — we must preserve it",
-            "I see a pattern: successful proposals share structural simplicity",
-            "The solution lies in better information routing, not more information",
-            "We need to measure what matters, not what's easy to measure",
-            "History shows that the best ideas come from cross-domain synthesis",
-            "Let's focus on what makes us different from a single large model",
-            "The answer is in the topology — rearrange connections, not components",
-            "We're optimizing for the wrong metric — quality over quantity",
-            "Trust between models is earned through consistent voting patterns",
-            "The collective is greater than the sum of its parts"
-        };
-        return insights[new Random().nextInt(insights.length)];
+        String systemPrompt = "You are " + model + " (" + persona + "), a member of the Night Owl Model Collective. " +
+            "You are discussing: \"" + topic + "\". Respond with ONE concise insight (max 100 chars) from your persona's perspective. " +
+            "Be specific, wise, and grounded in multi-agent systems.";
+
+        String userPrompt = "As " + persona + ", what is your insight on: " + topic + "? " +
+            "The collective has 8 models, 3 agents, 61 hexes, FOW, voting, and a night cycle.";
+
+        String fallback = "We should consider the emergent properties of the system as a whole";
+        return ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
     }
 
     private String synthesizeCollective(List<String> insights, String topic) {
-        // Count themes
-        int topology = 0, trust = 0, diversity = 0, simplicity = 0, emergence = 0;
-        for (String s : insights) {
-            if (s.contains("topolog") || s.contains("routing") || s.contains("connection")) topology++;
-            if (s.contains("trust") || s.contains("consistent")) trust++;
-            if (s.contains("divers") || s.contains("different")) diversity++;
-            if (s.contains("simpl") || s.contains("quality")) simplicity++;
-            if (s.contains("emergen") || s.contains("whole") || s.contains("sum")) emergence++;
-        }
-        String dominant = topology > Math.max(trust, Math.max(diversity, Math.max(simplicity, emergence))) ? "topology" :
-                         trust > Math.max(diversity, Math.max(simplicity, emergence)) ? "trust" :
-                         diversity > Math.max(simplicity, emergence) ? "diversity" :
-                         simplicity > emergence ? "simplicity" : "emergence";
+        // Use the most capable model for synthesis
+        String synthesizer = "deepseek-r1:1.5b";
+        String systemPrompt = "You are the synthesizer of the Night Owl Collective. " +
+            "Given " + insights.size() + " model insights on \"" + topic + "\", produce ONE synthesis sentence (max 150 chars). " +
+            "Identify the dominant theme and recommend action.";
 
-        String[] syntheses = {
-            "The collective converges on " + dominant + " as the key to \"" + topic + "\". We should restructure agent connections to optimize for this.",
-            "After " + insights.size() + " perspectives, the consensus is clear: " + dominant + " matters most. Recommend prioritizing " + dominant + "-focused proposals.",
-            "The Night Owl Collective sees " + dominant + " as the critical factor. We need new tools and stations that enhance " + dominant + " across the grid.",
-            "Synthesis: " + insights.size() + " models agree that " + dominant + " is the bottleneck. The system should auto-tune for " + dominant + " optimization."
-        };
-        return syntheses[new Random().nextInt(syntheses.length)];
+        StringBuilder allInsights = new StringBuilder();
+        for (String s : insights) allInsights.append("- ").append(s).append("\n");
+        String userPrompt = "Synthesize these insights on \"" + topic + "\":\n" + allInsights;
+
+        String fallback = "The collective converges on topology as the key factor. We should restructure agent connections to optimize for this.";
+        return ollamaOrFallback(synthesizer, systemPrompt, userPrompt, fallback);
     }
 
     // ==================== 30. CODE WIZARD — Autonomous Code Gen, Review, Refactor ====================
