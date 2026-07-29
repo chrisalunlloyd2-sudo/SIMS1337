@@ -279,6 +279,7 @@ public class GodHandApp extends Application {
         crossRepoKGInit();
         memoryPersistenceInit();
         agentCommsInit();
+        selfModifyInit();
         nightCycleArm();
     }
 
@@ -1965,7 +1966,8 @@ public class GodHandApp extends Application {
                     {"39. Self-Healing", "✅ Active"},
                     {"40. Cross-Repo KG", "✅ Active"},
                     {"41. Memory Persistence", "✅ Active"},
-                    {"42. Agent Comms", "✅ Active"}
+                    {"42. Agent Comms", "✅ Active"},
+                    {"43. Self-Modifying Code", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -4055,6 +4057,144 @@ public class GodHandApp extends Application {
                 }
             });
         }, 90, 90, TimeUnit.SECONDS);
+    }
+
+    // ==================== 43. SELF-MODIFYING CODE — Auto-Apply Refactors, Compile, Commit ====================
+    private final List<String> selfModLedger = Collections.synchronizedList(new ArrayList<>());
+    private int selfModCount = 0;
+    private int selfModRollbacks = 0;
+    private static final String SRC_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java";
+    private static final String BACKUP_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java.bak";
+
+    private void selfModifyInit() {
+        log("🔧 Self-Modify: Autonomous code evolution initialized");
+        addToGodChat("🔧 SELF-MOD", "System", "Self-modifying code engine online");
+
+        // Every 15 minutes: Code Wizard reviews, suggests, applies, compiles, commits
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                try {
+                    // 1. Read current source
+                    String source = java.nio.file.Files.readString(java.nio.file.Path.of(SRC_PATH));
+                    int lineCount = source.split("\n").length;
+
+                    // 2. Code Wizard scores quality
+                    int score = scoreCodeQuality(source, lineCount);
+                    log("🔧 Self-Mod: Code quality score " + score + "/100, " + lineCount + " lines");
+
+                    if (score >= 80) {
+                        log("🔧 Self-Mod: Quality sufficient (" + score + "), skipping refactor");
+                        return;
+                    }
+
+                    // 3. Generate improvement via Ollama
+                    String systemPrompt = "You are the Code Wizard of SIMS1337. The code quality is " + score + "/100. " +
+                        "Suggest ONE specific, safe improvement. Respond with format:\n" +
+                        "FIND: <exact old code snippet>\nREPLACE: <exact new code snippet>\n" +
+                        "The change must be small, safe, and compilable. Max 5 lines changed.";
+
+                    String userPrompt = "Improve this Java code (quality " + score + "/100, " + lineCount + " lines). " +
+                        "Focus on: removing dead code, simplifying logic, improving error handling, " +
+                        "or adding useful logging. Be conservative — only change what's clearly safe.\n\n" +
+                        "Last 50 lines:\n" + source.substring(Math.max(0, source.length() - 3000));
+
+                    String fallback = "FIND: // no change needed\nREPLACE: // no change needed";
+                    String suggestion = ollamaOrFallback("codellama:7b", systemPrompt, userPrompt, fallback);
+
+                    if (suggestion.contains("no change needed") || !suggestion.contains("FIND:") || !suggestion.contains("REPLACE:")) {
+                        log("🔧 Self-Mod: No actionable suggestion");
+                        return;
+                    }
+
+                    // 4. Parse suggestion
+                    int findIdx = suggestion.indexOf("FIND:");
+                    int replaceIdx = suggestion.indexOf("REPLACE:");
+                    if (findIdx < 0 || replaceIdx < 0) return;
+
+                    String oldCode = suggestion.substring(findIdx + 5, replaceIdx).trim();
+                    String newCode = suggestion.substring(replaceIdx + 8).trim();
+
+                    if (oldCode.isEmpty() || oldCode.equals(newCode)) {
+                        log("🔧 Self-Mod: Empty or identical change, skipping");
+                        return;
+                    }
+
+                    // 5. Backup current source
+                    java.nio.file.Files.copy(java.nio.file.Path.of(SRC_PATH), java.nio.file.Path.of(BACKUP_PATH),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+                    // 6. Apply change
+                    String modified = source.replace(oldCode, newCode);
+                    if (modified.equals(source)) {
+                        log("🔧 Self-Mod: Find string not found in source, skipping");
+                        return;
+                    }
+                    java.nio.file.Files.writeString(java.nio.file.Path.of(SRC_PATH), modified);
+
+                    // 7. Try to compile
+                    ProcessBuilder pb = new ProcessBuilder(
+                        "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
+                        "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                        "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                        "--module-path", "C:/Users/viper/.m2/repository/org/openjfx/javafx-controls/17.0.6/javafx-controls-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-graphics/17.0.6/javafx-graphics-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-base/17.0.6/javafx-base-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-fxml/17.0.6/javafx-fxml-17.0.6-win.jar",
+                        "--add-modules", "javafx.controls,javafx.fxml",
+                        SRC_PATH
+                    );
+                    pb.redirectErrorStream(true);
+                    Process proc = pb.start();
+                    String compileOutput = new String(proc.getInputStream().readAllBytes());
+                    int exitCode = proc.waitFor();
+
+                    if (exitCode != 0) {
+                        // 8. ROLLBACK on failure
+                        log("🔧 Self-Mod: COMPILE FAILED — rolling back. Error: " + compileOutput.substring(0, Math.min(200, compileOutput.length())));
+                        java.nio.file.Files.copy(java.nio.file.Path.of(BACKUP_PATH), java.nio.file.Path.of(SRC_PATH),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        selfModRollbacks++;
+                        addToGodChat("🔧 SELF-MOD", "ROLLBACK #" + selfModRollbacks, "Compile failed, restored backup");
+                        return;
+                    }
+
+                    // 9. Success — commit and push
+                    selfModCount++;
+                    String entry = String.format("[%s] #%d: %s → %s (score %d→?)",
+                        java.time.LocalDateTime.now().toString().substring(0, 19),
+                        selfModCount,
+                        oldCode.length() > 60 ? oldCode.substring(0, 60) + "..." : oldCode,
+                        newCode.length() > 60 ? newCode.substring(0, 60) + "..." : newCode,
+                        score);
+                    selfModLedger.add(entry);
+
+                    // Git commit
+                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
+                        "add", "-A").start().waitFor();
+                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
+                        "commit", "-m", "v0.18.0 — Self-Mod #" + selfModCount + ": " +
+                        (newCode.length() > 50 ? newCode.substring(0, 50) + "..." : newCode)).start().waitFor();
+                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
+                        "push", "origin", "main").start().waitFor();
+
+                    log("🔧 Self-Mod #" + selfModCount + ": Applied, compiled, committed, pushed ✅");
+                    addToGodChat("🔧 SELF-MOD", "Applied #" + selfModCount, entry);
+
+                    // Clean up backup
+                    new java.io.File(BACKUP_PATH).delete();
+
+                } catch (Exception e) {
+                    log("⚠️ Self-Mod error: " + e.getMessage());
+                    // Restore backup if exists
+                    try {
+                        java.io.File backup = new java.io.File(BACKUP_PATH);
+                        if (backup.exists()) {
+                            java.nio.file.Files.copy(backup.toPath(), java.nio.file.Path.of(SRC_PATH),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            selfModRollbacks++;
+                            log("🔧 Self-Mod: Exception — rolled back to backup");
+                        }
+                    } catch (Exception ignored) {}
+                }
+            });
+        }, 900, 900, TimeUnit.SECONDS);
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
