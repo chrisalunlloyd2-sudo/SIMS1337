@@ -26,6 +26,15 @@ public class HeadlessOllamaPipeline {
     private static final String[] REASONING_MODELS = {"phi:latest", "llama3.2:1b"};
     private static final String[] DEEP_MODELS = {"phi3:mini", "deepseek-r1:1.5b"};
 
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.out.println("HeadlessOllamaPipeline v1.0");
@@ -198,31 +207,45 @@ public class HeadlessOllamaPipeline {
     // ==================== OLLAMA API CALL ====================
     private static String callModel(String model, String prompt, int maxTokens, double temp) throws Exception {
         String json = String.format(
-            "{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":%d,\"temperature\":%.1f}}",
-            model, prompt.replace("\"", "\\\"").replace("\n", "\\n"), maxTokens, temp);
+            "{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"keep_alive\":0,\"options\":{\"num_predict\":%d,\"temperature\":%.1f}}",
+            escapeJson(model), escapeJson(prompt), maxTokens, temp);
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(OLLAMA_URL))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(120))
+                .timeout(Duration.ofSeconds(90))
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
-        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-
-        if (resp.statusCode() == 200) {
-            String body = resp.body();
-            int s = body.indexOf("\"response\":\"");
-            if (s > 0) {
-                s += 12;
-                int e = body.indexOf("\"", s);
-                if (e > s) return body.substring(s, e)
-                        .replace("\\n", "\n")
-                        .replace("\\\"", "\"")
-                        .replace("\\t", "\t");
+        // Retry loop: 3 attempts with exponential backoff
+        Exception lastEx = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    String body = resp.body();
+                    int s = body.indexOf("\"response\":\"");
+                    if (s > 0) {
+                        s += 12;
+                        int e = body.indexOf("\"", s);
+                        if (e > s) return body.substring(s, e)
+                                .replace("\\n", "\n")
+                                .replace("\\\"", "\"")
+                                .replace("\\t", "\t");
+                    }
+                    return body;
+                }
+                lastEx = new RuntimeException("HTTP " + resp.statusCode());
+            } catch (Exception e) {
+                lastEx = e;
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+                // Exponential backoff: 1s -> 3s -> 7s
+                Thread.sleep((long)(Math.pow(2, attempt) * 500));
             }
-            return body;
         }
-        throw new RuntimeException("HTTP " + resp.statusCode());
+        throw lastEx;
     }
 }
