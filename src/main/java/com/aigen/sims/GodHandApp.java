@@ -4649,117 +4649,13 @@ public class GodHandApp extends Application {
         }, 14400, 14400, TimeUnit.SECONDS);
     }
 
-    // ==================== 47. PROCESS GUARDIAN — External Watchdog, Auto-Restart JVM on Crash ====================
-    // FIXED: PID lock prevents exponential guardian spawn loop.
-    // Only ONE guardian.bat runs at a time. On restart, the existing guardian
-    // picks up the new PID — no new guardian is spawned.
-    private int guardianRestarts = 0;
-    private long guardianLastBeat = System.currentTimeMillis();
-    private static final String GUARDIAN_PID_FILE =
-        "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/guardian.pid";
-    private static final String GUARDIAN_BAT =
-        "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/guardian.bat";
-
+    // ==================== 47. PROCESS GUARDIAN — DISABLED (was causing exponential spawn loop) ====================
+    // The singleton guard (INSTANCE_RUNNING) already prevents duplicate windows.
+    // External watchdog is unnecessary and dangerous — it spawns cmd.exe processes
+    // that restart javaw, which spawns more guardians, ad infinitum.
     private void processGuardianInit() {
-        log("🛡️ Guardian: External watchdog initialized — auto-restart on crash");
-        addToGodChat("🛡️ GUARDIAN", "System", "Process guardian online");
-
-        try {
-            // === GUARD: Check if a guardian is already running ===
-            java.io.File pidFile = new java.io.File(GUARDIAN_PID_FILE);
-            if (pidFile.exists()) {
-                try {
-                    String existingPid = java.nio.file.Files.readString(pidFile.toPath()).trim();
-                    // Check if that guardian process is still alive
-                    ProcessBuilder checkPb = new ProcessBuilder(
-                        "cmd", "/c", "tasklist /FI \"PID eq " + existingPid + "\" 2>nul | find \"" + existingPid + "\" >nul && echo ALIVE || echo DEAD");
-                    Process checkProc = checkPb.start();
-                    String result = new String(checkProc.getInputStream().readAllBytes()).trim();
-                    checkProc.waitFor();
-                    if (result.contains("ALIVE")) {
-                        log("🛡️ Guardian: Already running (PID " + existingPid + ") — NOT spawning duplicate");
-                        addToGodChat("🛡️ GUARDIAN", "System", "Guardian already active (PID " + existingPid + "), no duplicate");
-                        // Update the PID file to point to THIS JVM so the existing guardian watches us
-                        java.nio.file.Files.writeString(pidFile.toPath(),
-                            "JVM=" + ProcessHandle.current().pid() + "\nGUARDIAN=" + existingPid + "\n");
-                        startGuardianHeartbeat();
-                        return;
-                    }
-                } catch (Exception ignored) {
-                    // PID file stale — guardian died, we'll create a new one
-                    log("🛡️ Guardian: Stale PID file, creating fresh guardian");
-                }
-            }
-
-            // === Write the guardian script (only once, not per-startup) ===
-            long currentPid = ProcessHandle.current().pid();
-            String watchdogScript = "@echo off\n" +
-                "setlocal enabledelayedexpansion\n" +
-                "set GUARDIAN_PID_FILE=" + GUARDIAN_PID_FILE.replace("\\", "\\\\") + "\n" +
-                "set JAVA_HOME=C:\\Program Files\\Java\\jdk-17\n" +
-                "set OUT=C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\target\\classes\n" +
-                "set M2=C:\\Users\\viper\\.m2\\repository\n" +
-                "set JFX=%M2%\\org\\openjfx\n" +
-                "set MP=%JFX%\\javafx-base\\17.0.6\\javafx-base-17.0.6-win.jar;%JFX%\\javafx-controls\\17.0.6\\javafx-controls-17.0.6-win.jar;%JFX%\\javafx-graphics\\17.0.6\\javafx-graphics-17.0.6-win.jar;%JFX%\\javafx-fxml\\17.0.6\\javafx-fxml-17.0.6-win.jar\n" +
-                "set CP=%OUT%;%M2%\\com\\fasterxml\\jackson\\core\\jackson-databind\\2.15.2\\jackson-databind-2.15.2.jar;%M2%\\com\\fasterxml\\jackson\\core\\jackson-core\\2.15.2\\jackson-core-2.15.2.jar;%M2%\\com\\fasterxml\\jackson\\core\\jackson-annotations\\2.15.2\\jackson-annotations-2.15.2.jar;%M2%\\org\\apache\\httpcomponents\\client5\\httpclient5\\5.2.1\\httpclient5-5.2.1.jar;%M2%\\org\\apache\\httpcomponents\\core5\\httpcore5\\5.2\\httpcore5-5.2.jar;%M2%\\org\\apache\\httpcomponents\\core5\\httpcore5-h2\\5.2\\httpcore5-h2-5.2.jar;%M2%\\org\\slf4j\\slf4j-api\\2.0.7\\slf4j-api-2.0.7.jar;%M2%\\org\\java-websocket\\Java-WebSocket\\1.5.3\\Java-WebSocket-1.5.3.jar\n" +
-                "set PID=" + currentPid + "\n" +
-                // Write our own PID to the lock file
-                "echo JVM=%PID%> %GUARDIAN_PID_FILE%\n" +
-                "echo GUARDIAN=%PID%>> %GUARDIAN_PID_FILE%\n" +
-                ":loop\n" +
-                "timeout /t 30 /nobreak >nul\n" +
-                // Read the PID file — the JVM may have updated it to point to a new instance
-                "if exist %GUARDIAN_PID_FILE% (\n" +
-                "  for /f \"tokens=2 delims==\" %%a in ('type %GUARDIAN_PID_FILE% ^| findstr \"JVM=\"') do set PID=%%a\n" +
-                ")\n" +
-                "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul\n" +
-                "if errorlevel 1 (\n" +
-                "  echo [%date% %time%] SIMS1337 JVM PID %PID% died — checking for existing instances... >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
-                "  tasklist /FI \"IMAGENAME eq javaw.exe\" 2>nul | find \"javaw.exe\" >nul\n" +
-                "  if errorlevel 1 (\n" +
-                "    echo [%date% %time%] No existing javaw — restarting SIMS1337... >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
-                "    start \"SIMS1337\" \"%JAVA_HOME%\\bin\\javaw\" --module-path \"%MP%\" --add-modules javafx.controls,javafx.fxml -cp \"%CP%\" com.aigen.sims.GodHandApp\n" +
-                "    timeout /t 15 /nobreak >nul\n" +
-                "    for /f \"tokens=2\" %%a in ('tasklist /FI \"IMAGENAME eq javaw.exe\" /FO LIST ^| find \"PID:\"') do (\n" +
-                "      set PID=%%a\n" +
-                "      echo JVM=%%a> %GUARDIAN_PID_FILE%\n" +
-                "      echo GUARDIAN=!PID!>> %GUARDIAN_PID_FILE%\n" +
-                "    )\n" +
-                "    echo [%date% %time%] Restarted with PID %PID% >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
-                "  ) else (\n" +
-                "    echo [%date% %time%] javaw already running — skipping restart (singleton guard active) >> C:\\Users\\viper\\AIGEN_SYS\\repos\\sims-java-neo-fx\\logs\\guardian.log\n" +
-                "    for /f \"tokens=2\" %%a in ('tasklist /FI \"IMAGENAME eq javaw.exe\" /FO LIST ^| find \"PID:\"') do set PID=%%a\n" +
-                "    echo JVM=!PID!> %GUARDIAN_PID_FILE%\n" +
-                "    echo GUARDIAN=!PID!>> %GUARDIAN_PID_FILE%\n" +
-                "  )\n" +
-                ")\n" +
-                "goto loop\n";
-
-            java.nio.file.Files.writeString(
-                java.nio.file.Path.of(GUARDIAN_BAT), watchdogScript);
-
-            // Write PID lock file
-            java.nio.file.Files.writeString(pidFile.toPath(),
-                "JVM=" + currentPid + "\nGUARDIAN=" + currentPid + "\n");
-
-            // Start the guardian (only if none is running)
-            new ProcessBuilder("cmd", "/c", "start", "/min", "guardian.bat")
-                .directory(new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx"))
-                .start();
-
-            log("🛡️ Guardian: Watchdog deployed (JVM PID " + currentPid + ")");
-        } catch (Exception e) {
-            log("⚠️ Guardian deploy failed: " + e.getMessage());
-        }
-
-        startGuardianHeartbeat();
-    }
-
-    private void startGuardianHeartbeat() {
-        // Heartbeat every 30 seconds — guardian checks this
-        chatScheduler.scheduleAtFixedRate(() -> {
-            guardianLastBeat = System.currentTimeMillis();
-        }, 30, 30, TimeUnit.SECONDS);
+        log("🛡️ Guardian: DISABLED — singleton guard sufficient, watchdog removed to prevent spawn loop");
+        addToGodChat("🛡️ GUARDIAN", "System", "Guardian disabled (singleton guard active)");
     }
 
     // ==================== 48. ANALYTICS ENGINE — Trend Tracking, Reports, Anomaly Detection ====================
