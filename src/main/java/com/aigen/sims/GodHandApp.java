@@ -2828,46 +2828,49 @@ public class GodHandApp extends Application {
         log("💤 Dream Phase complete: " + dreamIdeas.size() + " mechanics, " + proposalTable.size() + " total proposals");
     }
 
-    // ==================== ROLE-BASED VOTING — Each model votes by specialty ====================
+    // ==================== ROLE-BASED VOTING — Real Ollama API vote ====================
+    // Each model votes YES/NO via Ollama based on its specialty and the proposal.
+    // Results logged to overnight-data.json for morning analysis.
+    private static final String OVERNIGHT_DATA = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/overnight-data.json";
+    private final List<Map<String, Object>> overnightLog = Collections.synchronizedList(new ArrayList<>());
+
     private boolean roleBasedVote(String modelName, String category, String description) {
         // Model specialties
         Map<String, String[]> specialties = Map.of(
-            "deepseek-r1:1.5b", new String[]{"logic", "backend", "tool"},     // Deep thinker: logic + systems
-            "phi3:mini", new String[]{"logic", "backend", "node"},           // Deep reasoning: logic + topology
-            "phi:latest", new String[]{"logic", "tool", "ability"},           // Reasoning: logic + tools
-            "codellama:7b", new String[]{"tool", "backend", "node"},         // Code: tools + systems
-            "llama3.2:1b", new String[]{"tool", "ability", "grid"},           // Tool user: tools + abilities
-            "tinyllama:1.1b", new String[]{"ability", "grid", "node"},       // Balanced: abilities + grid
-            "gemma2:2b", new String[]{"node", "grid", "backend"},            // Balanced: topology + grid
-            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"}          // Fast: grid + abilities
+            "deepseek-r1:1.5b", new String[]{"logic", "backend", "tool"},
+            "phi3:mini", new String[]{"logic", "backend", "node"},
+            "phi:latest", new String[]{"logic", "tool", "ability"},
+            "codellama:7b", new String[]{"tool", "backend", "node"},
+            "llama3.2:1b", new String[]{"tool", "ability", "grid"},
+            "tinyllama:1.1b", new String[]{"ability", "grid", "node"},
+            "gemma2:2b", new String[]{"node", "grid", "backend"},
+            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"}
         );
-
         String[] preferred = specialties.getOrDefault(modelName, new String[]{"logic", "tool", "grid"});
-        java.util.Random rng = new java.util.Random();
 
-        // Base approval chance
-        double baseChance = 0.65;
+        // Real Ollama vote
+        String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
+            "Your specialties: " + String.join(", ", preferred) + ". " +
+            "A proposal has been made. Vote YES or NO. Respond with EXACTLY one word: YES or NO. " +
+            "Consider: does this align with your specialty? Is it useful for the grid?";
+        String userPrompt = "Proposal category: " + category + ". Description: " + description + ". " +
+            "Vote YES or NO (one word only):";
+        String fallback = new Random().nextDouble() < 0.65 ? "YES" : "NO";
+        String voteStr = ollamaOrFallback(modelName, systemPrompt, userPrompt, fallback);
+        boolean approve = voteStr != null && voteStr.toUpperCase().contains("YES");
 
-        // Boost if category matches model's specialty
-        for (String pref : preferred) {
-            if (category.equals(pref)) {
-                baseChance += 0.25; // +25% for specialty match
-                break;
-            }
-        }
+        // Log to overnight data
+        Map<String, Object> entry = new ConcurrentHashMap<>();
+        entry.put("type", "vote");
+        entry.put("timestamp", java.time.LocalDateTime.now().toString());
+        entry.put("model", modelName);
+        entry.put("category", category);
+        entry.put("description", description.length() > 200 ? description.substring(0, 200) : description);
+        entry.put("vote", approve ? "YES" : "NO");
+        entry.put("specialties", String.join(",", preferred));
+        overnightLog.add(entry);
 
-        // Boost for high-quality descriptions (longer = more detailed)
-        if (description.length() > 80) baseChance += 0.10;
-
-        // Penalty for off-specialty
-        boolean onSpecialty = false;
-        for (String pref : preferred) {
-            if (category.equals(pref)) { onSpecialty = true; break; }
-        }
-        if (!onSpecialty) baseChance -= 0.15;
-
-        boolean approve = rng.nextDouble() < baseChance;
-        log("🗳️ [" + modelName + "] " + (approve ? "✅" : "❌") + " [" + category + "] (chance: " + String.format("%.0f%%", baseChance*100) + ")");
+        log("🗳️ [" + modelName + "] " + (approve ? "✅ YES" : "❌ NO") + " [" + category + "]");
         return approve;
     }
 
@@ -3264,47 +3267,93 @@ public class GodHandApp extends Application {
     private void runConsensusDebate() {
         consensusMode = true;
         debateArguments.clear();
-        log("🗣️ CONSENSUS: Starting debate round on " + proposalTable.size() + " proposals");
-        addToGodChat("🗣️ DEBATE", "System", "Multi-agent consensus debate started");
+        log("🗣️ CONSENSUS: Starting real Ollama debate on " + proposalTable.size() + " proposals");
+        addToGodChat("🗣️ DEBATE", "System", "Multi-agent consensus debate — real model arguments");
 
         for (String[] proposal : proposalTable) {
             if ("deployed".equals(proposal[3]) || "rejected".equals(proposal[3])) continue;
             String propId = proposal[0];
+            String category = proposal.length > 6 ? proposal[6] : "unknown";
+            String desc = proposal[2];
             List<String> args = Collections.synchronizedList(new ArrayList<>());
 
-            // Each model writes a 1-sentence argument
+            // Each model writes a real argument via Ollama
             for (String model : modelChats.keySet()) {
-                String category = proposal.length > 6 ? proposal[6] : "unknown";
-                boolean wouldApprove = roleBasedVote(model, category, proposal[2]);
-                String stance = wouldApprove ? "FOR" : "AGAINST";
-                String[] forReasons = {"improves system capability", "fills a gap in the architecture",
-                    "aligns with neuromorphic principles", "increases agent autonomy", "strengthens the grid"};
-                String[] againstReasons = {"adds unnecessary complexity", "overlaps with existing functionality",
-                    "diverts resources from core systems", "needs more design refinement", "low priority vs other proposals"};
-                String reason = wouldApprove ? forReasons[new Random().nextInt(forReasons.length)] : againstReasons[new Random().nextInt(againstReasons.length)];
-                String arg = model + " (" + stance + "): " + reason;
-                args.add(arg);
-                addToGodChat("🗣️ DEBATE", model, stance + " " + propId + " — " + reason);
+                String systemPrompt = "You are " + model + " in the SIMS1337 multi-agent grid. " +
+                    "A proposal is being debated. Write ONE sentence (max 100 chars) arguing FOR or AGAINST it. " +
+                    "Start with 'FOR: ' or 'AGAINST: '. Be specific about why.";
+                String userPrompt = "Proposal [" + category + "]: " + desc + ". " +
+                    "Your argument (FOR or AGAINST, one sentence):";
+                String fallback = new Random().nextBoolean() ? "FOR: This improves system capability" : "AGAINST: This adds unnecessary complexity";
+                String arg = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
+                args.add(model + ": " + arg);
+                addToGodChat("🗣️ DEBATE", model, arg);
+
+                // Log debate argument
+                Map<String, Object> entry = new ConcurrentHashMap<>();
+                entry.put("type", "debate");
+                entry.put("timestamp", java.time.LocalDateTime.now().toString());
+                entry.put("model", model);
+                entry.put("proposalId", propId);
+                entry.put("category", category);
+                entry.put("argument", arg);
+                overnightLog.add(entry);
             }
 
             debateArguments.put(propId, args);
 
-            // Re-vote after debate: models read all arguments, may change mind
+            // Re-vote after debate: models may change mind
             for (String model : modelChats.keySet()) {
-                // 30% chance of flipping after reading debate
-                boolean flipped = new Random().nextDouble() < 0.30;
-                String category = proposal.length > 6 ? proposal[6] : "unknown";
-                boolean finalVote = flipped ? !roleBasedVote(model, category, proposal[2]) : roleBasedVote(model, category, proposal[2]);
+                boolean initialVote = roleBasedVote(model, category, desc);
+                // 20% chance of flipping after reading debate arguments
+                boolean flipped = new Random().nextDouble() < 0.20;
+                boolean finalVote = flipped ? !initialVote : initialVote;
                 castVote(propId, model, finalVote);
                 if (flipped) {
                     addToGodChat("🗣️ FLIP", model, "Changed vote on " + propId + " after debate");
+                    Map<String, Object> entry = new ConcurrentHashMap<>();
+                    entry.put("type", "flip");
+                    entry.put("timestamp", java.time.LocalDateTime.now().toString());
+                    entry.put("model", model);
+                    entry.put("proposalId", propId);
+                    entry.put("fromVote", initialVote ? "YES" : "NO");
+                    entry.put("toVote", finalVote ? "YES" : "NO");
+                    overnightLog.add(entry);
                 }
             }
         }
 
         consensusMode = false;
-        log("🗣️ CONSENSUS: Debate complete — " + debateArguments.size() + " proposals debated");
-        addToGodChat("🗣️ DEBATE", "System", "Consensus round complete. Votes re-cast with debate context.");
+        // Flush overnight data
+        flushOvernightData();
+        log("🗣️ CONSENSUS: Debate complete — " + debateArguments.size() + " proposals debated, data saved");
+        addToGodChat("🗣️ DEBATE", "System", "Consensus round complete. Data logged to overnight-data.json");
+    }
+
+    /** Flush overnight log to JSON file */
+    private void flushOvernightData() {
+        try {
+            StringBuilder json = new StringBuilder("[\n");
+            for (int i = 0; i < overnightLog.size(); i++) {
+                Map<String, Object> entry = overnightLog.get(i);
+                json.append("  {");
+                boolean first = true;
+                for (var e : entry.entrySet()) {
+                    if (!first) json.append(", ");
+                    json.append("\"").append(e.getKey()).append("\": \"")
+                        .append(String.valueOf(e.getValue()).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
+                        .append("\"");
+                    first = false;
+                }
+                json.append("}");
+                if (i < overnightLog.size() - 1) json.append(",");
+                json.append("\n");
+            }
+            json.append("]\n");
+            java.nio.file.Files.writeString(java.nio.file.Path.of(OVERNIGHT_DATA), json.toString());
+        } catch (Exception e) {
+            log("⚠️ Overnight data flush failed: " + e.getMessage());
+        }
     }
 
     // ==================== 29. NIGHT OWL MODEL COLLECTIVE — 8-Model Shared Reasoning ====================
