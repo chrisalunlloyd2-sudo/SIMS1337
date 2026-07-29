@@ -187,7 +187,49 @@ public class GodHandApp extends Application {
         "after","above","below","between","of","up","down","out","off","over","under"
     );
 
-    public static void main(String[] args) { launch(args); }
+    public static void main(String[] args) {
+        // === HEADLESS MODE: Run pipeline without JavaFX UI (2026-07-28, Chris: "run the SIMS1337
+        // pipeline without JavaFX UI -- so it works on your phone via Termux") ===
+        if (args.length > 0 && args[0].equals("--headless")) {
+            System.out.println("SIMS1337 -- Headless Mode");
+            System.out.println("   Pipeline: mine -> deploy -> tune -> grow");
+            System.out.println("   Running autonomously...\n");
+
+            // Phase 2: Mine
+            com.aigen.sims.mining.CodeMinerOrchestrator miner =
+                new com.aigen.sims.mining.CodeMinerOrchestrator(
+                    System.getProperty("user.home") + "/AIGEN_SYS/repos",
+                    "suggestions");
+            var mineReport = miner.runMiningCycle();
+            System.out.println(mineReport.toEmailString());
+
+            // Phase 3: Deploy
+            com.aigen.sims.deploy.DeployOrchestrator deployer =
+                new com.aigen.sims.deploy.DeployOrchestrator(
+                    System.getProperty("user.home") + "/SIMS1337");
+            // deployer.runDeployCycle(registry, repoPath);
+            System.out.println("   Deploy: ready (needs SuggestionRegistry)");
+
+            // Phase 4: Tune
+            com.aigen.sims.lora.AdapterRegistry adapterReg =
+                new com.aigen.sims.lora.AdapterRegistry();
+            com.aigen.sims.lora.LoRATuner tuner =
+                new com.aigen.sims.lora.LoRATuner(adapterReg);
+            var tuneReport = tuner.runTuningCycle();
+            System.out.println(tuneReport.toEmailString());
+
+            // Phase 5: Grow
+            com.aigen.sims.gui.GuiGardener gardener =
+                new com.aigen.sims.gui.GuiGardener();
+            System.out.println(gardener.getComponentMapString());
+
+            System.out.println("\nHeadless pipeline complete.");
+            return; // Don't launch JavaFX
+        }
+        // === END HEADLESS MODE ===
+
+        launch(args);
+    }
 
     @Override
     public void start(Stage stage) {
