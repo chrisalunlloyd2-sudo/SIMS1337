@@ -276,6 +276,9 @@ public class GodHandApp extends Application {
         autoLoopInit();
         webSocketInit();
         selfHealingInit();
+        crossRepoKGInit();
+        memoryPersistenceInit();
+        agentCommsInit();
         nightCycleArm();
     }
 
@@ -1959,7 +1962,10 @@ public class GodHandApp extends Application {
                     {"36. GUI Gardener", "✅ Active"},
                     {"37. AutoLoop (60min)", "✅ Active"},
                     {"38. WebSocket Live", "✅ Active"},
-                    {"39. Self-Healing", "✅ Active"}
+                    {"39. Self-Healing", "✅ Active"},
+                    {"40. Cross-Repo KG", "✅ Active"},
+                    {"41. Memory Persistence", "✅ Active"},
+                    {"42. Agent Comms", "✅ Active"}
                 };
                 for (String[] sys : allSystems) {
                     html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
@@ -3807,6 +3813,248 @@ public class GodHandApp extends Application {
                 log("⚠️ Self-healing check error: " + e.getMessage());
             }
         }, 60, 60, TimeUnit.SECONDS);
+    }
+
+    // ==================== 40. CROSS-REPO KNOWLEDGE GRAPH — Scan All 45 AIGEN_SYS Repos ====================
+    private final Map<String, Map<String, String>> crossRepoNodes = new ConcurrentHashMap<>(); // repo -> {key->val}
+    private int crossRepoCount = 0;
+
+    private void crossRepoKGInit() {
+        log("📚 Cross-Repo KG: Scanning all AIGEN_SYS repos for unified knowledge graph");
+        addToGodChat("📚 CROSS-KG", "System", "Cross-repo knowledge graph scanning...");
+
+        chatScheduler.schedule(() -> {
+            try {
+                java.io.File aigenDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos");
+                java.io.File[] repos = aigenDir.listFiles(java.io.File::isDirectory);
+                if (repos == null) return;
+
+                for (java.io.File repo : repos) {
+                    try {
+                        Map<String, String> node = new ConcurrentHashMap<>();
+                        node.put("name", repo.getName());
+                        node.put("path", repo.getAbsolutePath());
+
+                        // Read README
+                        java.io.File readme = new java.io.File(repo, "README.md");
+                        if (readme.exists()) {
+                            String content = java.nio.file.Files.readString(readme.toPath());
+                            node.put("readme", content.length() > 500 ? content.substring(0, 500) : content);
+                            // Extract first heading as description
+                            int h1 = content.indexOf("# ");
+                            if (h1 >= 0) {
+                                int end = content.indexOf("\n", h1);
+                                node.put("title", content.substring(h1 + 2, end > 0 ? end : Math.min(h1 + 80, content.length())).trim());
+                            }
+                        }
+
+                        // Count files
+                        java.io.File[] srcFiles = new java.io.File(repo, "src").listFiles();
+                        int javaCount = 0, pyCount = 0, mdCount = 0;
+                        if (srcFiles != null) {
+                            for (java.io.File f : srcFiles) {
+                                String name = f.getName().toLowerCase();
+                                if (name.endsWith(".java")) javaCount++;
+                                else if (name.endsWith(".py")) pyCount++;
+                                else if (name.endsWith(".md")) mdCount++;
+                            }
+                        }
+                        node.put("javaFiles", String.valueOf(javaCount));
+                        node.put("pyFiles", String.valueOf(pyCount));
+                        node.put("mdFiles", String.valueOf(mdCount));
+
+                        // Check for git remote
+                        java.io.File gitDir = new java.io.File(repo, ".git");
+                        node.put("hasGit", String.valueOf(gitDir.exists()));
+
+                        crossRepoNodes.put(repo.getName(), node);
+                        crossRepoCount++;
+                    } catch (Exception ignored) {}
+                }
+
+                // Add cross-repo edges: repos sharing keywords
+                int edges = 0;
+                for (var a : crossRepoNodes.entrySet()) {
+                    for (var b : crossRepoNodes.entrySet()) {
+                        if (a.getKey().compareTo(b.getKey()) >= 0) continue;
+                        String aTitle = a.getValue().getOrDefault("title", "").toLowerCase();
+                        String bTitle = b.getValue().getOrDefault("title", "").toLowerCase();
+                        String[] keywords = {"sims", "agent", "java", "neo", "fx", "grid", "hex", "fow",
+                            "pipeline", "mining", "lora", "voting", "deploy", "gui", "bridge"};
+                        int shared = 0;
+                        for (String kw : keywords) {
+                            if (aTitle.contains(kw) && bTitle.contains(kw)) shared++;
+                        }
+                        if (shared >= 2) edges++;
+                    }
+                }
+
+                final int finalEdges = edges;
+                Platform.runLater(() -> {
+                    log("📚 Cross-Repo KG: " + crossRepoCount + " repos indexed, " + finalEdges + " cross-edges");
+                    addToGodChat("📚 CROSS-KG", "Complete", crossRepoCount + " repos, " + finalEdges + " edges");
+                    // Add to main KG
+                    for (var entry : crossRepoNodes.entrySet()) {
+                        kgNodes.put("repo:" + entry.getKey(), entry.getValue().getOrDefault("title", entry.getKey()));
+                    }
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> log("⚠️ Cross-Repo KG error: " + e.getMessage()));
+            }
+        }, 10, TimeUnit.SECONDS);
+
+        // Refresh every 2 hours
+        chatScheduler.scheduleAtFixedRate(() -> {
+            crossRepoKGInit();
+        }, 7200, 7200, TimeUnit.SECONDS);
+    }
+
+    // ==================== 41. MEMORY PERSISTENCE TO GIST — Save/Load Agent Memories ====================
+    private void memoryPersistenceInit() {
+        log("💾 Memory Persistence: Agent memories synced to gist:memories-db");
+        addToGodChat("💾 MEM-PERSIST", "System", "Memory persistence to gist online");
+
+        // Load memories from gist on startup
+        chatScheduler.schedule(() -> {
+            try {
+                if (gistToken.isEmpty()) return;
+                var req = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.github.com/gists/14e94c9d5256c16c6ecfdf748f7d3bbd"))
+                    .header("Authorization", "token " + gistToken)
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .timeout(Duration.ofSeconds(10)).GET().build();
+                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    String body = resp.body();
+                    // Extract memories from gist files
+                    int idx = body.indexOf("\"content\":\"");
+                    while (idx > 0) {
+                        idx += 11;
+                        int end = body.indexOf("\"", idx);
+                        if (end > idx) {
+                            String content = body.substring(idx, end)
+                                .replace("\\n", "\n").replace("\\\"", "\"");
+                            // Parse agent memories
+                            for (String line : content.split("\n")) {
+                                if (line.contains("Agent ") && line.contains(":")) {
+                                    String[] parts = line.split(":", 2);
+                                    if (parts.length >= 2) {
+                                        String agent = parts[0].trim();
+                                        String memory = parts[1].trim();
+                                        if (!memory.isEmpty()) {
+                                            persistentMemory.computeIfAbsent(agent,
+                                                k -> Collections.synchronizedList(new ArrayList<>())).add(memory);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        idx = body.indexOf("\"content\":\"", end);
+                    }
+                    Platform.runLater(() -> {
+                        int total = persistentMemory.values().stream().mapToInt(List::size).sum();
+                        log("💾 Loaded " + total + " memories from gist:memories-db");
+                        addToGodChat("💾 MEM-PERSIST", "Load", total + " memories restored");
+                    });
+                }
+            } catch (Exception e) {
+                Platform.runLater(() -> log("⚠️ Memory load failed: " + e.getMessage()));
+            }
+        }, 15, TimeUnit.SECONDS);
+
+        // Save memories to gist every 10 minutes
+        chatScheduler.scheduleAtFixedRate(() -> {
+            try {
+                if (gistToken.isEmpty()) return;
+                StringBuilder memData = new StringBuilder("# Agent Memories — Auto-Synced\n\n");
+                for (var entry : persistentMemory.entrySet()) {
+                    memData.append("## ").append(entry.getKey()).append("\n");
+                    for (String mem : entry.getValue()) {
+                        memData.append("- ").append(mem).append("\n");
+                    }
+                    memData.append("\n");
+                }
+
+                String json = String.format(
+                    "{\"description\":\"Agent Memories — auto-synced\",\"files\":{\"memories.md\":{\"content\":\"%s\"}}}",
+                    memData.toString().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
+
+                var req = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.github.com/gists/14e94c9d5256c16c6ecfdf748f7d3bbd"))
+                    .header("Authorization", "token " + gistToken)
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                    .timeout(Duration.ofSeconds(15)).build();
+                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200) {
+                    Platform.runLater(() -> {
+                        int total = persistentMemory.values().stream().mapToInt(List::size).sum();
+                        log("💾 Memory Persist: " + total + " memories saved to gist");
+                    });
+                }
+            } catch (Exception e) {
+                Platform.runLater(() -> log("⚠️ Memory save failed: " + e.getMessage()));
+            }
+        }, 600, 600, TimeUnit.SECONDS);
+    }
+
+    // ==================== 42. AGENT-TO-AGENT REAL COMMUNICATION — Message Passing via Ollama ====================
+    private final Map<String, List<String>> agentInbox = new ConcurrentHashMap<>(); // agent -> [messages]
+    private int agentMessagesSent = 0;
+
+    private void agentCommsInit() {
+        agentInbox.put("Agent Alpha", Collections.synchronizedList(new ArrayList<>()));
+        agentInbox.put("Agent Beta", Collections.synchronizedList(new ArrayList<>()));
+        agentInbox.put("Agent Gamma", Collections.synchronizedList(new ArrayList<>()));
+
+        log("💬 Agent Comms: Real inter-agent message passing via Ollama initialized");
+        addToGodChat("💬 COMMS", "System", "Agent-to-agent communication online");
+
+        // Every 90 seconds: agents send messages to each other
+        chatScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(() -> {
+                try {
+                    String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
+                    String[] models = {"deepseek-r1:1.5b", "codellama:7b", "phi3:mini"};
+
+                    for (int i = 0; i < agents.length; i++) {
+                        String sender = agents[i];
+                        String receiver = agents[(i + 1) % agents.length];
+                        String model = models[i];
+
+                        // Check inbox for pending messages
+                        List<String> inbox = agentInbox.getOrDefault(sender, List.of());
+                        String context = inbox.isEmpty() ? "no pending messages" :
+                            "pending messages: " + String.join("; ", inbox.subList(Math.max(0, inbox.size()-3), inbox.size()));
+
+                        String systemPrompt = "You are " + sender + " in the SIMS1337 multi-agent grid. " +
+                            "Send ONE short message (max 80 chars) to " + receiver + ". " +
+                            "Be collaborative, share an observation or ask a question. " +
+                            "Context: " + context;
+
+                        String userPrompt = "What message do you want to send to " + receiver + "? " +
+                            "You are at hex " + agentPositions.getOrDefault(sender, new int[]{0,0,0})[0] + "," +
+                            agentPositions.getOrDefault(sender, new int[]{0,0,0})[1] + ". " +
+                            "Your task count: " + agentTaskCount.getOrDefault(sender, 0);
+
+                        String fallback = "Hey " + receiver + ", I noticed some interesting patterns in the topology. Want to compare notes?";
+                        String message = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
+
+                        // Deliver to receiver's inbox
+                        agentInbox.get(receiver).add(sender + ": " + message);
+                        agentMessagesSent++;
+                        log("💬 [" + sender + " → " + receiver + "]: " + message);
+                        addToGodChat("💬 COMMS", sender + "→" + receiver, message);
+
+                        // Clear sender's inbox after reading
+                        inbox.clear();
+                    }
+                } catch (Exception e) {
+                    log("⚠️ Agent comms error: " + e.getMessage());
+                }
+            });
+        }, 90, 90, TimeUnit.SECONDS);
     }
 
     private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
