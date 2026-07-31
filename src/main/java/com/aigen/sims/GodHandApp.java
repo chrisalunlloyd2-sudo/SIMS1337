@@ -3692,16 +3692,18 @@ public class GodHandApp extends Application {
     }
 
     // ==================== 32. FOW-WEIGHTED QUORUM VOTING — Phase1 Integration ====================
+    // CAPPED: runs once per night cycle (not every 2 min) to prevent vote spam.
+    // 613K quorum votes in 2 days = 99% noise. Real proposals only need ~6K.
     private FOWGate fowGate;
     private QuorumVoting quorumVoting;
+    private int quorumCycleCount = 0;
+    private static final int MAX_QUORUM_CYCLES = 48; // ~24h worth at 30min intervals
 
     private void fowQuorumVotingInit() {
         fowGate = new FOWGate();
-        // Pin agents to hexes
         fowGate.pinAgent("Agent Alpha", com.aigen.sims.phase1.HexCoord.fromString("0,0"));
         fowGate.pinAgent("Agent Beta", com.aigen.sims.phase1.HexCoord.fromString("3,-2"));
         fowGate.pinAgent("Agent Gamma", com.aigen.sims.phase1.HexCoord.fromString("-3,2"));
-        // Assign models to agents
         fowGate.assignModel("deepseek-r1:1.5b", "Agent Alpha");
         fowGate.assignModel("codellama:7b", "Agent Alpha");
         fowGate.assignModel("phi3:mini", "Agent Beta");
@@ -3712,28 +3714,38 @@ public class GodHandApp extends Application {
         fowGate.assignModel("phi:latest", "Agent Beta");
 
         quorumVoting = new QuorumVoting(fowGate);
-        log("🗳️ FOW Quorum Voting: Phase1 engine integrated — FOW-gated, hex-tagged, BLIND tracking");
-        addToGodChat("🗳️ QUORUM", "System", "FOW-weighted quorum voting online");
+        log("🗳️ FOW Quorum Voting: Phase1 engine integrated — CAPPED at " + MAX_QUORUM_CYCLES + " cycles");
+        addToGodChat("🗳️ QUORUM", "System", "FOW-weighted quorum voting online (capped)");
 
-        // Every 2 minutes: run quorum cycle
+        // Run once per night cycle (30 min), not every 2 min
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 try {
+                    if (quorumCycleCount >= MAX_QUORUM_CYCLES) {
+                        log("🗳️ Quorum: cycle cap reached (" + MAX_QUORUM_CYCLES + "), pausing");
+                        return;
+                    }
+                    quorumCycleCount++;
+                    int added = 0;
                     for (String[] p : proposalTable) {
                         if ("deployed".equals(p[3]) || "rejected".equals(p[3])) continue;
                         String hexKey = p.length > 7 ? p[7] : "0,0";
                         quorumVoting.addProposal(p[0], p[1], hexKey);
+                        added++;
                     }
-                    quorumVoting.autoVote((model, prop) -> {
-                        boolean approve = roleBasedVote(model, "quorum", prop.text);
-                        return approve ? QuorumVoting.Vote.APPROVE : QuorumVoting.Vote.REJECT;
-                    });
-                    log("🗳️ Quorum: " + quorumVoting.proposalCount() + " proposals, " + quorumVoting.totalVotesCast() + " votes");
+                    // Only vote on new proposals, not all accumulated
+                    if (added > 0) {
+                        quorumVoting.autoVote((model, prop) -> {
+                            boolean approve = roleBasedVote(model, "quorum", prop.text);
+                            return approve ? QuorumVoting.Vote.APPROVE : QuorumVoting.Vote.REJECT;
+                        });
+                    }
+                    log("🗳️ Quorum #" + quorumCycleCount + ": " + added + " proposals, " + quorumVoting.totalVotesCast() + " total votes");
                 } catch (Exception e) {
                     log("⚠️ Quorum error: " + e.getMessage());
                 }
             });
-        }, 120, 120, TimeUnit.SECONDS);
+        }, 1800, 1800, TimeUnit.SECONDS); // 30 min, not 120s
     }
 
     // ==================== 33. CODE MINING — FOW-Gated Repo Scanning ====================
