@@ -38,7 +38,39 @@ def load(path=DEFAULT_FILE):
                      "tags": [], "content": "", "updated": time.time(), "children": {}}}
 
 def save(tree, path=DEFAULT_FILE):
+    """Persist tree, then auto-sync to SOV KV (gist/KV updates from nodes)."""
     json.dump(tree, open(path, "w"), indent=2)
+    _auto_sync(path)
+
+def _auto_sync(path):
+    """Hook: after any tree mutation, upsert toc.* keys into SOV KV.
+    Never raises — sync is best-effort; the tree write always succeeds.
+    Portability: locates node_kv_sync.py by repo-relative search, so it
+    works identically on the sandbox, MatrixWinCE, and Termux."""
+    try:
+        kv_file = os.environ.get("SOV_KV_FILE", "/root/sov/kv/data.json")
+        if not os.path.exists(kv_file):
+            return  # no SOV store here (e.g. sandbox) — skip silently
+        here = os.path.dirname(os.path.abspath(__file__))
+        # walk up from toc_tok/ to find any repo root containing sync/node_kv_sync.py
+        d = here
+        found = None
+        while os.path.dirname(d) != d:  # up to filesystem root
+            for cand in (os.path.join(d, "sync"), os.path.join(d, "MatrixWinCE", "sync"),
+                         os.path.join(d, "scripts", "sync")):
+                if os.path.isfile(os.path.join(cand, "node_kv_sync.py")):
+                    found = cand
+                    break
+            if found:
+                break
+            d = os.path.dirname(d)
+        if not found:
+            return  # no sync module anywhere up the tree — skip silently
+        sys.path.insert(0, found)
+        from node_kv_sync import sync as _sync
+        _sync(path, kv_file)
+    except Exception:
+        pass  # best-effort
 
 def _mkdir(tree, parts, meta):
     """Create intermediate nodes along a path; returns (node, created)."""
@@ -144,22 +176,27 @@ def cmd_path(a):
 import re as _re
 _HEX_TOK = _re.compile(r"^-?\d+,-?\d+$")
 
+_VALUE_OPTS = {"--title", "--type", "--hex", "--tags", "--content", "--file"}
+
 def _protect_hex(argv):
     """Prefix hex-coordinate tokens (e.g. -2,1) with '--' so argparse treats
-    them as values, not flags. Works for positionals and option values."""
+    them as values, not flags. If the hex is already a VALUE of an option
+    (e.g. --hex 4,4), pass it through untouched — no '--' separator."""
     out = []
     i = 0
+    prev = None  # previous token (could be an option expecting a value)
     while i < len(argv):
         a = argv[i]
         if a == "--":
             out.extend(argv[i:]); break
-        if _HEX_TOK.match(a):
+        if _HEX_TOK.match(a) and prev not in _VALUE_OPTS:
+            # standalone hex (positional like 'at 2,1' or negative flag) → protect
             out.append("--")
             out.append(a)
-            # if previous arg was an option expecting a value (e.g. --hex), fix ordering
             i += 1
             continue
         out.append(a)
+        prev = a
         i += 1
     return out
 
