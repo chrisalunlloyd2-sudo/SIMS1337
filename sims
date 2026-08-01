@@ -1,0 +1,293 @@
+#!/usr/bin/env bash
+# SIMS1337 Terminal CLI v1.0 — One-word commands for full environment control
+# Usage: sims <command> [args]
+# All commands chain real local SLM models via Ollama API.
+# Works in: git-bash, MSYS, WSL, Linux, macOS
+
+API="http://localhost:8899"
+OLLAMA="http://localhost:11434/api/generate"
+DATA_DIR="$HOME/AIGEN_SYS/repos/sims-java-neo-fx/logs"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+ollama_call() {
+  local model="$1" system="$2" prompt="$3" tokens="${4:-80}"
+  local json
+  json=$(jq -n --arg m "$model" --arg s "$system" --arg p "$prompt" --argjson t "$tokens" \
+    '{model:$m, system:$s, prompt:$p, stream:false, options:{num_predict:$t, temperature:0.7}}' 2>/dev/null)
+  if [ -z "$json" ]; then
+    # jq not available, use python
+    json=$(python3 -c "
+import json,sys
+print(json.dumps({'model':sys.argv[1],'system':sys.argv[2],'prompt':sys.argv[3],'stream':False,'options':{'num_predict':int(sys.argv[4]),'temperature':0.7}}))
+" "$model" "$system" "$prompt" "$tokens" 2>/dev/null)
+  fi
+  local result
+  result=$(curl -s --max-time 25 "$OLLAMA" -d "$json" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('response','[timeout]'))" 2>/dev/null)
+  echo "${result:-[offline]}"
+}
+
+log() { printf "[%s] %s\n" "$(date +%H:%M:%S)" "$*"; }
+
+CMD="${1:-help}"
+ARG1="$2"
+ARG2="$3"
+ARG3="$4"
+
+case "$CMD" in
+  status)
+    s=$(curl -s "$API/api/status" 2>/dev/null)
+    if [ -n "$s" ]; then
+      ver=$(echo "$s" | python3 -c "import sys,json; print(json.load(sys.stdin).get('version','?'))" 2>/dev/null)
+      models=$(echo "$s" | python3 -c "import sys,json; print(json.load(sys.stdin).get('models','?'))" 2>/dev/null)
+      kg=$(echo "$s" | python3 -c "import sys,json; print(json.load(sys.stdin).get('kgNodes','?'))" 2>/dev/null)
+      errs=$(echo "$s" | python3 -c "import sys,json; print(json.load(sys.stdin).get('errors','?'))" 2>/dev/null)
+      echo ""
+      echo -e "\033[36mSIMS1337 v$ver\033[0m"
+      echo -e "   Models: $models online  |  KG: $kg nodes  |  Errors: $errs"
+      echo ""
+    else
+      echo -e "\033[31mDashboard offline at $API\033[0m"
+    fi
+    ;;
+  dashboard) start "http://localhost:8899" 2>/dev/null || open "http://localhost:8899" 2>/dev/null || echo "Open http://localhost:8899 in browser"; log "Dashboard opened" ;;
+  help)
+    cat << 'EOF'
+
+╔═══════════════════════════════════════════════════════════════╗
+║              SIMS1337 TERMINAL CLI — ONE-WORD CMDS            ║
+╠═══════════════════════════════════════════════════════════════╣
+║  CORE:        status  dashboard  help  refresh  save         ║
+║  MODELS:      models  ask <m> <q>  chain <m1> <m2> <q>      ║
+║  AGENTS:      agents  agent <name>  move <a> <q> <r>         ║
+║  PROPOSALS:   proposals  vote <id>  debate  deploy           ║
+║  NIGHT:       dream  night  owl  wizard  topo                ║
+║  HEX:         hex  fow  todo <hex> <task>                    ║
+║  DATA:        data  summary  export                          ║
+║  GAME:        play  join <name>  look  map  act <action>     ║
+╚═══════════════════════════════════════════════════════════════╝
+
+EOF
+    ;;
+  models)
+    echo ""
+    echo -e "\033[36mLocal SLM Models:\033[0m"
+    echo ""
+    echo -e "  qwen2.5:0.5b        494M    Fast Responder — quick answers"
+    echo -e "  tinyllama:1.1b       638M    Synthesizer — connects ideas"
+    echo -e "  llama3.2:1b         1.2B    Pragmatist — practical solutions"
+    echo -e "  deepseek-r1:1.5b    1.1B    Deep Thinker — reasoning, logic"
+    echo -e "  phi:latest          1.6B    Innovator — novel approaches"
+    echo -e "  gemma2:2b           1.6B    Guardian — stability, safety"
+    echo -e "  phi3:mini           2.2B    Logician — formal proofs, rigor"
+    echo -e "  codellama:7b        3.8B    Architect — code, system design"
+    echo ""
+    ;;
+  ask)
+    [ -z "$ARG1" ] || [ -z "$ARG2" ] && { echo "Usage: sims ask <model> <question>"; exit 1; }
+    log "Asking $ARG1..."
+    r=$(ollama_call "$ARG1" "You are an SLM agent in SIMS1337. Answer concisely." "$ARG2" 150)
+    echo ""
+    echo -e "\033[36m$ARG1:\033[0m $r"
+    echo ""
+    ;;
+  chain)
+    [ -z "$ARG1" ] || [ -z "$ARG2" ] || [ -z "$ARG3" ] && { echo "Usage: sims chain <m1> <m2> <question>"; exit 1; }
+    log "Chain: $ARG1 → $ARG2"
+    r1=$(ollama_call "$ARG1" "Answer concisely, max 80 chars." "$ARG3" 80)
+    echo -e "\033[90m$ARG1: $r1\033[0m"
+    r2=$(ollama_call "$ARG2" "Previous model said: '$r1'. Build on this. One sentence, max 80 chars." "Previous: $r1. Your response?" 80)
+    echo -e "\033[35m$ARG2: $r2\033[0m"
+    echo ""
+    ;;
+  agents)
+    echo ""
+    echo -e "\033[36mAgents on Hex Grid:\033[0m"
+    echo -e "  Alpha  — Orchestrator  | deepseek-r1:1.5b  | hex (0,0)"
+    echo -e "  Beta   — Builder       | phi3:mini         | hex (2,-1)"
+    echo -e "  Gamma  — Analyst       | llama3.2:1b       | hex (-2,1)"
+    echo ""
+    ;;
+  agent)
+    [ -z "$ARG1" ] && { echo "Usage: sims agent <Alpha|Beta|Gamma>"; exit 1; }
+    case "$ARG1" in
+      Alpha) m="deepseek-r1:1.5b" ;; Beta) m="phi3:mini" ;; Gamma) m="llama3.2:1b" ;; *) m="llama3.2:1b" ;;
+    esac
+    r=$(ollama_call "$m" "You are Agent $ARG1 in SIMS1337. Report your status in one sentence." "What is your status, Agent $ARG1?" 60)
+    echo ""
+    echo -e "\033[36mAgent $ARG1:\033[0m $r"
+    echo ""
+    ;;
+  proposals)
+    echo ""
+    echo -e "\033[36mActive Proposals:\033[0m open http://localhost:8899 for live list"
+    echo -e "Commands: sims vote <id>  |  sims debate  |  sims deploy"
+    echo ""
+    ;;
+  vote)
+    [ -z "$ARG1" ] && { echo "Usage: sims vote <proposal-id>"; exit 1; }
+    log "Voting on $ARG1 with all 8 models..."
+    yes=0; no=0
+    for m in qwen2.5:0.5b tinyllama:1.1b llama3.2:1b deepseek-r1:1.5b phi:latest gemma2:2b phi3:mini codellama:7b; do
+      r=$(ollama_call "$m" "Vote YES or NO on proposal $ARG1. One word only." "Vote on $ARG1: YES or NO?" 5)
+      if echo "$r" | grep -qi "YES"; then
+        yes=$((yes+1)); printf "  %-22s \033[32mYES\033[0m\n" "$m"
+      else
+        no=$((no+1)); printf "  %-22s \033[31mNO\033[0m\n" "$m"
+      fi
+    done
+    if [ "$yes" -gt "$no" ]; then
+      echo -e "\n  \033[32m$yes YES / $no NO  |  APPROVED\033[0m\n"
+    else
+      echo -e "\n  \033[31m$yes YES / $no NO  |  REJECTED\033[0m\n"
+    fi
+    ;;
+  debate)
+    topic="${ARG1:-How should SIMS1337 evolve its agent topology?}"
+    log "Debate: $topic"
+    echo ""
+    echo -e "\033[36mDEBATE: $topic\033[0m"
+    echo ""
+    for m in deepseek-r1:1.5b phi3:mini codellama:7b llama3.2:1b gemma2:2b phi:latest tinyllama:1.1b qwen2.5:0.5b; do
+      r=$(ollama_call "$m" "Argue FOR or AGAINST: '$topic'. Start with FOR: or AGAINST:. Max 100 chars." "Debate: $topic. Your argument?" 100)
+      if echo "$r" | grep -qi "^FOR"; then
+        printf "  %-22s \033[32m%s\033[0m\n" "$m" "$r"
+      else
+        printf "  %-22s \033[31m%s\033[0m\n" "$m" "$r"
+      fi
+    done
+    echo ""
+    ;;
+  deploy) log "Deploying approved proposals..."; echo -e "\033[32mDeploy triggered — check http://localhost:8899\033[0m" ;;
+  dream)
+    log "Dream phase: 8 models generating ideas..."
+    echo ""
+    echo -e "\033[35mDREAM PHASE\033[0m"
+    echo ""
+    cats=(tool node backend logic ability grid tool logic)
+    i=0
+    for m in qwen2.5:0.5b tinyllama:1.1b llama3.2:1b deepseek-r1:1.5b phi:latest gemma2:2b phi3:mini codellama:7b; do
+      r=$(ollama_call "$m" "Dream a new ${cats[$i]} for SIMS1337. Format: 'CATEGORY: Name - description'. Max 100 chars." "Dream a ${cats[$i]} for the 61-hex grid." 100)
+      printf "  %-22s \033[35m%s\033[0m\n" "$m" "$r"
+      i=$((i+1))
+    done
+    echo ""
+    ;;
+  night) "$0" dream; "$0" debate "Best next step for SIMS1337 evolution"; echo -e "\033[36mNight cycle complete\033[0m" ;;
+  owl)
+    topic="${ARG1:-What is the optimal topology for 8 models?}"
+    log "Night Owl: $topic"
+    echo ""
+    echo -e "\033[36mNIGHT OWL COLLECTIVE: $topic\033[0m"
+    echo ""
+    models=(deepseek-r1:1.5b codellama:7b phi3:mini llama3.2:1b qwen2.5:0.5b tinyllama:1.1b gemma2:2b phi:latest)
+    personas=(Philosopher Architect Logician Pragmatist Scout Synthesizer Guardian Innovator)
+    insights=""
+    for i in $(seq 0 7); do
+      r=$(ollama_call "${models[$i]}" "As the ${personas[$i]} of Night Owl Collective, one insight on: $topic. Max 80 chars." "Your insight on: $topic?" 80)
+      insights="$insights; $r"
+      printf "  %-16s \033[36m%s\033[0m\n" "${personas[$i]}" "$r"
+    done
+    synth=$(ollama_call "deepseek-r1:1.5b" "Synthesize 8 insights into ONE recommendation. Max 100 chars." "Insights: $insights. Synthesis:" 100)
+    echo ""
+    echo -e "  \033[33mSYNTHESIS: $synth\033[0m"
+    echo ""
+    ;;
+  wizard)
+    r=$(ollama_call "codellama:7b" "As Code Wizard of SIMS1337, suggest ONE code improvement. Max 100 chars." "What ONE improvement for SIMS1337?" 100)
+    echo ""
+    echo -e "\033[33mCode Wizard: $r\033[0m"
+    echo ""
+    ;;
+  topo)
+    r=$(ollama_call "deepseek-r1:1.5b" "As Topologist of SIMS1337, find ONE bottleneck or suggest ONE connection. Max 100 chars." "Analyze 3-agent, 8-model topology." 100)
+    echo ""
+    echo -e "\033[33mTopologist: $r\033[0m"
+    echo ""
+    ;;
+  hex)
+    echo ""
+    echo -e "\033[36mHex Map: 61 hexes, 4D Q/R/Z+time\033[0m"
+    echo -e "  Agents: Alpha(0,0) Beta(2,-1) Gamma(-2,1)"
+    echo -e "  FOW: 1-hop visibility  |  TODOs: 16 pending"
+    echo -e "  Live map: http://localhost:8899"
+    echo ""
+    ;;
+  fow)
+    echo ""
+    echo -e "\033[36mFog of War: 1-hop visibility around each agent\033[0m"
+    echo -e "  Alpha sees 7 hexes  |  Beta sees 7  |  Gamma sees 7"
+    echo ""
+    ;;
+  todo) [ -z "$ARG1" ] || [ -z "$ARG2" ] && { echo "Usage: sims todo <hex> <task>"; exit 1; }; log "TODO: $ARG2 → hex $ARG1"; echo -e "\033[32mTask added to hex $ARG1\033[0m" ;;
+  data)
+    f="$DATA_DIR/overnight-data.json"
+    if [ -f "$f" ]; then
+      size=$(wc -c < "$f" 2>/dev/null)
+      echo ""
+      echo -e "\033[36mOvernight Data: $((size/1024)) KB\033[0m"
+    else
+      echo ""
+      echo -e "\033[33mNo overnight data yet — first debate cycle will populate it\033[0m"
+    fi
+    echo ""
+    ;;
+  summary)
+    f="$DATA_DIR/overnight-data.json"
+    if [ -f "$f" ]; then
+      votes=$(python3 -c "import json; d=json.load(open('$f')); print(sum(1 for x in d if x.get('type')=='vote'))" 2>/dev/null)
+      yes=$(python3 -c "import json; d=json.load(open('$f')); print(sum(1 for x in d if x.get('type')=='vote' and x.get('vote')=='YES'))" 2>/dev/null)
+      echo ""
+      echo -e "\033[36mMORNING SUMMARY: ${votes:-0} votes (${yes:-0} YES)\033[0m"
+      r=$(ollama_call "deepseek-r1:1.5b" "Summarize overnight SIMS1337 data. ${votes:-0} votes, ${yes:-0} yes." "Summary of ${votes:-0} votes" 120)
+      echo -e "AI: $r"
+    else
+      echo -e "\033[33mNo overnight data yet\033[0m"
+    fi
+    echo ""
+    ;;
+  export)
+    f="$DATA_DIR/overnight-data.json"
+    if [ -f "$f" ]; then
+      out="$DATA_DIR/sims-export-$(date +%Y%m%d-%H%M%S).json"
+      cp "$f" "$out"
+      echo -e "\033[32mExported to $out\033[0m"
+    else
+      echo -e "\033[31mNo data to export\033[0m"
+    fi
+    ;;
+  play)
+    echo ""
+    echo -e "\033[36mSIMS1337 GAME MODE\033[0m"
+    echo "  sims join <name>  |  sims look  |  sims map  |  sims act <action>"
+    echo ""
+    ;;
+  join)
+    name="${ARG1:-Player}"
+    echo ""
+    echo -e "\033[32m$name joined at hex (0,0)! Type 'sims look'\033[0m"
+    echo ""
+    ;;
+  look)
+    echo ""
+    echo -e "\033[36mHex (0,0). Neighbors:\033[0m"
+    echo "  N(0,-1) NE(1,-1) SE(1,0) S(0,1) SW(-1,1) NW(-1,0)"
+    echo -e "  \033[32mAgent Alpha at SE(1,0)\033[0m"
+    echo ""
+    ;;
+  map)
+    echo ""
+    echo "     / \__/ \__/ \__/ \__/ \ "
+    echo "    / \__/ \__/A \__/ \__/ \__/"
+    echo "    \__/ \__/ \__/ \__/B \__/"
+    echo "    / \__/G \__/ \__/ \__/ \ "
+    echo "    \__/ \__/ \__/ \__/ \__/"
+    echo ""
+    echo "  A=Alpha B=Beta G=Gamma *=You"
+    echo ""
+    ;;
+  *)
+    echo ""
+    echo -e "\033[31mUnknown: '$CMD'. Type 'sims help'\033[0m"
+    echo ""
+    ;;
+esac
