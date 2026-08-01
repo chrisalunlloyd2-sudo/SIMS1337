@@ -436,6 +436,7 @@ public class GodHandApp extends Application {
         fineTuningInit();
         multiAgentTopologyInit();
         webDashboardInit();
+        preEmbedKG(); // PHASE 6: pre-embed KG nodes in background
         pluginSystemInit();
         perfectPromptInit();
         mapGuidanceInit();
@@ -3287,6 +3288,27 @@ public class GodHandApp extends Application {
     }
 
     private final Map<String, float[]> kgEmbeddings = new ConcurrentHashMap<>();
+    private volatile boolean kgEmbeddingsReady = false;
+
+    /** Pre-embed all KG nodes in background to avoid first-query timeout */
+    private void preEmbedKG() {
+        chatScheduler.execute(() -> {
+            log("🧠 Pre-embedding " + kgNodes.size() + " KG nodes via nomic-embed-text...");
+            int done = 0;
+            for (var entry : kgNodes.entrySet()) {
+                try {
+                    float[] vec = embedNode(entry.getKey() + ": " + entry.getValue());
+                    if (vec != null) {
+                        kgEmbeddings.put(entry.getKey(), vec);
+                        done++;
+                    }
+                    Thread.sleep(200); // rate limit — don't flood Ollama
+                } catch (Exception ignored) {}
+            }
+            kgEmbeddingsReady = true;
+            log("🧠 KG embeddings ready: " + done + "/" + kgNodes.size() + " nodes");
+        });
+    }
 
     private float[] embedNode(String text) {
         try {
