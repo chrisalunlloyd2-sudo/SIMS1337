@@ -23,6 +23,15 @@ public class GateKeeper {
             default: return "ERROR: unknown level";
         }
     }
+    // 2026-07-31 (NyxGate, Architect gist 3.3): lets the symbolic gate repair-and-retry a pending
+    // proposal's content in place before it's approved -- same id, same log trail.
+    public boolean updateProposalContent(String id, String repairedContent) {
+        DeployProposal p = proposals.get(id);
+        if (p == null || !p.isPending()) return false;
+        proposals.put(id, p.withNewContent(repairedContent));
+        log(id, "CONTENT_REPAIRED", "nyx-gate", "");
+        return true;
+    }
     public boolean rejectProposal(String id) {
         DeployProposal p = proposals.get(id);
         if (p == null || !p.isPending()) return false;
