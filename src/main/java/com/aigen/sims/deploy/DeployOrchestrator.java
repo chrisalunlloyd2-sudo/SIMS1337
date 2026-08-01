@@ -25,8 +25,12 @@ public class DeployOrchestrator {
             String pid = submitFromSuggestion(s, rp);
             if (pid.startsWith("ERROR")) { errors++; continue; }
             try {
-                String result = gateKeeper.approveProposal(pid);
-                if (result.startsWith("ERROR")) errors++;
+                // 2026-07-31 (Architect gist 3.3/Step E): this used to call gateKeeper.approveProposal()
+                // directly, which meant NyxGate's real symbolic AST check (Step B) never actually ran
+                // on the real deploy path -- found while wiring the full pipeline end-to-end.
+                com.aigen.sims.gate.NyxGate.NyxResult nyx =
+                    com.aigen.sims.gate.NyxGate.verifyAndApprove(gateKeeper, pid);
+                if (!nyx.allowed) errors++;
                 else { deployed++; reg.markDeployed(s.id); }
             } catch (Exception e) { errors++; }
         }
