@@ -436,6 +436,7 @@ public class GodHandApp extends Application {
         fineTuningInit();
         multiAgentTopologyInit();
         webDashboardInit();
+        preEmbedKG(); // PHASE 6: pre-embed KG nodes in background
         pluginSystemInit();
         perfectPromptInit();
         mapGuidanceInit();
@@ -2227,6 +2228,33 @@ public class GodHandApp extends Application {
                 exchange.close();
             });
 
+            // PHASE 5: Live SVG hex map endpoint — auto-refreshing via JS
+            webServer.createContext("/api/hexmap", exchange -> {
+                String svg = generateHexMapSvg();
+                byte[] response = svg.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
+            // PHASE 6: Semantic KG search via nomic-embed-text
+            webServer.createContext("/api/kg/search", exchange -> {
+                String query = exchange.getRequestURI().getQuery();
+                if (query != null && query.startsWith("q=")) {
+                    query = java.net.URLDecoder.decode(query.substring(2), "UTF-8");
+                } else {
+                    query = "";
+                }
+                String result = semanticKGSearch(query);
+                byte[] response = result.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
             webServer.setExecutor(Executors.newFixedThreadPool(2));
             webServer.start();
             log("🌐 Web Dashboard: http://localhost:8899");
@@ -3191,6 +3219,173 @@ public class GodHandApp extends Application {
         svg.append("<text x='320' y='585' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
         svg.append("</svg>");
         return svg.toString();
+    }
+
+    // ==================== PHASE 6: SEMANTIC KG SEARCH via nomic-embed-text ====================
+    private String semanticKGSearch(String query) {
+        if (query.isEmpty()) {
+            return "{\"results\":[],\"query\":\"\"}";
+        }
+        try {
+            // Get embedding for query via nomic-embed-text
+            String embedJson = String.format(
+                "{\"model\":\"nomic-embed-text:latest\",\"prompt\":\"%s\"}",
+                query.replace("\\", "\\\\").replace("\"", "\\\""));
+            java.net.http.HttpRequest embedReq = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/embeddings"))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(embedJson))
+                .build();
+            java.net.http.HttpResponse<String> embedResp = httpClient.send(embedReq,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+
+            if (embedResp.statusCode() != 200) {
+                // Fallback: substring match
+                return substringKGSearch(query);
+            }
+
+            // Parse embedding vector
+            String body = embedResp.body();
+            int arrStart = body.indexOf("[");
+            int arrEnd = body.lastIndexOf("]");
+            if (arrStart < 0 || arrEnd < 0) return substringKGSearch(query);
+            String arrStr = body.substring(arrStart + 1, arrEnd);
+            String[] parts = arrStr.split(",");
+            float[] queryVec = new float[parts.length];
+            for (int i = 0; i < parts.length; i++) queryVec[i] = Float.parseFloat(parts[i].trim());
+
+            // Score all KG nodes by cosine similarity (cached embeddings)
+            List<String[]> scored = new ArrayList<>();
+            for (var entry : kgNodes.entrySet()) {
+                float[] nodeVec = kgEmbeddings.get(entry.getKey());
+                if (nodeVec == null) {
+                    // Lazy-embed on first access
+                    nodeVec = embedNode(entry.getKey() + ": " + entry.getValue());
+                    if (nodeVec != null) kgEmbeddings.put(entry.getKey(), nodeVec);
+                }
+                if (nodeVec != null && nodeVec.length == queryVec.length) {
+                    float sim = cosineSimilarity(queryVec, nodeVec);
+                    if (sim > 0.3f) scored.add(new String[]{entry.getKey(), entry.getValue(), String.format("%.3f", sim)});
+                }
+            }
+            scored.sort((a, b) -> -Float.compare(Float.parseFloat(a[2]), Float.parseFloat(b[2])));
+
+            // Build JSON result
+            StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
+            int limit = Math.min(10, scored.size());
+            for (int i = 0; i < limit; i++) {
+                if (i > 0) json.append(",");
+                json.append("{\"key\":\"").append(scored.get(i)[0]).append("\",")
+                    .append("\"value\":\"").append(scored.get(i)[1].replace("\"", "\\\"")).append("\",")
+                    .append("\"sim\":").append(scored.get(i)[2]).append("}");
+            }
+            json.append("]}");
+            return json.toString();
+        } catch (Exception e) {
+            return "{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}";
+        }
+    }
+
+    private final Map<String, float[]> kgEmbeddings = new ConcurrentHashMap<>();
+    private volatile boolean kgEmbeddingsReady = false;
+
+    /** Pre-embed all KG nodes in background to avoid first-query timeout */
+    private void preEmbedKG() {
+        chatScheduler.execute(() -> {
+            log("🧠 Pre-embedding " + kgNodes.size() + " KG nodes via nomic-embed-text...");
+            int done = 0;
+            for (var entry : kgNodes.entrySet()) {
+                try {
+                    float[] vec = embedNode(entry.getKey() + ": " + entry.getValue());
+                    if (vec != null) {
+                        kgEmbeddings.put(entry.getKey(), vec);
+                        done++;
+                    }
+                    Thread.sleep(200); // rate limit — don't flood Ollama
+                } catch (Exception ignored) {}
+            }
+            kgEmbeddingsReady = true;
+            log("🧠 KG embeddings ready: " + done + "/" + kgNodes.size() + " nodes");
+        });
+    }
+
+    private float[] embedNode(String text) {
+        try {
+            String json = String.format("{\"model\":\"nomic-embed-text:latest\",\"prompt\":\"%s\"}",
+                text.replace("\\", "\\\\").replace("\"", "\\\""));
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/embeddings"))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) return null;
+            String body = resp.body();
+            int s = body.indexOf("[");
+            int e = body.lastIndexOf("]");
+            if (s < 0 || e < 0) return null;
+            String[] parts = body.substring(s + 1, e).split(",");
+            float[] vec = new float[parts.length];
+            for (int i = 0; i < parts.length; i++) vec[i] = Float.parseFloat(parts[i].trim());
+            return vec;
+        } catch (Exception ex) { return null; }
+    }
+
+    private float cosineSimilarity(float[] a, float[] b) {
+        float dot = 0, normA = 0, normB = 0;
+        for (int i = 0; i < a.length; i++) {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        return (float)(dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8));
+    }
+
+    private String substringKGSearch(String query) {
+        StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
+        boolean first = true;
+        for (var entry : kgNodes.entrySet()) {
+            if (entry.getKey().toLowerCase().contains(query.toLowerCase()) ||
+                entry.getValue().toLowerCase().contains(query.toLowerCase())) {
+                if (!first) json.append(",");
+                json.append("{\"key\":\"").append(entry.getKey()).append("\",")
+                    .append("\"value\":\"").append(entry.getValue().replace("\"", "\\\"")).append("\",")
+                    .append("\"sim\":\"substring\"}");
+                first = false;
+            }
+        }
+        json.append("]}");
+        return json.toString();
+    }
+
+    // ==================== PHASE 7: COMPILE-GATE SAFETY ====================
+    private boolean compileGate(String sourcePath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
+                "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
+                "--module-path", "C:/Users/viper/.m2/repository/org/openjfx/javafx-controls/17.0.6/javafx-controls-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-graphics/17.0.6/javafx-graphics-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-base/17.0.6/javafx-base-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-fxml/17.0.6/javafx-fxml-17.0.6-win.jar",
+                "--add-modules", "javafx.controls,javafx.fxml",
+                sourcePath
+            );
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            String output = new String(proc.getInputStream().readAllBytes());
+            int exitCode = proc.waitFor();
+            if (exitCode != 0) {
+                log("🔒 COMPILE-GATE: FAILED — " + output.substring(0, Math.min(100, output.length())));
+                return false;
+            }
+            log("🔒 COMPILE-GATE: PASSED ✅");
+            return true;
+        } catch (Exception e) {
+            log("🔒 COMPILE-GATE: ERROR — " + e.getMessage());
+            return false;
+        }
     }
 
     // ==================== 25. GIST → MODEL CONTEXT — Pull Full Markdown ====================
@@ -4453,27 +4648,14 @@ public class GodHandApp extends Application {
                     }
                     java.nio.file.Files.writeString(java.nio.file.Path.of(SRC_PATH), modified);
 
-                    // 7. Try to compile
-                    ProcessBuilder pb = new ProcessBuilder(
-                        "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
-                        "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                        "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                        "--module-path", "C:/Users/viper/.m2/repository/org/openjfx/javafx-controls/17.0.6/javafx-controls-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-graphics/17.0.6/javafx-graphics-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-base/17.0.6/javafx-base-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-fxml/17.0.6/javafx-fxml-17.0.6-win.jar",
-                        "--add-modules", "javafx.controls,javafx.fxml",
-                        SRC_PATH
-                    );
-                    pb.redirectErrorStream(true);
-                    Process proc = pb.start();
-                    String compileOutput = new String(proc.getInputStream().readAllBytes());
-                    int exitCode = proc.waitFor();
-
-                    if (exitCode != 0) {
-                        // 8. ROLLBACK on failure
-                        log("🔧 Self-Mod: COMPILE FAILED — rolling back. Error: " + compileOutput.substring(0, Math.min(200, compileOutput.length())));
+                    // 7. COMPILE-GATE: try to compile — if fails, rollback
+                    if (!compileGate(SRC_PATH)) {
+                        // ROLLBACK on failure
+                        log("🔧 Self-Mod: COMPILE-GATE FAILED — rolling back");
                         java.nio.file.Files.copy(java.nio.file.Path.of(BACKUP_PATH), java.nio.file.Path.of(SRC_PATH),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         selfModRollbacks++;
-                        addToGodChat("🔧 SELF-MOD", "ROLLBACK #" + selfModRollbacks, "Compile failed, restored backup");
+                        addToGodChat("🔧 SELF-MOD", "ROLLBACK #" + selfModRollbacks, "Compile-gate failed, restored backup");
                         return;
                     }
 
