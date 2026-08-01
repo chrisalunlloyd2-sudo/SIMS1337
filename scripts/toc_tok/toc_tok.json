@@ -1,0 +1,68 @@
+{
+  "root": {
+    "path": "/", "title": "root", "type": "root", "hex": "0,0",
+    "tags": [], "content": "", "updated": 1785622000,
+    "children": {
+      "projects": {
+        "path": "/projects", "title": "projects", "type": "folder", "hex": "0,0",
+        "tags": [], "content": "", "updated": 1785622000,
+        "children": {
+          "SIMS1337": {
+            "path": "/projects/SIMS1337", "title": "SIMS1337", "type": "project", "hex": "2,0",
+            "tags": ["sims", "agents", "hex"], "content": "Collective SLM agent fleet", "updated": 1785622000,
+            "children": {
+              "phases": {
+                "path": "/projects/SIMS1337/phases", "title": "phases", "type": "folder", "hex": "2,1",
+                "tags": [], "content": "", "updated": 1785622000,
+                "children": {
+                  "phase4-agents": {
+                    "path": "/projects/SIMS1337/phases/phase4-agents", "title": "phase4-agents", "type": "phase", "hex": "2,1",
+                    "tags": ["agents", "fow", "onboarding"], "content": "Agent autonomy + FOW-gated voting", "updated": 1785622000, "children": {}
+                  }
+                }
+              },
+              "knowledge": {
+                "path": "/projects/SIMS1337/knowledge", "title": "knowledge", "type": "folder", "hex": "2,2",
+                "tags": [], "content": "", "updated": 1785622000,
+                "children": {
+                  "markov-voting": {
+                    "path": "/projects/SIMS1337/knowledge/markov-voting", "title": "markov-voting", "type": "knowledge", "hex": "2,2",
+                    "tags": ["markov", "chain", "voting"], "content": "Small models reach logical correctness via verified claim chains", "updated": 1785622000, "children": {}
+                  }
+                }
+              }
+            }
+          },
+          "api-orchestrator": {
+            "path": "/projects/api-orchestrator", "title": "api-orchestrator", "type": "project", "hex": "-2,1",
+            "tags": ["routing", "collective", "markov"], "content": "Local-first router + collective decision engine", "updated": 1785622000, "children": {}
+          },
+          "MatrixWinCE": {
+            "path": "/projects/MatrixWinCE", "title": "MatrixWinCE", "type": "project", "hex": "3,0",
+            "tags": ["termux", "gguf", "wince"], "content": "32-bit Termux GGUF fleet node", "updated": 1785622000, "children": {}
+          }
+        }
+      },
+      "tasks": {
+        "path": "/tasks", "title": "tasks", "type": "folder", "hex": "0,0",
+        "tags": [], "content": "", "updated": 1785622000,
+        "children": {
+          "deploy-tonight": {
+            "path": "/tasks/deploy-tonight", "title": "deploy-tonight", "type": "task", "hex": "2,1",
+            "tags": ["deploy", "phase4"], "content": "Approve deploy of phase4 agents after markov gate", "updated": 1785622000, "children": {}
+          }
+        }
+      },
+      "knowledge": {
+        "path": "/knowledge", "title": "knowledge", "type": "folder", "hex": "-4,0",
+        "tags": [], "content": "", "updated": 1785622000,
+        "children": {
+          "quantization-guide": {
+            "path": "/knowledge/quantization-guide", "title": "quantization-guide", "type": "knowledge", "hex": "-4,0",
+            "tags": ["gguf", "quant", "q4"], "content": "Q4_K_M sweet spot for CPU, IQ-series for low-RAM, physical cores only", "updated": 1785622000, "children": {}
+          }
+        }
+      }
+    }
+  }
+}
