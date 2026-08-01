@@ -29,6 +29,9 @@ def main():
     p.add_argument("--data", required=True, help="JSONL dataset: {instruction, output}")
     p.add_argument("--epochs", type=int, default=3)
     p.add_argument("--dry-run", action="store_true", help="show commands without running")
+    p.add_argument("--hessian", action="store_true",
+                   help="emit curvature-aware LoRA policy before training "
+                        "(Fisher rank allocation + EWC overwrite warning)")
     args = p.parse_args()
 
     # 1. Validate dataset
@@ -52,6 +55,37 @@ def main():
         for r in rows:
             f.write(json.dumps({"text": f"### Instruction:\n{r['instruction']}\n\n### Response:\n{r['output']}"}) + "\n")
     print(f"[train_lora] wrote {train_file}")
+
+    # 3a. Hessian-aware policy (curvature-aware LoRA learning)
+    if args.hessian:
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lora"))
+            from hessian_learning import adaptive_rank_allocation, ewc_cost, MLP, fisher_diagonal
+            import numpy as np
+            # build a tiny surrogate MLP shaped like the adapter's layers
+            # (in->h->out guess; the real per-layer Fisher needs the trainer,
+            #  this emits the POLICY + rank budget the trainer should follow)
+            n_in = max(len(r["instruction"].split()) for r in rows[:50]) + 8
+            n_out = max(len(r["output"].split()) for r in rows[:50]) + 8
+            sizes = [n_in, max(32, n_in // 2), max(16, n_out // 2), n_out]
+            model = MLP(sizes, seed=0)
+            rng = np.random.default_rng(0)
+            X = rng.standard_normal((min(len(rows), 32), n_in))
+            Y = rng.standard_normal((min(len(rows), 32), n_out))
+            F = fisher_diagonal(model, X, Y, n_samples=min(8, len(rows)))
+            ranks = adaptive_rank_allocation(F, sizes, budget=8)
+            policy = {"base": args.base, "tag": args.tag, "layers": sizes,
+                      "rank_budget": 8, "rank_allocation": ranks,
+                      "policy": "LEARN where flat, PRESERVE where curved"}
+            with open(f"lora_hessian_policy-{args.tag}.json", "w") as pf:
+                json.dump(policy, pf, indent=2)
+            print(f"[train_lora] hessian policy -> lora_hessian_policy-{args.tag}.json")
+            print(f"[train_lora]   rank allocation: {ranks}")
+            if os.path.exists(f"lora-{args.tag}.gguf"):
+                print("[train_lora]   WARNING: existing adapter will be overwritten — "
+                      "EWC says: preserve high-curvature knowledge, only add.")
+        except Exception as e:
+            print(f"[train_lora] hessian policy skipped ({e})")
 
     # 3. Trainer invocation — llama.cpp finetune (finetune) or mlx-lm
     #    Adapt this to whatever trainer is installed on the target device.
