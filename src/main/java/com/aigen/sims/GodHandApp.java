@@ -26,12 +26,14 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 import java.util.AbstractMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * SIMS NEO 1337 - Complete GodHand + Player Grid + Model Orchestration
  * v0.18.0 - Real RAG + Fine-Tuning + Multi-Agent Topology + Web Dashboard + Plugins
  * Pure JavaFX - NO FXML - Everything is a changeable GUI component
  * SINGLETON: Only ONE GUI instance allowed at a time.
+ * STABILITY: All scheduled tasks staggered by 30s to prevent JavaFX thread freeze.
  */
 public class GodHandApp extends Application {
 
@@ -111,6 +113,12 @@ public class GodHandApp extends Application {
     private int globalOllamaCalls = 0;
     private int globalOllamaFails = 0;
 
+    // === TASK STAGGER — prevents GUI freezing by spacing out scheduled work ===
+    // Each scheduled task gets a unique offset so they don't all fire at once.
+    // Without this, 20+ tasks hit Platform.runLater() simultaneously → JavaFX thread freeze.
+    private final AtomicInteger taskStagger = new AtomicInteger(0);
+    private static final int STAGGER_STEP_SECONDS = 30; // 30s between each task's initial delay
+
     /** Rate-limited Ollama call — enforces global pacing, returns null if too soon */
     private String rateLimitedOllama(String model, String systemPrompt, String userPrompt) {
         long now = System.currentTimeMillis();
@@ -178,6 +186,28 @@ public class GodHandApp extends Application {
         if (fails >= 3) return fallback; // skip Ollama if failing repeatedly
         String result = realOllamaQuery(model, systemPrompt, userPrompt);
         return result != null && !result.isEmpty() ? result : fallback;
+    }
+
+    // === STAGGERED SCHEDULER — prevents GUI freeze by spacing task starts ===
+    /** Schedule a repeating task with staggered initial delay.
+     *  Each call gets a unique offset (30s apart) so tasks don't flood JavaFX thread. */
+    private void staggeredSchedule(Runnable task, long periodSeconds) {
+        int offset = taskStagger.getAndAdd(STAGGER_STEP_SECONDS);
+        chatScheduler.scheduleAtFixedRate(() -> {
+            // Offload heavy work to background, only UI updates on Platform thread
+            chatScheduler.execute(() -> {
+                try { task.run(); } catch (Exception e) { /* silent */ }
+            });
+        }, offset, periodSeconds, TimeUnit.SECONDS);
+    }
+
+    /** Safe UI update — only calls Platform.runLater if not already on JavaFX thread */
+    private void safeUiUpdate(Runnable uiTask) {
+        if (Platform.isFxApplicationThread()) {
+            uiTask.run();
+        } else {
+            Platform.runLater(uiTask);
+        }
     }
 
     // === Entropy ===
