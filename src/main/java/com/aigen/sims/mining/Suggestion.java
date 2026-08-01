@@ -30,4 +30,13 @@ public class Suggestion {
         return new Suggestion(id, repoName, filePath, insertAfter, code,
             modelName, timestamp, newStatus, hexQ, hexR, description);
     }
+    // Same-package rehydrate factory -- SuggestionRegistry.loadFromDisk() needs to reconstruct a
+    // Suggestion with its ORIGINAL id/timestamp/status (not the public constructor's fresh-mint
+    // behavior). Additive only; the private constructor itself is untouched.
+    static Suggestion fromDisk(String id, String repoName, String filePath, String insertAfter,
+                               String code, String modelName, long timestamp, String status,
+                               int hexQ, int hexR, String description) {
+        return new Suggestion(id, repoName, filePath, insertAfter, code, modelName, timestamp,
+                              status, hexQ, hexR, description);
+    }
 }

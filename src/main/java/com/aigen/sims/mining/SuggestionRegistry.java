@@ -69,11 +69,28 @@ public class SuggestionRegistry {
         } catch (IOException e) { System.err.println("Save error: " + e.getMessage()); }
     }
     private void loadFromDisk() {
+        // 2026-07-31: this used to list the .json files and do NOTHING with them -- suggestions
+        // never survived a JVM restart, which silently breaks anything (AegisCommander) that needs
+        // to read a PRIOR run's outcomes. Actually parse and rehydrate each one.
         try {
             File dir = new File(storagePath);
             if (!dir.isDirectory()) return;
             File[] files = dir.listFiles((d,n) -> n.endsWith(".json"));
             if (files == null) return;
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (File f : files) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode n = mapper.readTree(f);
+                    Suggestion s = Suggestion.fromDisk(
+                        n.path("id").asText(), n.path("repoName").asText(), n.path("filePath").asText(),
+                        n.path("insertAfter").asText(), n.path("code").asText(), n.path("modelName").asText(),
+                        n.path("timestamp").asLong(), n.path("status").asText("PENDING"),
+                        n.path("hexQ").asInt(), n.path("hexR").asInt(), n.path("description").asText());
+                    suggestions.put(s.id, s);
+                } catch (Exception e) {
+                    System.err.println("Rehydrate skip " + f.getName() + ": " + e.getMessage());
+                }
+            }
         } catch (Exception e) {}
     }
     public static class StatusChange {
