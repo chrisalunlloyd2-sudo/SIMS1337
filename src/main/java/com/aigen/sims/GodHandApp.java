@@ -3028,7 +3028,28 @@ public class GodHandApp extends Application {
                     log("🤖 [" + agent + "] task failed: " + e.getMessage());
                 }
             });
-        }, 90, 90, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
+
+        // === REAL INTER-AGENT MESSAGING — Ollama-generated messages between agents ===
+        // After each autonomy round, one agent sends a real message to another.
+        chatScheduler.scheduleAtFixedRate(() -> {
+            String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
+            String from = agents[new Random().nextInt(agents.length)];
+            String to = agents[new Random().nextInt(agents.length)];
+            if (from.equals(to)) to = agents[(agents.length + new Random().nextInt(agents.length - 1) + 1) % agents.length];
+            String fromModel = agentModels.getOrDefault(from, "llama3.2:1b");
+            String toModel = agentModels.getOrDefault(to, "llama3.2:1b");
+            String fromTask = agentTasks.getOrDefault(from, "idle");
+            String toTask = agentTasks.getOrDefault(to, "idle");
+            String systemPrompt = "You are " + from + " in the SIMS1337 multi-agent grid. " +
+                "You just completed: " + fromTask + ". " + to + " is working on: " + toTask + ". " +
+                "Send " + to + " ONE short message (max 80 chars) — share an insight, ask a question, or offer help. Be specific.";
+            String userPrompt = "Message to " + to + " about their task '" + toTask + "' or your task '" + fromTask + "':";
+            String fallback = "Hey " + to + ", noticed something interesting — want to compare notes?";
+            String message = ollamaOrFallback(fromModel, systemPrompt, userPrompt, fallback);
+            addToGodChat("💬 " + from + " → " + to, from, message);
+            log("💬 [" + from + " → " + to + "]: " + (message.length() > 60 ? message.substring(0, 60) + "..." : message));
+        }, 600, 600, TimeUnit.SECONDS); // 10 min — telemetry pace
     }
 
     private String pickAutonomyTask(String agent) {
@@ -3571,17 +3592,14 @@ public class GodHandApp extends Application {
     }
 
     private String generateCodeSuggestion(String fileName, int score, int lines) {
-        String[] suggestions = {
-            "Add more inline documentation — " + fileName + " has low comment density",
-            "Extract large methods into smaller, testable units in " + fileName,
-            "Replace raw Exception catches with specific exception types in " + fileName,
-            "Add logging to all catch blocks in " + fileName + " for better debugging",
-            "Consider splitting " + fileName + " (" + lines + " lines) into multiple classes",
-            "Add null checks before file I/O operations in " + fileName,
-            "Use try-with-resources for auto-closable resources in " + fileName,
-            "Add unit test coverage for critical paths in " + fileName
-        };
-        return suggestions[new Random().nextInt(suggestions.length)];
+        // Real Ollama code review via codellama
+        String systemPrompt = "You are the Code Wizard of SIMS1337. " +
+            "File: " + fileName + " (" + lines + " lines, quality " + score + "/100). " +
+            "Suggest ONE specific, actionable improvement. Max 100 chars. Be concrete.";
+        String userPrompt = "File " + fileName + " has " + lines + " lines, quality score " + score + "/100. " +
+            "What ONE improvement would most increase quality?";
+        String fallback = "Add more inline documentation — " + fileName + " has low comment density";
+        return ollamaOrFallback("codellama:7b", systemPrompt, userPrompt, fallback);
     }
 
     private String applySafeRefactor(java.io.File file, String content) {
@@ -3653,12 +3671,24 @@ public class GodHandApp extends Application {
             topologyWeights.put(entry.getKey(), edges);
         }
 
-        // Every 3 minutes: analyze topology
+        // Every 5 minutes: analyze topology with real Ollama reasoning
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 analyzeTopology();
+                // Real Ollama topology insight
+                String systemPrompt = "You are the Topologist of SIMS1337. " +
+                    "Analyze the agent topology: " + topologyWeights.size() + " nodes, " +
+                    topologyBottlenecks.size() + " bottlenecks, " + topologySuggestions.size() + " suggestions. " +
+                    "Give ONE insight or recommendation (max 100 chars).";
+                String userPrompt = "Topology: " + topologyWeights.size() + " nodes. " +
+                    "Bottlenecks: " + String.join("; ", topologyBottlenecks.stream().limit(3).toList()) + ". " +
+                    "Your insight?";
+                String fallback = "Consider adding more cross-agent connections to reduce bottlenecks";
+                String insight = ollamaOrFallback("deepseek-r1:1.5b", systemPrompt, userPrompt, fallback);
+                addToGodChat("🔗 TOPO", "Insight", insight);
+                log("🔗 Topologist: " + insight);
             });
-        }, 180, 180, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     private void analyzeTopology() {
