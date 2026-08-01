@@ -69,7 +69,7 @@ public class GodHandApp extends Application {
     private final ObservableList<String> installedModels = FXCollections.observableArrayList();
     private final ObservableList<String> availableModels = FXCollections.observableArrayList(
         "llama3.2:1b", "gemma2:2b", "mistral:7b", "deepseek-r1:1.5b",
-        "codellama:7b", "neural-chat:7b", "openhermes:7b", "zephyr:7b"
+        "codellama:7b", "phi3:mini", "phi:latest", "tinyllama:1.1b", "qwen2.5:0.5b"
     );
 
     // === Voting System ===
@@ -101,8 +101,12 @@ public class GodHandApp extends Application {
     private final Map<String, Integer> ollamaFailCount = new ConcurrentHashMap<>(); // model -> consecutive failures
 
     // === RATE LIMITER — "nothing lives forever, nothing runs for free" ===
+    // PRIMARY PURPOSE: Telemetry experiment with local SLMs.
+    // ONE Ollama call per 5 minutes (300s). Models stay warm, called infrequently.
+    // Goal: see what useful data local models produce over long periods with sparse calls.
+    // 12 calls/hour, ~288 calls/day. Quality over quantity.
     private volatile long lastOllamaCallMs = 0;
-    private static final long OLLAMA_MIN_GAP_MS = 2000; // minimum 2s between Ollama calls
+    private static final long OLLAMA_MIN_GAP_MS = 300_000; // 5 minutes between Ollama calls
     private static final int MAX_CONSECUTIVE_FAILS = 5; // back off after 5 consecutive failures
     private int globalOllamaCalls = 0;
     private int globalOllamaFails = 0;
@@ -124,14 +128,20 @@ public class GodHandApp extends Application {
         }
     }
 
-    /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure. */
+    /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure.
+     *  Passes num_ctx to override low context windows (tinyllama 2K→8K, phi 2K→8K). */
     private String realOllamaQuery(String model, String systemPrompt, String userPrompt) {
         try {
+            // Determine context: small models get 8K, others get 16K+
+            int ctx = 8192;
+            if (model.contains("7b") || model.contains("mistral") || model.contains("codellama")) ctx = 16384;
+            if (model.contains("llama3.2") || model.contains("deepseek")) ctx = 32768;
             String json = String.format(
-                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":150,\"temperature\":0.7}}",
+                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":150,\"num_ctx\":%d,\"temperature\":0.7}}",
                 model,
                 systemPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
+                userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                ctx);
             var req = java.net.http.HttpRequest.newBuilder()
                 .uri(URI.create(OLLAMA_URL))
                 .header("Content-Type", "application/json")
@@ -316,9 +326,10 @@ public class GodHandApp extends Application {
 
     /** Paced SLM dreaming — round-robin one model at a time, rate-limited.
      *  "Nothing lives forever, nothing runs for free."
-     *  Finite rounds: 10 rounds × 6 models × 2s gap = ~2 min, then stops.
-     *  Manual loop toggle can restart. */
-    private static final int MAX_DREAM_ROUNDS = 10; // 10 full rounds, then done
+     *  TELEMETRY MODE: 1 round × 6 models × 5min gap = 30 min of dreaming.
+     *  One model call every 5 minutes. Models stay warm, called infrequently.
+     *  Goal: see what useful data local models produce over long periods. */
+    private static final int MAX_DREAM_ROUNDS = 1; // 1 round = 6 calls = 30 min at 5min gap
     private void startAllModelLoops() {
         chatScheduler.schedule(() -> {
             Platform.runLater(() -> {
@@ -332,7 +343,7 @@ public class GodHandApp extends Application {
                 addToGodChat("🌙 DREAM", "System", started + " models × " + MAX_DREAM_ROUNDS + " rounds — finite, paced");
                 runPacedRoundRobin();
             });
-        }, 3, TimeUnit.SECONDS);
+        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     /** Finite paced round-robin: MAX_DREAM_ROUNDS full rounds, then stops. */
@@ -1552,7 +1563,7 @@ public class GodHandApp extends Application {
                     log("🏥 [" + agent + "] REPAIR COMPLETE");
                 }
             });
-        }, 0, 15, TimeUnit.SECONDS);
+        }, 0, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 2. BRUTE FOUNDRY CODE REVIEW ====================
@@ -1582,7 +1593,7 @@ public class GodHandApp extends Application {
                 log("🏗️ Brute Foundry: [" + model + "] " + task + " → " + feedback + " | Rep: " + rep);
                 addToGodChat("🏗️ FOUNDRY", model, task + " → " + feedback + " [Rep:" + rep + "]");
             });
-        }, 0, 12, TimeUnit.SECONDS);
+        }, 0, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 3. KNOWLEDGE GRAPH NODES (RAG) ====================
@@ -1774,7 +1785,7 @@ public class GodHandApp extends Application {
                         errorLog.size() + " logged");
                 }
             });
-        }, 25, 25, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 7. DESIGN IMPROVEMENTS ====================
@@ -1791,7 +1802,7 @@ public class GodHandApp extends Application {
 
                 log("🎨 Design: Tooltips + accessibility enhancements applied");
             });
-        }, 5, TimeUnit.SECONDS);
+        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== OLLAMA API ====================
@@ -1905,7 +1916,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 35, 35, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     private double[] generateEmbedding(String text) {
@@ -2008,7 +2019,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 45, 45, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 11. WEB DASHBOARD (Embedded HTTP Server) ====================
@@ -2280,7 +2291,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 55, 55, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 14. MAP GUIDANCE SYSTEM (Hex) ====================
@@ -2379,7 +2390,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 65, 65, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 16. TOOLS SYSTEM ====================
@@ -2492,7 +2503,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 75, 75, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 18. FOW (FOG OF WAR) — 1-Hop Hex Visibility ====================
@@ -2535,7 +2546,7 @@ public class GodHandApp extends Application {
                     }
                 }
             });
-        }, 5, 5, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     // ==================== 19. HEX TODO SYSTEM — TODOs Pinned to Hex Cells ====================
@@ -2631,7 +2642,7 @@ public class GodHandApp extends Application {
                 addToGodChat("📚 CONTEXT", "System", "Loaded " + gistContexts.size() + " neuromorphic lineage fragments into all " + modelChats.size() + " models");
                 log("📚 All models loaded with neuromorphic lineage context");
             });
-        }, 2, TimeUnit.SECONDS);
+        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
 
         // Periodic: refresh context injection
         chatScheduler.scheduleAtFixedRate(() -> {
@@ -2844,7 +2855,8 @@ public class GodHandApp extends Application {
             "llama3.2:1b", new String[]{"tool", "ability", "grid"},
             "tinyllama:1.1b", new String[]{"ability", "grid", "node"},
             "gemma2:2b", new String[]{"node", "grid", "backend"},
-            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"}
+            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"},
+            "mistral:7b", new String[]{"logic", "backend", "tool", "node"}  // 7B powerhouse — all specialties
         );
         String[] preferred = specialties.getOrDefault(modelName, new String[]{"logic", "tool", "grid"});
 
@@ -3165,7 +3177,7 @@ public class GodHandApp extends Application {
             } catch (Exception e) {
                 Platform.runLater(() -> log("⚠️ Gist pull failed: " + e.getMessage()));
             }
-        }, 5, TimeUnit.SECONDS);
+        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
 
         // Refresh every 2 hours
         chatScheduler.scheduleAtFixedRate(() -> {
@@ -3962,7 +3974,7 @@ public class GodHandApp extends Application {
                 liveState.put("wizardPatches", String.valueOf(wizardPatchesApplied));
                 liveState.put("topoNodes", String.valueOf(topologyWeights.size()));
             });
-        }, 5, 5, TimeUnit.SECONDS);
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
     }
 
     private String buildLiveStateJson() {
@@ -4212,7 +4224,7 @@ public class GodHandApp extends Application {
             } catch (Exception e) {
                 Platform.runLater(() -> log("⚠️ Memory load failed: " + e.getMessage()));
             }
-        }, 15, TimeUnit.SECONDS);
+        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
 
         // Save memories to gist every 10 minutes
         chatScheduler.scheduleAtFixedRate(() -> {
