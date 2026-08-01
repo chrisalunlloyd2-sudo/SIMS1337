@@ -77,7 +77,7 @@ public class HeadlessOllamaPipeline {
         System.out.println("📝 ESSAY WRITING PIPELINE");
         System.out.println("==========================");
         String outline = callModel("tinyllama:1.1b", "Create a detailed outline for an essay about: " + topic + ". Use bullet points.", 200, 0.3);
-        System.out.println("�K [tinyllama:1.1b] Outline:\n" + outline);
+        System.out.println("[tinyllama:1.1b] Outline:\n" + outline);
         String body = callModel("llama3.2:1b", "Write the body paragraphs for this essay outline. Be thorough and detailed:\n" + outline, 500, 0.5);
         System.out.println("\n🔄 [llama3.2:1b] Body:\n" + body);
         String intro = callModel("phi3:mini", "Write an engaging introduction and conclusion for this essay:\n" + body, 300, 0.4);
@@ -147,7 +147,7 @@ public class HeadlessOllamaPipeline {
                 .uri(URI.create(GGUF_URL))
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(90))
-                .POSt(HttpRequest.BodyPublishers.ofString(json))
+                .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
         Exception lastEx = null;
@@ -162,7 +162,7 @@ public class HeadlessOllamaPipeline {
                         int e = body.indexOf("\"", s);
                         if (e > s) return body.substring(s, e)
                                 .replace("\\n", "\n")
-                                .replace("\\\", "\"")
+                                .replace("\\\"", "\"")
                                 .replace("\\t", "\t");
                     }
                     return body;
