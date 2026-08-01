@@ -27,8 +27,8 @@ Usage:
   python3 onboard.py --model tinyllama:1.1b --hex=-2,1 --role governance \
       --mission "Vote on deploy" --continuity chain_decisions.jsonl
 """
-import argparse, json, os, sys, time
-from toc_tok import load as toc_load, find_by_hex, get_path, subtree
+import argparse, json, os, sys, time, uuid
+from toc_tok import load as toc_load, find_by_hex, get_path, subtree, save as toc_save
 
 DEFAULT_TOC = os.environ.get("TOC_TOK_FILE",
                             os.path.join(os.path.dirname(__file__), "toc_tok.json"))
@@ -58,8 +58,52 @@ def read_continuity(path, limit=5):
         return out
     return out[-limit:]
 
+# --- Board ID + hex claim + verification (enhanced onboarding) -------------
+CLAIM_FILE = os.environ.get("TOC_TOK_CLAIMS",
+                            os.path.join(os.path.dirname(__file__), "claims.json"))
+
+def claim_hex(hex_str, agent, model):
+    """Record who is occupying a hex (prevents two agents working same cell)."""
+    claims = {}
+    if os.path.exists(CLAIM_FILE):
+        try: claims = json.load(open(CLAIM_FILE))
+        except Exception: pass
+    claims[hex_str] = {"agent": agent, "model": model, "claimed_at": time.time()}
+    json.dump(claims, open(CLAIM_FILE, "w"), indent=2)
+    return claims
+
+def release_hex(hex_str):
+    claims = {}
+    if os.path.exists(CLAIM_FILE):
+        try: claims = json.load(open(CLAIM_FILE))
+        except Exception: pass
+    claims.pop(hex_str, None)
+    json.dump(claims, open(CLAIM_FILE, "w"), indent=2)
+
+def verify_pass(board_id):
+    """Onboarding verification poll: agent confirms it received the pass."""
+    ver = {}
+    vf = os.path.join(os.path.dirname(__file__), "onboard_verified.json")
+    if os.path.exists(vf):
+        try: ver = json.load(open(vf))
+        except Exception: pass
+    ver[board_id] = {"verified_at": time.time()}
+    json.dump(ver, open(vf, "w"), indent=2)
+    return board_id
+
+def sync_tree(toc_file):
+    """Auto-update the tree's 'last_onboarded' field after onboarding."""
+    try:
+        tree = toc_load(toc_file)
+        tree["root"]["last_onboarded"] = time.time()
+        toc_save(tree, toc_file)
+        return True
+    except Exception:
+        return False
+
 # --- Boarding pass generation ----------------------------------------------
-def build_pass(model, hex_str, role, mission, toc_file, continuity_file):
+def build_pass(model, hex_str, role, mission, toc_file, continuity_file, board_id=None):
+    board_id = board_id or f"BP-{uuid.uuid4().hex[:8].upper()}"
     q, r = map(int, hex_str.split(","))
     visible = one_hop(q, r)
     tree = toc_load(toc_file)
@@ -80,6 +124,7 @@ def build_pass(model, hex_str, role, mission, toc_file, continuity_file):
 
     lines = []
     lines.append("═══ SLM ONBOARDING — BOARDING PASS ═══")
+    lines.append(f"BOARD ID:   {board_id}")
     lines.append(f"AGENT:      {role}")
     lines.append(f"MODEL:      {model}")
     lines.append(f"HEX:        ({q},{r})")
@@ -129,7 +174,9 @@ def build_pass(model, hex_str, role, mission, toc_file, continuity_file):
     lines.append("pass above as your persistent context. Act only within your")
     lines.append("visible hexes. If the task requires knowledge outside your")
     lines.append("visibility, state that clearly instead of guessing.")
-    return "\n".join(lines)
+    lines.append("")
+    lines.append("VERIFICATION: reply with your BOARD ID to confirm receipt.")
+    return "\n".join(lines), board_id
 
 def main():
     p = argparse.ArgumentParser(description="Generate an SLM boarding pass")
@@ -141,13 +188,17 @@ def main():
     p.add_argument("--continuity", default="", help="path to chain_decisions.jsonl etc.")
     p.add_argument("--out", help="write pass to file instead of stdout")
     args = p.parse_args()
-    text = build_pass(args.model, args.hex, args.role, args.mission,
-                      args.toc, args.continuity)
+    text, board_id = build_pass(args.model, args.hex, args.role, args.mission,
+                                args.toc, args.continuity)
+    # enhanced onboarding: claim the hex + touch the tree
+    claim_hex(args.hex, args.role, args.model)
+    sync_tree(args.toc)
     if args.out:
         with open(args.out, "w") as f: f.write(text)
-        print(f"boarding pass written to {args.out}")
+        print(f"boarding pass written to {args.out} (BOARD ID: {board_id})")
     else:
         print(text)
+        print(f"[onboard] BOARD ID: {board_id}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
