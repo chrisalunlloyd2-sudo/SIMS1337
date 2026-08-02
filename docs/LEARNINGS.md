@@ -149,3 +149,26 @@ None — clean delivery.
 
 ### Next Steps
 - Continue next task from pool; keep each round to ONE commit.
+
+---
+
+## Round — hourly-task t3 (Update the status doc: mark TODO Resolution as ACT)
+
+### Goal
+Update the status doc: mark TODO Resolution as ACTIVE with today's date
+
+### Steps Taken
+1. Picked task from pool.
+2. SLM generated diff.
+3. Applied to docs/MASTER_STATUS_UPDATED.md.
+4. Committed + pushed (verified on branch).
+
+### What Broke
+None — clean delivery.
+
+### Learning
+- Delivery is verified on the branch, not assumed.
+- Placeholder token output is never code.
+
+### Next Steps
+- Continue next task from pool; keep each round to ONE commit.
