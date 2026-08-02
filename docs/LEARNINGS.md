@@ -172,3 +172,26 @@ None — clean delivery.
 
 ### Next Steps
 - Continue next task from pool; keep each round to ONE commit.
+
+---
+
+## Round — hourly-task t4 (Add a changelog entry for the hourly task pipeline)
+
+### Goal
+Add a changelog entry for the hourly task pipeline v1
+
+### Steps Taken
+1. Picked task from pool.
+2. SLM generated diff.
+3. Applied to CHANGELOG.md.
+4. Committed + pushed (verified on branch).
+
+### What Broke
+None — clean delivery.
+
+### Learning
+- Delivery is verified on the branch, not assumed.
+- Placeholder token output is never code.
+
+### Next Steps
+- Continue next task from pool; keep each round to ONE commit.
