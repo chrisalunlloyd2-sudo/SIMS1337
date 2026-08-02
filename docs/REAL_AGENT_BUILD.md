@@ -27,13 +27,14 @@ cmake --build build -j$(nproc) --target llama-cli llama-quantize
 | Model | URL | Size |
 |-------|-----|------|
 | stories15M Q8 (primary) | `ggml-org/tinyllamas/resolve/main/tinyllamas/stories15M-be.Q8_0.gguf` | 26MB |
-| stories110M f32 (fallback) | `klosax/tinyllamas-stories-gguf/resolve/main/tinyllamas-stories-110m-f32.gguf` | 440MB |
-| stories110M Q8 (fallback, quantized) | run `llama-quantize` on f32 → Q8_0 | ~110MB |
+| **SmolLM-135M Q4_K_M (fallback — VERIFIED on device)** | `MaziyarPanahi/SmolLM-135M-Instruct-GGUF/resolve/main/SmolLM-135M-Instruct.Q4_K_M.gguf` | 105MB |
+| danube3-500m Q4_K_M (stronger) | `h2oai/h2o-danube3-500m-chat-GGUF/resolve/main/h2o-danube3-500m-chat-Q4_K_M.gguf` | 303MB |
 
-```bash
-# quantize the fallback once (one-time):
-./build/bin/llama-quantize stories110M-f32.gguf stories110M-Q8_0.gguf Q8_0
-```
+On-device inventory (2026-07-25) lives at `/storage/emulated/0/MatrixVault/GGUF/`:
+SmolLM-135M-Instruct-v1.Q4_K_M.gguf (105MB), h2o-danube3-500m-chat-q4_k_m.gguf (303MB),
+alpha-triton-grpo-1.7b.Q4_K_M.gguf (1.03GB), qwen2.5-0.5b-instruct-q4_k_m.gguf (468MB),
+SmolLM-360M-Instruct-v1.Q4_K_M.gguf (258MB). The device files are ALREADY quantized —
+no llama-quantize needed. Full machine-readable manifest: `house-inference/model_manifest.json`.
 
 ## Step 3 — Start the house server (strict, real)
 ```bash
