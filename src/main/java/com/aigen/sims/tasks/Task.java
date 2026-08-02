@@ -14,6 +14,7 @@ public class Task {
     private final long maxLatencyMs;
     private final LocalDateTime createdAt;
     private TaskStatus status;
+    private int priority = 5; // 1 (highest) - 10 (lowest), default 5
 
     public Task(String name, Complexity complexity) {
         this.id = UUID.randomUUID().toString();
@@ -23,6 +24,7 @@ public class Task {
         this.maxLatencyMs = Long.MAX_VALUE;
         this.createdAt = LocalDateTime.now();
         this.status = TaskStatus.PENDING;
+        this.priority = 5;
     }
 
     public Task(String name, String description, Complexity complexity, long maxLatencyMs) {
@@ -33,6 +35,7 @@ public class Task {
         this.maxLatencyMs = maxLatencyMs;
         this.createdAt = LocalDateTime.now();
         this.status = TaskStatus.PENDING;
+        this.priority = 5;
     }
 
     public String getId() {
@@ -85,6 +88,15 @@ public class Task {
         return String.format("Task{id='%s', name='%s', complexity=%s, status=%s}", 
             id, name, complexity, status);
     }
-}
 
-// hourly-task: tok850 tok870 tok27935 tok6000 tok9035 tok25240 tok26540 tok
+    public int getPriority() {
+        return priority;
+    }
+
+    public void setPriority(int priority) {
+        if (priority < 1 || priority > 10) {
+            throw new IllegalArgumentException("priority must be 1-10");
+        }
+        this.priority = priority;
+    }
+}
