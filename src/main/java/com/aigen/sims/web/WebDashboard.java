@@ -1,8 +1,8 @@
 package com.aigen.sims.web;
 
-import com.aigen.sims.commander.AegisCommander;
 import com.aigen.sims.commander.Strategy;
 import com.aigen.sims.deploy.GateKeeper;
+import com.aigen.sims.engine.TocTokTree;
 import com.aigen.sims.lora.AdapterRegistry;
 import com.aigen.sims.mining.SuggestionRegistry;
 import com.aigen.sims.scheduler.PipelineScheduler;
@@ -31,22 +31,24 @@ import java.util.stream.Collectors;
  * real-time push without actually building it would be fabrication. A real, working v1 first.
  */
 public class WebDashboard {
-    private final SuggestionRegistry suggestions;
+    // 2026-08-02: constructed from the scheduler itself, not separately-built copies -- WebDashboard
+    // was never actually instantiated anywhere before this (verified: no caller in the whole repo),
+    // so its old constructor shape had no external dependents to preserve. Sharing the SAME
+    // scheduler.gateKeeper()/adapterRegistry() instances (not fresh ones) is what makes the dashboard
+    // reflect real accumulating state instead of a snapshot from whenever it happened to be built.
+    private final PipelineScheduler scheduler;
     private final GateKeeper gate;
     private final AdapterRegistry adapters;
-    private final PipelineScheduler scheduler;
-    private final String home;
+    private final TocTokTree knowledge;
     private final int port;
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
 
-    public WebDashboard(SuggestionRegistry suggestions, GateKeeper gate, AdapterRegistry adapters,
-                        PipelineScheduler scheduler, String home, int port) {
-        this.suggestions = suggestions;
-        this.gate = gate;
-        this.adapters = adapters;
+    public WebDashboard(PipelineScheduler scheduler, int port) {
         this.scheduler = scheduler;
-        this.home = home;
+        this.gate = scheduler.gateKeeper();
+        this.adapters = scheduler.adapterRegistry();
+        this.knowledge = new TocTokTree(scheduler.repoPath() + "/scripts/toc_tok/toc_tok.json");
         this.port = port;
     }
 
@@ -56,6 +58,7 @@ public class WebDashboard {
         server.createContext("/api/status", this::serveStatus);
         server.createContext("/api/suggestions", this::serveSuggestions);
         server.createContext("/api/proposals", this::serveProposals);
+        server.createContext("/api/knowledge", this::serveKnowledge);
         server.setExecutor(null);
         server.start();
         System.out.println("[WebDashboard] serving on http://0.0.0.0:" + port);
@@ -81,11 +84,11 @@ public class WebDashboard {
 
     private void serveStatus(HttpExchange ex) throws IOException {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("suggestions", suggestions.getSummary());
+        out.put("suggestions", new SuggestionRegistry(scheduler.suggestionsPath()).getSummary());
         out.put("proposals", gate.getSummary());
         out.put("adapters", adapters.getSummary());
         try {
-            Strategy s = new AegisCommander(suggestions, home + "/strategy.json").generateStrategy();
+            Strategy s = scheduler.currentStrategy();
             Map<String, Object> strat = new LinkedHashMap<>();
             strat.put("focusRepo", s.focusRepo == null ? "" : s.focusRepo);
             strat.put("focusModel", s.focusModel == null ? "" : s.focusModel);
@@ -94,12 +97,14 @@ public class WebDashboard {
         } catch (Exception e) {
             out.put("strategy", Map.of("error", e.getMessage() == null ? "unknown" : e.getMessage()));
         }
-        out.put("cycleLog", scheduler == null ? "" : scheduler.cycleLog());
+        out.put("cycleLog", scheduler.cycleLog());
         writeJson(ex, out);
     }
 
     private void serveSuggestions(HttpExchange ex) throws IOException {
-        List<Map<String, Object>> out = suggestions.getPendingSuggestions().stream()
+        // fresh read each poll: SuggestionRegistry reloads from disk in its own constructor, so this
+        // reflects whatever the mining phase most recently wrote, not a snapshot from dashboard startup.
+        List<Map<String, Object>> out = new SuggestionRegistry(scheduler.suggestionsPath()).getPendingSuggestions().stream()
             .map(s -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("id", s.id); m.put("repoName", s.repoName); m.put("modelName", s.modelName);
@@ -119,6 +124,17 @@ public class WebDashboard {
                 m.put("hexQ", p.hexQ); m.put("hexR", p.hexR);
                 return m;
             }).collect(Collectors.toList());
+        writeJson(ex, out);
+    }
+
+    private void serveKnowledge(HttpExchange ex) throws IOException {
+        // TocTokTree owns the Java read-side of toc_tok.json (Python owns writes); reload() here so
+        // a poll always reflects the toc_tok.py process's latest state, not whatever existed when
+        // this WebDashboard instance was constructed.
+        knowledge.reload();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("nodeCount", knowledge.size());
+        out.put("subtree", knowledge.subtree("/projects/SIMS1337"));
         writeJson(ex, out);
     }
 
@@ -153,6 +169,7 @@ public class WebDashboard {
           <div class="card"><h2>Hex Grid (real suggestion positions)</h2><canvas id="hexCanvas" width="380" height="340"></canvas></div>
           <div class="card"><h2>Suggestions</h2><div id="suggestions">loading...</div></div>
           <div class="card"><h2>Deploy Proposals</h2><div id="proposals">loading...</div></div>
+          <div class="card"><h2>Knowledge Tree (TOC-TOK)</h2><pre id="knowledge"></pre></div>
           <div class="card"><h2>Last Cycle Log</h2><pre id="cycleLog"></pre></div>
         </div>
         <script>
@@ -176,6 +193,10 @@ public class WebDashboard {
           ).join('') : '<div class="row"><span>(none yet)</span></div>';
 
           drawHex(sugg.concat(props));
+
+          const kg = await (await fetch('/api/knowledge')).json();
+          document.getElementById('knowledge').textContent =
+            `${kg.nodeCount} nodes total\n` + (kg.subtree || []).join('\n');
         }
         function drawHex(items) {
           const cv = document.getElementById('hexCanvas'), ctx = cv.getContext('2d');

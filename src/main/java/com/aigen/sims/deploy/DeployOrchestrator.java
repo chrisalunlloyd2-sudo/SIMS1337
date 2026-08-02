@@ -6,6 +6,10 @@ public class DeployOrchestrator {
     private final GateKeeper gateKeeper;
     private final String repoPath;
     public DeployOrchestrator(String repoPath) { this.repoPath = repoPath; this.gateKeeper = new GateKeeper(repoPath); }
+    // 2026-08-02: additive -- lets a caller (PipelineScheduler) share ONE long-lived GateKeeper across
+    // cycles instead of a fresh in-memory one per cycle (GateKeeper has no disk persistence, so a fresh
+    // instance every call was silently wiping proposal history each cycle).
+    public DeployOrchestrator(String repoPath, GateKeeper gateKeeper) { this.repoPath = repoPath; this.gateKeeper = gateKeeper; }
     public String submitFromSuggestion(Suggestion s, String rp) {
         try {
             java.nio.file.Path fp = java.nio.file.Paths.get(rp, s.filePath);

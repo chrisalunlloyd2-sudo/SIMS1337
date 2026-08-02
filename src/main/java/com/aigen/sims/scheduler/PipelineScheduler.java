@@ -3,6 +3,7 @@ package com.aigen.sims.scheduler;
 import com.aigen.sims.commander.AegisCommander;
 import com.aigen.sims.commander.PipelineMonitor;
 import com.aigen.sims.deploy.DeployOrchestrator;
+import com.aigen.sims.deploy.GateKeeper;
 import com.aigen.sims.gui.GuiGardener;
 import com.aigen.sims.lora.AdapterRegistry;
 import com.aigen.sims.lora.LoRATuner;
@@ -25,11 +26,18 @@ public class PipelineScheduler {
     private final String home, suggestionsPath, repoPath;
     private final StringBuilder cycleLog = new StringBuilder();
     private final PipelineMonitor monitor;
+    // 2026-08-02: shared across every cycle -- both classes are pure in-memory with no disk
+    // persistence, so a fresh instance per cycle (the original code) silently wiped proposal/adapter
+    // history every 60 minutes. One long-lived instance for this scheduler's whole lifetime, and
+    // WebDashboard reads the SAME instances via gateKeeper()/adapterRegistry() below.
+    private final GateKeeper gateKeeper;
+    private final AdapterRegistry adapterRegistry = new AdapterRegistry();
 
     public PipelineScheduler(String home) {
         this.home = home;
         this.suggestionsPath = home + "/suggestions";
         this.repoPath = home + "/SIMS1337";
+        this.gateKeeper = new GateKeeper(repoPath);
         this.monitor = new PipelineMonitor(new SuggestionRegistry(suggestionsPath),
             home + "/pipeline_monitor_state.txt");
         wire();
@@ -37,6 +45,11 @@ public class PipelineScheduler {
 
     public EventBus bus() { return bus; }
     public String cycleLog() { return cycleLog.toString(); }
+    public GateKeeper gateKeeper() { return gateKeeper; }
+    public AdapterRegistry adapterRegistry() { return adapterRegistry; }
+    public String home() { return home; }
+    public String repoPath() { return repoPath; }
+    public String suggestionsPath() { return suggestionsPath; }
 
     private void wire() {
         bus.subscribe("mine_complete", payload -> runDeploy());
@@ -73,7 +86,7 @@ public class PipelineScheduler {
     private void runDeploy() {
         try {
             SuggestionRegistry reg = new SuggestionRegistry(suggestionsPath);
-            DeployOrchestrator deployer = new DeployOrchestrator(repoPath);
+            DeployOrchestrator deployer = new DeployOrchestrator(repoPath, gateKeeper);
             var report = deployer.runDeployCycle(reg, repoPath);
             cycleLog.append("deploy: ").append(report.toEmailString()).append("\n");
             bus.publish("deploy_complete", report);
@@ -84,8 +97,7 @@ public class PipelineScheduler {
 
     private void runTune() {
         try {
-            AdapterRegistry ar = new AdapterRegistry();
-            LoRATuner tuner = new LoRATuner(ar);
+            LoRATuner tuner = new LoRATuner(adapterRegistry);
             var report = tuner.runTuningCycle();
             cycleLog.append("tune: ").append(report.toEmailString()).append("\n");
             bus.publish("tune_complete", report);
