@@ -57,3 +57,26 @@ after every task, append a LEARNINGS.md entry and push it with the same commit.
 
 ### Next Steps
 - Ship LEARNINGS.md; wire gist backup; confirm doctor rotation includes audit.
+
+---
+
+## Round — hourly-task t1 (Add a priority field to Task.java with getter/sett)
+
+### Goal
+Add a priority field to Task.java with getter/setter
+
+### Steps Taken
+1. Picked task from pool.
+2. SLM generated diff.
+3. Applied to src/main/java/com/aigen/sims/tasks/Task.java.
+4. Committed + pushed (verified on branch).
+
+### What Broke
+None — clean delivery.
+
+### Learning
+- Delivery is verified on the branch, not assumed.
+- Placeholder token output is never code.
+
+### Next Steps
+- Continue next task from pool; keep each round to ONE commit.
