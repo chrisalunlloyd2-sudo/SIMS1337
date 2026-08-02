@@ -259,3 +259,12 @@ BODY1 (Observation) → BODY2 (Analysis) → BODY3 (Synthesis)
 #+TBLFM:
 #+RESULTS:
 #+RESULTS:
+
+// hourly-task: ```
+#+TBLFM:
+#+BEGIN:
+#+END:
+
+#+TBLFM:
+#+RESULTS:
+#+RESULTS:
