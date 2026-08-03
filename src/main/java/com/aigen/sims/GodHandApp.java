@@ -2734,49 +2734,150 @@ public class GodHandApp extends Application {
     }
 
     // ==================== 16. TOOLS SYSTEM ====================
-    private final Map<String, String> availableTools = new ConcurrentHashMap<>();
+    // ==================== PHASE 24: FORMAL TOOL/PLUGIN API — stable interface ====================
+    /** Stable tool interface — all dynamically added tools must conform */
+    public interface Tool {
+        String name();
+        String description();
+        String category(); // "system", "network", "model", "data", "agent"
+        default boolean validate() { return true; } // pre-flight check
+        String execute(String input) throws Exception; // core logic
+        default String version() { return "1.0.0"; }
+    }
+
+    private final Map<String, Tool> toolRegistry = new ConcurrentHashMap<>(); // name -> Tool
+    private final Map<String, String> availableTools = new ConcurrentHashMap<>(); // legacy compat: name -> description
     private final Map<String, Integer> toolUsage = new ConcurrentHashMap<>();
 
     private void toolsSystemInit() {
-        availableTools.put("terminal", "Execute shell commands");
-        availableTools.put("file_read", "Read files from disk");
-        availableTools.put("file_write", "Write files to disk");
-        availableTools.put("web_search", "Search the internet");
-        availableTools.put("web_fetch", "Fetch URL content");
-        availableTools.put("git", "Git operations (commit, push, pull)");
-        availableTools.put("ollama", "Query other models");
-        availableTools.put("memory", "Read/write persistent memory");
-        availableTools.put("vote", "Cast votes on proposals");
-        availableTools.put("pipeline", "Chain multiple models together");
+        // Register built-in tools via stable interface
+        registerTool(new Tool() {
+            public String name() { return "terminal"; }
+            public String description() { return "Execute shell commands"; }
+            public String category() { return "system"; }
+            public String execute(String input) { return "[terminal stub — real execution via agent]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "file_read"; }
+            public String description() { return "Read files from disk"; }
+            public String category() { return "system"; }
+            public String execute(String input) { return "[file_read stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "file_write"; }
+            public String description() { return "Write files to disk"; }
+            public String category() { return "system"; }
+            public String execute(String input) { return "[file_write stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "web_search"; }
+            public String description() { return "Search the internet"; }
+            public String category() { return "network"; }
+            public String execute(String input) { return "[web_search stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "web_fetch"; }
+            public String description() { return "Fetch URL content"; }
+            public String category() { return "network"; }
+            public String execute(String input) { return "[web_fetch stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "git"; }
+            public String description() { return "Git operations (commit, push, pull)"; }
+            public String category() { return "system"; }
+            public String execute(String input) { return "[git stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "ollama"; }
+            public String description() { return "Query other models"; }
+            public String category() { return "model"; }
+            public String execute(String input) { return "[ollama stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "memory"; }
+            public String description() { return "Read/write persistent memory"; }
+            public String category() { return "data"; }
+            public String execute(String input) { return "[memory stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "vote"; }
+            public String description() { return "Cast votes on proposals"; }
+            public String category() { return "agent"; }
+            public String execute(String input) { return "[vote stub]"; }
+        });
+        registerTool(new Tool() {
+            public String name() { return "pipeline"; }
+            public String description() { return "Chain multiple models together"; }
+            public String category() { return "model"; }
+            public String execute(String input) { return "[pipeline stub]"; }
+        });
 
-        for (String tool : availableTools.keySet()) {
-            toolUsage.put(tool, 0);
-        }
+        log("🔧 Tools: " + toolRegistry.size() + " tools registered via stable Tool interface");
+        addToGodChat("🔧 TOOLS", "System", toolRegistry.size() + " tools: " + toolRegistry.keySet());
 
-        log("🔧 Tools: " + availableTools.size() + " tools available for models");
+        // /api/tools endpoint — full tool metadata
+        try {
+            webServer.createContext("/api/tools", exchange -> {
+                StringBuilder json = new StringBuilder("{\"count\":" + toolRegistry.size() + ",\"tools\":[");
+                boolean first = true;
+                for (Tool t : toolRegistry.values()) {
+                    if (!first) json.append(",");
+                    json.append("{\"name\":\"").append(t.name())
+                        .append("\",\"description\":\"").append(t.description().replace("\"", "'"))
+                        .append("\",\"category\":\"").append(t.category())
+                        .append("\",\"version\":\"").append(t.version())
+                        .append("\",\"valid\":" ).append(t.validate())
+                        .append(",\"usage\":" ).append(toolUsage.getOrDefault(t.name(), 0)).append("}");
+                    first = false;
+                }
+                json.append("]}");
+                byte[] resp = json.toString().getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
 
         // Auto-assign tools to models based on capability
         chatScheduler.scheduleAtFixedRate(() -> {
             Platform.runLater(() -> {
                 for (String model : modelChats.keySet()) {
-                    String[] tools = availableTools.keySet().toArray(new String[0]);
-                    String tool = tools[new Random().nextInt(tools.length)];
+                    String[] names = toolRegistry.keySet().toArray(new String[0]);
+                    String tool = names[new Random().nextInt(names.length)];
                     toolUsage.merge(tool, 1, Integer::sum);
                     if (new Random().nextInt(5) == 0) {
+                        Tool t = toolRegistry.get(tool);
                         log("🔧 Tool: [" + model + "] used " + tool + " (" + toolUsage.get(tool) + " total uses)");
-                        addToGodChat("🔧 TOOL", model, "Used: " + tool + " → " + availableTools.get(tool));
+                        addToGodChat("🔧 TOOL", model, "Used: " + tool + " → " + (t != null ? t.description() : ""));
                     }
                 }
             });
         }, 70, 70, TimeUnit.SECONDS);
     }
 
-    /** Dynamically add a new tool — callable from deploy phase or manual */
+    /** Register a tool via the stable interface */
+    public void registerTool(Tool tool) {
+        if (toolRegistry.containsKey(tool.name())) return;
+        if (!tool.validate()) {
+            log("⚠️ Tool rejected (validate=false): " + tool.name());
+            return;
+        }
+        toolRegistry.put(tool.name(), tool);
+        availableTools.put(tool.name(), tool.description()); // legacy compat
+        toolUsage.put(tool.name(), 0);
+        log("🔧 Registered: " + tool.name() + " v" + tool.version() + " [" + tool.category() + "] — " + tool.description());
+    }
+
+    /** Dynamically add a tool from deploy phase — wraps in Tool interface */
     public void addTool(String name, String description) {
-        if (availableTools.containsKey(name)) return;
-        availableTools.put(name, description);
-        toolUsage.put(name, 0);
-        log("🔧 NEW TOOL: " + name + " — " + description);
+        if (toolRegistry.containsKey(name)) return;
+        registerTool(new Tool() {
+            public String name() { return name; }
+            public String description() { return description; }
+            public String category() { return "dynamic"; }
+            public String execute(String input) { return "[dynamic:" + name + "]"; }
+        });
         addToGodChat("🔧 TOOL", "System", "Registered: " + name + " → " + description);
     }
 
