@@ -484,6 +484,7 @@ public class GodHandApp extends Application {
         fineTuningInit();
         multiAgentTopologyInit();
         webDashboardInit();
+        distributedInit(); // PHASE 16: multi-instance coordination
         preEmbedKG(); // PHASE 6: pre-embed KG nodes in background
         pluginSystemInit();
         perfectPromptInit();
@@ -3638,6 +3639,50 @@ public class GodHandApp extends Application {
         }
         auditLog("PROPOSAL_APPROVED", "validation-pipeline", description);
         return true;
+    }
+
+    // ==================== PHASE 16: DISTRIBUTED SCALING — multi-instance coordination ====================
+    private final Map<String, Long> peerInstances = new ConcurrentHashMap<>(); // instanceId -> lastHeartbeat
+    private final String instanceId = java.util.UUID.randomUUID().toString().substring(0, 8);
+    private static final long PEER_TIMEOUT_MS = 120_000; // 2 min heartbeat timeout
+
+    /** Register this instance and discover peers */
+    private void distributedInit() {
+        log("🌐 Distributed: Instance " + instanceId + " online");
+        addToGodChat("🌐 DISTRIBUTED", "System", "Instance " + instanceId + " — multi-instance coordination active");
+
+        // Heartbeat every 30s
+        chatScheduler.scheduleAtFixedRate(() -> {
+            peerInstances.put(instanceId, System.currentTimeMillis());
+            // Purge stale peers
+            long cutoff = System.currentTimeMillis() - PEER_TIMEOUT_MS;
+            peerInstances.entrySet().removeIf(e -> e.getValue() < cutoff && !e.getKey().equals(instanceId));
+        }, 30, 30, TimeUnit.SECONDS);
+
+        // Peer discovery endpoint
+        try {
+            webServer.createContext("/api/peers", exchange -> {
+                String json = getPeersJson();
+                byte[] response = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    private String getPeersJson() {
+        StringBuilder sb = new StringBuilder("{\"instance\":\"" + instanceId + "\",\"peers\":[");
+        boolean first = true;
+        for (var e : peerInstances.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("{\"id\":\"").append(e.getKey()).append("\",\"age_ms\":")
+              .append(System.currentTimeMillis() - e.getValue()).append("}");
+            first = false;
+        }
+        sb.append("],\"count\":").append(peerInstances.size()).append("}");
+        return sb.toString();
     }
 
     private float cosineSimilarity(float[] a, float[] b) {
