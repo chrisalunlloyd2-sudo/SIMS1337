@@ -81,6 +81,66 @@ public class GodHandApp extends Application {
     private final Map<String, Map<String, Boolean>> voteRegistry = new ConcurrentHashMap<>(); // proposalId -> modelName -> vote
     private final List<String> dreamIdeas = Collections.synchronizedList(new ArrayList<>()); // raw dream output
 
+    // === PROPOSAL VERSIONING — traceable, revertible deployments ===
+    private final Map<String, List<String[]>> proposalHistory = new ConcurrentHashMap<>(); // proposalId -> [version, timestamp, diff]
+    private int proposalVersionCounter = 0;
+
+    /** Version a proposal before deployment — stores snapshot for rollback */
+    private void versionProposal(String[] proposal) {
+        String id = proposal[0];
+        proposalHistory.computeIfAbsent(id, k -> new ArrayList<>()).add(new String[]{
+            String.valueOf(++proposalVersionCounter),
+            java.time.Instant.now().toString(),
+            proposal[1] + " | " + proposal[2] + " | " + proposal[3]
+        });
+        log("📋 Versioned: " + id + " v" + proposalVersionCounter);
+    }
+
+    /** Rollback a proposal to a previous version */
+    private boolean rollbackProposal(String id, int version) {
+        List<String[]> history = proposalHistory.get(id);
+        if (history == null || version < 1 || version > history.size()) return false;
+        String[] snap = history.get(version - 1);
+        for (String[] p : proposalTable) {
+            if (p[0].equals(id)) {
+                p[1] = snap[2].split(" \\| ")[0];
+                p[2] = snap[2].split(" \\| ")[1];
+                p[3] = "pending"; // reset to pending on rollback
+                log("↩️ Rolled back: " + id + " to v" + version);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // === MESSAGE BUS — typed inter-agent events instead of direct calls ===
+    private final Map<String, List<Map<String, Object>>> messageBus = new ConcurrentHashMap<>(); // agentName -> queue
+    private final Map<String, List<Map<String, Object>>> messageBusHistory = new ConcurrentHashMap<>(); // agentName -> delivered
+
+    /** Publish a typed message to an agent's queue */
+    private void publishMessage(String from, String to, String type, String payload) {
+        Map<String, Object> msg = new ConcurrentHashMap<>();
+        msg.put("from", from);
+        msg.put("to", to);
+        msg.put("type", type); // "vote_request", "topology_update", "dream_share", "deploy_order", "health_check"
+        msg.put("payload", payload);
+        msg.put("timestamp", System.currentTimeMillis());
+        msg.put("id", java.util.UUID.randomUUID().toString().substring(0, 8));
+        messageBus.computeIfAbsent(to, k -> Collections.synchronizedList(new ArrayList<>())).add(msg);
+        log("📨 BUS: " + from + " → " + to + " [" + type + "] " + msg.get("id"));
+    }
+
+    /** Agent consumes its message queue — processes oldest first */
+    private List<Map<String, Object>> consumeMessages(String agentName) {
+        List<Map<String, Object>> queue = messageBus.getOrDefault(agentName, List.of());
+        if (queue.isEmpty()) return List.of();
+        List<Map<String, Object>> consumed = new ArrayList<>(queue);
+        messageBusHistory.computeIfAbsent(agentName, k -> Collections.synchronizedList(new ArrayList<>())).addAll(consumed);
+        messageBus.remove(agentName);
+        log("📬 BUS: " + agentName + " consumed " + consumed.size() + " messages");
+        return consumed;
+    }
+
     // === Topology Builder ===
     private final ObservableList<String[]> topologyTable = FXCollections.observableArrayList();
     private final Map<String, List<String>> topologyGraph = new ConcurrentHashMap<>();
@@ -186,46 +246,123 @@ public class GodHandApp extends Application {
 
     /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure.
      *  Passes num_ctx to override low context windows (tinyllama 2K→8K, phi 2K→8K). */
+    // ==================== CELLULAR GATE — single Ollama call path with pacing, fencing, A/B/C routing ====================
+    private volatile String currentLoadedModel = null; // SSD/HDD fencing — only ONE model loaded at a time
+
+    /** THE CELLULAR GATE — every Ollama call flows through here. Rate-limited, fenced, A/B/C routed. */
     private String realOllamaQuery(String model, String systemPrompt, String userPrompt) {
-        try {
-            // Determine context: small models get 8K, others get 16K+
-            int ctx = 8192;
-            if (model.contains("7b") || model.contains("mistral") || model.contains("codellama")) ctx = 16384;
-            if (model.contains("llama3.2") || model.contains("deepseek")) ctx = 32768;
-            String json = String.format(
-                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":150,\"num_ctx\":%d,\"temperature\":0.7}}",
-                model,
-                systemPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                ctx);
-            var req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create(OLLAMA_URL))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(30))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                .build();
-            var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                String body = resp.body();
-                int idx = body.indexOf("\"response\":\"");
-                if (idx > 0) {
-                    idx += 12;
-                    int end = body.indexOf("\"", idx);
-                    if (end > idx) {
-                        String result = body.substring(idx, end)
-                            .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
-                        ollamaAvailable.put(model, true);
-                        ollamaFailCount.put(model, 0);
-                        return result.trim();
+        // === A/B/C ROUTING: if primary model busy/failing, try B, then C ===
+        String[] route = abcRoute(model);
+        for (String candidate : route) {
+            try {
+                // === CELLULAR PACING: enforce 5-min gap between ANY model call ===
+                long now = System.currentTimeMillis();
+                long lastCall = lastOllamaCallTs.get();
+                long gap = now - lastCall;
+                if (gap < OLLAMA_MIN_GAP_MS && lastCall > 0) {
+                    long waitMs = OLLAMA_MIN_GAP_MS - gap;
+                    log("⏳ Cellular gate: waiting " + (waitMs/1000) + "s before next Ollama call (5min pacing)");
+                    Thread.sleep(waitMs);
+                }
+
+                // === SSD/HDD FENCING: unload previous model, load only THIS one ===
+                if (currentLoadedModel != null && !currentLoadedModel.equals(candidate)) {
+                    unloadModel(currentLoadedModel);
+                }
+                if (!candidate.equals(currentLoadedModel)) {
+                    loadModel(candidate);
+                    currentLoadedModel = candidate;
+                }
+
+                // === EXECUTE ===
+                long t0 = System.currentTimeMillis();
+                int ctx = candidate.contains("7b") || candidate.contains("mistral") ? 16384 : 8192;
+                if (candidate.contains("llama3.2") || candidate.contains("deepseek")) ctx = 32768;
+                String json = String.format(
+                    "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":80,\"num_ctx\":%d,\"temperature\":0.7}}",
+                    candidate,
+                    systemPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                    userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                    ctx);
+                var req = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create(OLLAMA_URL))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(45))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                long elapsed = System.currentTimeMillis() - t0;
+
+                if (resp.statusCode() == 200) {
+                    String body = resp.body();
+                    int idx = body.indexOf("\"response\":\"");
+                    if (idx > 0) {
+                        idx += 12;
+                        int end = body.indexOf("\"", idx);
+                        if (end > idx) {
+                            String result = body.substring(idx, end)
+                                .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+                            ollamaAvailable.put(candidate, true);
+                            ollamaFailCount.put(candidate, 0);
+                            ollamaCallCount.incrementAndGet();
+                            ollamaTotalMs.addAndGet(elapsed);
+                            lastOllamaCallTs.set(System.currentTimeMillis());
+                            recordModelLatency(candidate, elapsed);
+                            log("📡 Ollama [" + candidate + "]: " + elapsed + "ms, " + result.length() + " chars (call #" + ollamaCallCount.get() + ")");
+                            return result.trim();
+                        }
                     }
                 }
+                ollamaFailCount.merge(candidate, 1, Integer::sum);
+                ollamaErrorCount.incrementAndGet();
+                log("⚠️ Ollama [" + candidate + "] failed (status=" + resp.statusCode() + "), trying next in route...");
+            } catch (Exception e) {
+                ollamaFailCount.merge(candidate, 1, Integer::sum);
+                ollamaErrorCount.incrementAndGet();
+                log("⚠️ Ollama [" + candidate + "] error: " + e.getMessage() + ", trying next...");
             }
-            ollamaFailCount.merge(model, 1, Integer::sum);
-            return null;
-        } catch (Exception e) {
-            ollamaFailCount.merge(model, 1, Integer::sum);
-            return null;
         }
+        return null; // all routes exhausted
+    }
+
+    /** A/B/C routing: primary → shadow → fallback tier */
+    private String[] abcRoute(String model) {
+        String shadow = shadowModels.get(model);
+        String fallback = "qwen2.5:0.5b"; // always-available tiny model
+        if (shadow != null && !shadow.equals(model)) {
+            return new String[]{model, shadow, fallback};
+        }
+        return new String[]{model, fallback};
+    }
+
+    /** Unload a model from GPU/RAM to free resources */
+    private void unloadModel(String model) {
+        try {
+            var req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/generate"))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(10))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                    "{\"model\":\"" + model + "\",\"prompt\":\"\",\"keep_alive\":0}"))
+                .build();
+            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
+            log("🧹 Unloaded: " + model);
+        } catch (Exception ignored) {}
+    }
+
+    /** Pre-load a model into memory (Ollama auto-loads on first query, but explicit is safer) */
+    private void loadModel(String model) {
+        try {
+            var req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/generate"))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(60))
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                    "{\"model\":\"" + model + "\",\"prompt\":\"ping\",\"stream\":false,\"options\":{\"num_predict\":1}}"))
+                .build();
+            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
+            log("📥 Loaded: " + model);
+        } catch (Exception ignored) {}
     }
 
     /** Query with fallback: tries Ollama, falls back to template if unavailable */
