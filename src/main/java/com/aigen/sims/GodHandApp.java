@@ -3701,10 +3701,12 @@ public class GodHandApp extends Application {
         log("🏔️ Maslow: Model needs hierarchy initialized");
         addToGodChat("🏔️ MASLOW", "System", "10 need types tracked per model, voted every 10min");
 
-        // Initialize needs for all models
-        for (String model : installedModels) {
+        // Initialize needs for all known models (installedModels may not be populated yet)
+        String[] allModels = {"qwen2.5:0.5b","tinyllama:1.1b","llama3.2:1b","deepseek-r1:1.5b",
+            "phi:latest","gemma2:2b","phi3:mini","codellama:7b","mistral:7b","nomic-embed-text:latest"};
+        for (String model : allModels) {
             Map<String, Integer> needs = new ConcurrentHashMap<>();
-            for (String need : NEED_TYPES) needs.put(need, 50); // start at 50% urgency
+            for (String need : NEED_TYPES) needs.put(need, 50);
             modelNeeds.put(model, needs);
         }
 
