@@ -652,7 +652,7 @@ public class GodHandApp extends Application {
         String ts = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
         String color = role.contains("YOU") ? "#ffffff" : role.contains("LEXICAL") ? "#c77dff" : role.contains("VOTE") ? "#ffaa00" : role.contains("TOPOLOGY") ? "#00d9ff" : role.contains("NIGHT") ? "#6e5494" : model.contains("qwen") ? "#00ff88" : model.contains("tinyllama") ? "#ffaa00" : model.contains("phi3") ? "#c77dff" : "#ff6b6b";
         String entry = String.format("[%s] %s | %s: %s%n", ts, role, model, message);
-        Platform.runLater(() -> { godChat.appendText(entry); godChat.setScrollTop(Double.MAX_VALUE); });
+        bufferedLog(entry); // batched — no more individual Platform.runLater()
     }
 
     // ==================== LOOP MODE (manual per-model toggle) ====================
@@ -2368,7 +2368,7 @@ public class GodHandApp extends Application {
             });
         }, 50, 50, TimeUnit.SECONDS);
     }
-    private void log(String msg) { String ts=java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")); String entry="["+ts+"] "+msg; System.out.println(entry); if(logConsole!=null)Platform.runLater(()->{logConsole.appendText(entry+"\n"); String[] lines=logConsole.getText().split("\n"); if(lines.length>500)logConsole.setText(String.join("\n",Arrays.copyOfRange(lines,lines.length-500,lines.length)));}); }
+    private void log(String msg) { String ts=java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")); String entry="["+ts+"] "+msg; System.out.println(entry); bufferedLog(entry+"\n"); }
     // ==================== 13. PERFECT PROMPT ENGINEERING ====================
     private final Map<String, String> perfectPrompts = new ConcurrentHashMap<>();
     private final Map<String, Integer> promptSuccessRates = new ConcurrentHashMap<>();
