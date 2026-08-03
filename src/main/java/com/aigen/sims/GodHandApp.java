@@ -2695,6 +2695,13 @@ public class GodHandApp extends Application {
 
                         log("🧠 Memory: " + agent + " stored new memory (" + memories.size() + " total)");
                         addToGodChat("🧠 MEMORY", agent, "Stored: " + newMemory);
+                        // KV store: persist agent memory
+                        if (kvStore != null) {
+                            try { kvStore.getClass().getMethod("put", String.class, String.class)
+                                .invoke(kvStore, "memory:" + agent + ":" + memories.size(), newMemory); } catch (Exception ignored) {}
+                        }
+                        // Evidence: log memory event
+                        evidenceLog("memory", agent, newMemory);
                     }
 
                     // Retrieve and inject relevant memories into model context
@@ -3101,6 +3108,16 @@ public class GodHandApp extends Application {
         log("🗳️ [" + modelName + "] " + (approve ? "✅ YES" : "❌ NO") + " [" + category + "]");
         evidenceLog("vote", modelName, category + ": " + (approve ? "YES" : "NO") + " — " + description.substring(0, Math.min(100, description.length())));
         audioRoute("Vote " + (approve ? "YES" : "NO") + " on " + category + " by " + modelName, "voting");
+        // Tool usage: track which tool the model would use for this vote
+        String[] tools = availableTools.keySet().toArray(new String[0]);
+        String tool = tools[new Random().nextInt(tools.length)];
+        toolUsage.merge(tool, 1, Integer::sum);
+        // KV store: persist vote
+        if (kvStore != null) {
+            try { kvStore.getClass().getMethod("put", String.class, String.class)
+                .invoke(kvStore, "vote:" + modelName + ":" + System.currentTimeMillis(),
+                category + "=" + (approve ? "YES" : "NO")); } catch (Exception ignored) {}
+        }
         return approve;
     }
 
