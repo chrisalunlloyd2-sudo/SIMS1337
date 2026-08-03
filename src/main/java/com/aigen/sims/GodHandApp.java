@@ -3634,6 +3634,14 @@ public class GodHandApp extends Application {
 
     /** Register a model version from Ollama tags */
     private void refreshModelVersions() {
+        // Configure shadow models for A/B routing
+        shadowModels.put("phi3:mini", "phi:latest");
+        shadowModels.put("phi:latest", "phi3:mini");
+        shadowModels.put("llama3.2:1b", "qwen2.5:0.5b");
+        shadowModels.put("qwen2.5:0.5b", "llama3.2:1b");
+        shadowModels.put("tinyllama:1.1b", "gemma2:2b");
+        shadowModels.put("gemma2:2b", "tinyllama:1.1b");
+        log("🔄 A/B: Shadow model pairs configured (6 pairs)");
         try {
             java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
