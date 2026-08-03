@@ -670,6 +670,7 @@ public class GodHandApp extends Application {
         nyxGateInit();
         pipelineSchedulerInit();
         evaluationFrameworkInit();
+        telemetryInit();
         webDashboardV2Init();
     }
 
@@ -1714,6 +1715,7 @@ public class GodHandApp extends Application {
     private final Map<String, Runnable> stationHandlers = new ConcurrentHashMap<>(); // name -> handler
 
     private void initStationRegistry() {
+        // 22 stations — full neuromorphic grid
         stationRegistry.put("Brute Foundry", "Autonomous code generation and review");
         stationRegistry.put("A/B Lab", "Model comparison and evaluation");
         stationRegistry.put("Knowledge Tree", "KG nodes + RAG pipeline");
@@ -1721,6 +1723,21 @@ public class GodHandApp extends Application {
         stationRegistry.put("Secrets", "Secure credential storage");
         stationRegistry.put("Hospital", "Agent diagnostics and memory repair");
         stationRegistry.put("GitHub", "Git sync and backup");
+        stationRegistry.put("Markov Mill", "Markov chain generation and pattern mining");
+        stationRegistry.put("Shannon Spire", "Entropy measurement and information theory");
+        stationRegistry.put("Spike Forge", "Spike-timing-dependent plasticity (STDP)");
+        stationRegistry.put("Refeed Loop", "Learning loop: output → input feedback");
+        stationRegistry.put("Pruning Garden", "Synaptic pruning and model compression");
+        stationRegistry.put("Telemetry Tower", "Behavioral sticking points + metrics");
+        stationRegistry.put("TocTok Tree", "Table of contents + hex-anchored knowledge");
+        stationRegistry.put("FOW Observatory", "Fog of war visibility + exploration");
+        stationRegistry.put("Euler Sphere", "4D spherical coordinate database");
+        stationRegistry.put("Nyx Gate", "Symbolic AST verification + compile gate");
+        stationRegistry.put("Pipeline Nexus", "Mining → deploy → tune → grow chain");
+        stationRegistry.put("Audio Cortex", "TTS + Talon-like keyword routing");
+        stationRegistry.put("Cloudflare Clock", "Atomic time sync + RTT compensation");
+        stationRegistry.put("Evidence Vault", "Immutable JSONL audit log");
+        stationRegistry.put("Governor Core", "Auto-heal, JSON repair, process guardian");
 
         stationHandlers.put("Brute Foundry", () -> { log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); });
         stationHandlers.put("Hospital", () -> { log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); });
@@ -4086,6 +4103,195 @@ public class GodHandApp extends Application {
                 yield (double) hits / Math.max(1, expected.split(" ").length);
             }
         };
+    }
+
+    // ==================== PHASE 26: TELEMETRY + PRUNING + NEUROMORPHIC PARADIGMS ====================
+    // Behavioral sticking points — track where models get stuck
+    private final Map<String, Map<String, AtomicLong>> stickingPoints = new ConcurrentHashMap<>(); // model -> {pattern -> count}
+    private final Map<String, List<Long>> responseLatencies = new ConcurrentHashMap<>(); // model -> [latency_ms, ...]
+    private final Map<String, Double> modelEntropy = new ConcurrentHashMap<>(); // model -> entropy bits
+    private final Map<String, Map<String, Double>> markovTransitions = new ConcurrentHashMap<>(); // model -> {from→to -> probability}
+    private final Map<String, List<String>> refeedBuffer = new ConcurrentHashMap<>(); // model -> [last N outputs]
+    private static final int REFEED_DEPTH = 5; // how many past outputs to refeed
+    private final AtomicLong telemetryCycleCount = new AtomicLong(0);
+
+    private void telemetryInit() {
+        log("📡 Telemetry: behavioral tracking + Markov + Shannon + refeed loops online");
+        addToGodChat("📡 TELEMETRY", "System", "Tracking sticking points, entropy, Markov chains, refeed loops");
+
+        // /api/telemetry endpoint
+        try {
+            webServer.createContext("/api/telemetry", exchange -> {
+                StringBuilder json = new StringBuilder("{");
+                json.append("\"cycle\":" + telemetryCycleCount.get() + ",");
+                json.append("\"sticking_points\":{");
+                boolean first = true;
+                for (var entry : stickingPoints.entrySet()) {
+                    if (!first) json.append(",");
+                    json.append("\"" + entry.getKey() + "\":{");
+                    boolean first2 = true;
+                    for (var sp : entry.getValue().entrySet()) {
+                        if (!first2) json.append(",");
+                        json.append("\"" + sp.getKey() + "\":" + sp.getValue().get());
+                        first2 = false;
+                    }
+                    json.append("}");
+                    first = false;
+                }
+                json.append("},");
+                json.append("\"entropy\":{");
+                first = true;
+                for (var entry : modelEntropy.entrySet()) {
+                    if (!first) json.append(",");
+                    json.append("\"" + entry.getKey() + "\":" + String.format("%.3f", entry.getValue()));
+                    first = false;
+                }
+                json.append("},");
+                json.append("\"markov\":{");
+                first = true;
+                for (var entry : markovTransitions.entrySet()) {
+                    if (!first) json.append(",");
+                    json.append("\"" + entry.getKey() + "\":{");
+                    boolean first2 = true;
+                    for (var mt : entry.getValue().entrySet()) {
+                        if (!first2) json.append(",");
+                        json.append("\"" + mt.getKey() + "\":" + String.format("%.3f", mt.getValue()));
+                        first2 = false;
+                    }
+                    json.append("}");
+                    first = false;
+                }
+                json.append("},");
+                json.append("\"refeed_depth\":" + REFEED_DEPTH);
+                json.append("}");
+                byte[] resp = json.toString().getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+
+        // Telemetry cycle: every 15min, analyze behavioral patterns
+        chatScheduler.scheduleAtFixedRate(() -> {
+            try {
+                runTelemetryCycle();
+            } catch (Exception ex) {
+                log("⚠️ Telemetry: " + ex.getMessage());
+            }
+        }, 120, 900, TimeUnit.SECONDS);
+    }
+
+    private void runTelemetryCycle() {
+        telemetryCycleCount.incrementAndGet();
+        log("📡 Telemetry cycle #" + telemetryCycleCount.get());
+
+        for (String model : installedModels) {
+            if (model.contains("embed")) continue;
+
+            // 1. Compute Shannon entropy on recent outputs
+            List<String> refeed = refeedBuffer.getOrDefault(model, Collections.synchronizedList(new ArrayList<>()));
+            if (!refeed.isEmpty()) {
+                String combined = String.join(" ", refeed);
+                double entropy = computeShannonEntropy(combined);
+                modelEntropy.put(model, entropy);
+
+                // 2. Build Markov transition matrix (character-level bigrams)
+                Map<String, Double> transitions = buildMarkovTransitions(combined);
+                markovTransitions.put(model, transitions);
+
+                // 3. Detect sticking points — repeated patterns
+                detectStickingPoints(model, refeed);
+            }
+
+            // 4. Pruning: if entropy < 1.0 (very repetitive), flag for pruning
+            double ent = modelEntropy.getOrDefault(model, 4.0);
+            if (ent < 1.0) {
+                log("✂️ Pruning: [" + model + "] entropy=" + String.format("%.2f", ent) + " — repetitive, flagging");
+                addToGodChat("✂️ PRUNE", model, "Low entropy " + String.format("%.2f", ent) + " — consider synaptic pruning");
+            }
+        }
+    }
+
+    /** Shannon entropy: H = -Σ p(x) * log2(p(x)) */
+    private double computeShannonEntropy(String text) {
+        if (text == null || text.isEmpty()) return 0.0;
+        Map<Character, Integer> freq = new HashMap<>();
+        for (char c : text.toCharArray()) {
+            freq.merge(c, 1, Integer::sum);
+        }
+        double total = text.length();
+        double entropy = 0.0;
+        for (int count : freq.values()) {
+            double p = count / total;
+            if (p > 0) entropy -= p * (Math.log(p) / Math.log(2));
+        }
+        return entropy;
+    }
+
+    /** Build character-level bigram Markov transition probabilities */
+    private Map<String, Double> buildMarkovTransitions(String text) {
+        Map<String, Map<Character, Integer>> bigrams = new HashMap<>();
+        for (int i = 0; i < text.length() - 1; i++) {
+            String from = String.valueOf(text.charAt(i));
+            char to = text.charAt(i + 1);
+            bigrams.computeIfAbsent(from, k -> new HashMap<>()).merge(to, 1, Integer::sum);
+        }
+        Map<String, Double> probs = new LinkedHashMap<>();
+        for (var entry : bigrams.entrySet()) {
+            int total = entry.getValue().values().stream().mapToInt(Integer::intValue).sum();
+            for (var toEntry : entry.getValue().entrySet()) {
+                probs.put(entry.getKey() + "→" + toEntry.getKey(), (double) toEntry.getValue() / total);
+            }
+        }
+        return probs;
+    }
+
+    /** Detect behavioral sticking points — repeated n-grams */
+    private void detectStickingPoints(String model, List<String> outputs) {
+        Map<String, AtomicLong> points = stickingPoints.computeIfAbsent(model,
+            k -> new ConcurrentHashMap<>());
+        // Check for repeated 3-word phrases
+        Map<String, Integer> trigrams = new HashMap<>();
+        for (String output : outputs) {
+            String[] words = output.toLowerCase().split("\\s+");
+            for (int i = 0; i < words.length - 2; i++) {
+                String trigram = words[i] + " " + words[i+1] + " " + words[i+2];
+                trigrams.merge(trigram, 1, Integer::sum);
+            }
+        }
+        // Flag trigrams that appear 3+ times
+        for (var entry : trigrams.entrySet()) {
+            if (entry.getValue() >= 3) {
+                points.computeIfAbsent(entry.getKey(), k -> new AtomicLong(0)).incrementAndGet();
+            }
+        }
+    }
+
+    /** Refeed loop: inject past outputs into next prompt for learning */
+    public String refeedContext(String model) {
+        List<String> buffer = refeedBuffer.computeIfAbsent(model,
+            k -> Collections.synchronizedList(new ArrayList<>()));
+        if (buffer.isEmpty()) return "";
+        int depth = Math.min(REFEED_DEPTH, buffer.size());
+        StringBuilder ctx = new StringBuilder("\n[Recent outputs for context]:\n");
+        for (int i = buffer.size() - depth; i < buffer.size(); i++) {
+            ctx.append("- ").append(buffer.get(i)).append("\n");
+        }
+        return ctx.toString();
+    }
+
+    /** Record a model output for refeed + telemetry */
+    public void recordModelOutput(String model, String output) {
+        if (output == null || output.isEmpty()) return;
+        List<String> buffer = refeedBuffer.computeIfAbsent(model,
+            k -> Collections.synchronizedList(new ArrayList<>()));
+        buffer.add(output);
+        // Keep last 20 outputs
+        while (buffer.size() > 20) buffer.remove(0);
+        // Track latency
+        responseLatencies.computeIfAbsent(model,
+            k -> Collections.synchronizedList(new ArrayList<>()));
     }
 
     // ==================== PHASE 18: OBSERVABILITY — structured metrics ====================
