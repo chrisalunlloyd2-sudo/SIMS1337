@@ -4047,31 +4047,55 @@ public class GodHandApp extends Application {
     }
 
     // ==================== PIPELINE SCHEDULER — dependency-driven triggers ====================
-    private void pipelineSchedulerInit() {
-        // PipelineScheduler has deep dependency chains (DeployOrchestrator, GateKeeper, etc.)
-        // that fail at class load time. Endpoint is standalone until those are fixed.
-        log("⚡ Pipeline Scheduler: Endpoint registered (full init pending dependency fixes)");
-        addToGodChat("⚡ PIPELINE", "System", "Pipeline endpoint online — full scheduler pending");
+    private com.aigen.sims.scheduler.PipelineScheduler pipelineScheduler;
 
-        webServer.createContext("/api/pipeline", exchange -> {
-            String json = "{\"status\":\"endpoint_active\",\"pipeline\":\"pending_dependency_fixes\"," +
-                "\"phases\":[\"mining\",\"deploy\",\"tune\",\"grow\"],\"note\":\"PipelineScheduler class has " +
-                "pre-existing dependency issues (DeployOrchestrator constructor, SLMAgent slf4j). " +
-                "Endpoint is live; full scheduler activation pending those fixes.\"}";
-            byte[] resp = json.getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp);
-            exchange.close();
-        });
+    private void pipelineSchedulerInit() {
+        try {
+            pipelineScheduler = new com.aigen.sims.scheduler.PipelineScheduler(
+                "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
+            log("⚡ Pipeline Scheduler: Dependency-driven triggers initialized");
+            addToGodChat("⚡ PIPELINE", "System", "Event-driven pipeline: mining→deploy→tune→grow");
+
+            webServer.createContext("/api/pipeline", exchange -> {
+                String json = "{\"status\":\"active\",\"cycle_log\":\"" +
+                    pipelineScheduler.cycleLog().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") +
+                    "\",\"phases\":[\"mining\",\"deploy\",\"tune\",\"grow\"]}";
+                byte[] resp = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception e) {
+            log("⚠️ Pipeline Scheduler: " + e.getMessage());
+            // Fallback: standalone endpoint
+            webServer.createContext("/api/pipeline", exchange -> {
+                String json = "{\"status\":\"endpoint_active\",\"pipeline\":\"init_failed\"," +
+                    "\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
+                byte[] resp = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        }
     }
 
     // ==================== WEB DASHBOARD V2 — real data from live objects ====================
+    private com.aigen.sims.web.WebDashboard webDashboardV2;
+
     private void webDashboardV2Init() {
-        // WebDashboard depends on PipelineScheduler which has pre-existing dependency issues.
-        // Endpoint is registered; full activation pending those fixes.
-        log("🌐 WebDashboard V2: Endpoint registered (full init pending PipelineScheduler fixes)");
-        addToGodChat("🌐 DASHBOARD V2", "System", "Web dashboard v2 endpoint online — full activation pending");
+        try {
+            if (pipelineScheduler == null) {
+                log("⚠️ WebDashboard V2: PipelineScheduler not initialized, skipping");
+                return;
+            }
+            webDashboardV2 = new com.aigen.sims.web.WebDashboard(pipelineScheduler, 8900);
+            log("🌐 WebDashboard V2: Real-data dashboard on :8900");
+            addToGodChat("🌐 DASHBOARD V2", "System", "Web dashboard v2 at http://localhost:8900");
+        } catch (Exception e) {
+            log("⚠️ WebDashboard V2: " + e.getMessage());
+        }
     }
 
     private float cosineSimilarity(float[] a, float[] b) {
