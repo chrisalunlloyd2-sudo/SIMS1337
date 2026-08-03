@@ -27,6 +27,7 @@ import java.util.stream.*;
 import java.util.AbstractMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * SIMS NEO 1337 - Complete GodHand + Player Grid + Model Orchestration
@@ -2318,6 +2319,17 @@ public class GodHandApp extends Application {
                 exchange.close();
             });
 
+            // PHASE 18: Observability — structured metrics endpoint
+            webServer.createContext("/api/metrics", exchange -> {
+                String json = getMetricsJson();
+                byte[] response = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
             webServer.setExecutor(Executors.newFixedThreadPool(2));
             webServer.start();
             log("🌐 Web Dashboard: http://localhost:8899");
@@ -2965,6 +2977,7 @@ public class GodHandApp extends Application {
     // Results logged to overnight-data.json for morning analysis.
     private static final String OVERNIGHT_DATA = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/overnight-data.json";
     private final List<Map<String, Object>> overnightLog = Collections.synchronizedList(new ArrayList<>());
+    private final long startTimeMs = System.currentTimeMillis();
 
     private boolean roleBasedVote(String modelName, String category, String description) {
         // Model specialties
@@ -3445,6 +3458,87 @@ public class GodHandApp extends Application {
             return json.toString();
         } catch (Exception e) {
             return "{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\",\"query\":\"" + query.replace("\"", "\\\"") + "\"}";
+        }
+    }
+
+    // ==================== PHASE 18: OBSERVABILITY — structured metrics ====================
+    private final AtomicLong ollamaCallCount = new AtomicLong(0);
+    private final AtomicLong ollamaErrorCount = new AtomicLong(0);
+    private final AtomicLong ollamaTotalMs = new AtomicLong(0);
+    private final AtomicLong lastOllamaCallTs = new AtomicLong(0);
+    private final AtomicLong webSearchCount = new AtomicLong(0);
+    private final AtomicLong kgSearchCount = new AtomicLong(0);
+    private final AtomicLong dreamCount = new AtomicLong(0);
+    private final AtomicLong voteCount = new AtomicLong(0);
+    private final AtomicLong debateCount = new AtomicLong(0);
+    private final AtomicLong deployCount = new AtomicLong(0);
+    private final AtomicLong selfModifyCount = new AtomicLong(0);
+    private final AtomicLong agentMsgCount = new AtomicLong(0);
+
+    private String getMetricsJson() {
+        Runtime rt = Runtime.getRuntime();
+        long usedMem = rt.totalMemory() - rt.freeMemory();
+        long maxMem = rt.maxMemory();
+        long ollamaCalls = ollamaCallCount.get();
+        long ollamaFails = ollamaErrorCount.get();
+        long ollamaTotal = ollamaTotalMs.get();
+        double avgLatency = ollamaCalls > 0 ? (double) ollamaTotal / ollamaCalls : 0;
+        long secSinceLastCall = lastOllamaCallTs.get() > 0
+            ? (System.currentTimeMillis() - lastOllamaCallTs.get()) / 1000 : -1;
+
+        return String.format(
+            "{\"timestamp\":\"%s\",\"uptime_seconds\":%d,\"memory\":{\"used_mb\":%d,\"max_mb\":%d,\"pct\":%.1f}," +
+            "\"ollama\":{\"calls\":%d,\"fails\":%d,\"avg_latency_ms\":%.0f,\"sec_since_last\":%d}," +
+            "\"models\":%d,\"kg_nodes\":%d,\"errors\":%d,\"recoveries\":%d," +
+            "\"counters\":{\"dreams\":%d,\"votes\":%d,\"debates\":%d,\"deploys\":%d,\"self_modifies\":%d,\"agent_msgs\":%d,\"web_searches\":%d,\"kg_searches\":%d}," +
+            "\"circuit_breakers\":{\"ollama\":\"%s\"}}",
+            java.time.Instant.now().toString(),
+            (System.currentTimeMillis() - startTimeMs) / 1000,
+            usedMem / (1024*1024), maxMem / (1024*1024), (double) usedMem / maxMem * 100,
+            ollamaCalls, ollamaFails, avgLatency, secSinceLastCall,
+            installedModels.size(), kgNodes.size(), errorCount, recoveryCount,
+            dreamCount.get(), voteCount.get(), debateCount.get(), deployCount.get(),
+            selfModifyCount.get(), agentMsgCount.get(), webSearchCount.get(), kgSearchCount.get(),
+            ollamaCircuitOpen ? "OPEN" : "CLOSED"
+        );
+    }
+
+    // ==================== PHASE 17: RELIABILITY — circuit breaker for Ollama ====================
+    private volatile boolean ollamaCircuitOpen = false;
+    private volatile long ollamaCircuitOpenedAt = 0;
+    private static final int CIRCUIT_FAIL_THRESHOLD = 5;
+    private static final long CIRCUIT_RESET_MS = 60_000; // 1 minute cooldown
+    private final AtomicInteger consecutiveOllamaFails = new AtomicInteger(0);
+
+    /** Circuit-breaker wrapped Ollama call. Returns fallback if circuit is open. */
+    private String ollamaWithBreaker(String model, String systemPrompt, String userPrompt, String fallback) {
+        if (ollamaCircuitOpen) {
+            if (System.currentTimeMillis() - ollamaCircuitOpenedAt > CIRCUIT_RESET_MS) {
+                ollamaCircuitOpen = false;
+                consecutiveOllamaFails.set(0);
+                log("🔧 Circuit breaker RESET — Ollama calls re-enabled");
+            } else {
+                return fallback; // circuit still open, fast-fail with fallback
+            }
+        }
+        long start = System.currentTimeMillis();
+        try {
+            String result = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
+            long elapsed = System.currentTimeMillis() - start;
+            ollamaCallCount.incrementAndGet();
+            ollamaTotalMs.addAndGet(elapsed);
+            lastOllamaCallTs.set(System.currentTimeMillis());
+            consecutiveOllamaFails.set(0);
+            return result;
+        } catch (Exception e) {
+            ollamaErrorCount.incrementAndGet();
+            int fails = consecutiveOllamaFails.incrementAndGet();
+            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
+                ollamaCircuitOpen = true;
+                ollamaCircuitOpenedAt = System.currentTimeMillis();
+                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
+            }
+            return fallback;
         }
     }
 
