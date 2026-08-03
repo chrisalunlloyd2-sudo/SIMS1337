@@ -4454,6 +4454,14 @@ public class GodHandApp extends Application {
     private int crossRepoCount = 0;
 
     private void crossRepoKGInit() {
+        // Memory guard: skip if heap is already tight
+        Runtime rt = Runtime.getRuntime();
+        long usedMem = rt.totalMemory() - rt.freeMemory();
+        long maxMem = rt.maxMemory();
+        if ((double) usedMem / maxMem > 0.75) {
+            log("📚 Cross-Repo KG: Skipped — memory pressure " + (usedMem * 100 / maxMem) + "%");
+            return;
+        }
         log("📚 Cross-Repo KG: Scanning all AIGEN_SYS repos for unified knowledge graph");
         addToGodChat("📚 CROSS-KG", "System", "Cross-repo knowledge graph scanning...");
 
@@ -4463,7 +4471,9 @@ public class GodHandApp extends Application {
                 java.io.File[] repos = aigenDir.listFiles(java.io.File::isDirectory);
                 if (repos == null) return;
 
+                int count = 0;
                 for (java.io.File repo : repos) {
+                    if (count > 20) break; // bound: max 20 repos per scan
                     try {
                         Map<String, String> node = new ConcurrentHashMap<>();
                         node.put("name", repo.getName());
@@ -4474,7 +4484,6 @@ public class GodHandApp extends Application {
                         if (readme.exists()) {
                             String content = java.nio.file.Files.readString(readme.toPath());
                             node.put("readme", content.length() > 500 ? content.substring(0, 500) : content);
-                            // Extract first heading as description
                             int h1 = content.indexOf("# ");
                             if (h1 >= 0) {
                                 int end = content.indexOf("\n", h1);
@@ -4482,7 +4491,7 @@ public class GodHandApp extends Application {
                             }
                         }
 
-                        // Count files
+                        // Count files (shallow — don't recurse)
                         java.io.File[] srcFiles = new java.io.File(repo, "src").listFiles();
                         int javaCount = 0, pyCount = 0, mdCount = 0;
                         if (srcFiles != null) {
@@ -4503,6 +4512,7 @@ public class GodHandApp extends Application {
 
                         crossRepoNodes.put(repo.getName(), node);
                         crossRepoCount++;
+                        count++;
                     } catch (Exception ignored) {}
                 }
 
