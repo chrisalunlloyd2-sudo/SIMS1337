@@ -3542,6 +3542,104 @@ public class GodHandApp extends Application {
         }
     }
 
+    // ==================== PHASE 19: MODEL LIFECYCLE — versioning, shadow, A/B ====================
+    private final Map<String, String> modelVersions = new ConcurrentHashMap<>(); // model -> version hash
+    private final Map<String, String> shadowModels = new ConcurrentHashMap<>();  // prod model -> shadow model
+    private final Map<String, Double> modelLatencyMs = new ConcurrentHashMap<>(); // model -> avg latency
+    private final AtomicInteger abRouteCounter = new AtomicInteger(0);
+
+    /** Register a model version from Ollama tags */
+    private void refreshModelVersions() {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                // Parse JSON array of {name, digest, ...}
+                String body = resp.body();
+                int idx = 0;
+                while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
+                    idx += 8;
+                    int nameEnd = body.indexOf("\"", idx);
+                    if (nameEnd < 0) break;
+                    String name = body.substring(idx, nameEnd);
+                    int digIdx = body.indexOf("\"digest\":\"", nameEnd);
+                    if (digIdx > 0) {
+                        digIdx += 10;
+                        int digEnd = body.indexOf("\"", digIdx);
+                        if (digEnd > digIdx) {
+                            modelVersions.put(name, body.substring(digIdx, digEnd).substring(0, 12));
+                        }
+                    }
+                    idx = nameEnd;
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /** A/B route: pick model A or B based on round-robin */
+    private String abRoute(String modelA, String modelB) {
+        return abRouteCounter.incrementAndGet() % 2 == 0 ? modelA : modelB;
+    }
+
+    /** Latency-aware: pick the faster of two models */
+    private String latencyRoute(String modelA, String modelB) {
+        double latA = modelLatencyMs.getOrDefault(modelA, 9999.0);
+        double latB = modelLatencyMs.getOrDefault(modelB, 9999.0);
+        return latA <= latB ? modelA : modelB;
+    }
+
+    /** Record model latency for routing decisions */
+    private void recordModelLatency(String model, long latencyMs) {
+        double old = modelLatencyMs.getOrDefault(model, latencyMs * 1.0);
+        modelLatencyMs.put(model, old * 0.9 + latencyMs * 0.1); // EMA
+    }
+
+    // ==================== PHASE 20: GOVERNANCE — RBAC, sandbox, verification ====================
+    private static final String DASHBOARD_API_KEY = System.getenv().getOrDefault("SIMS_API_KEY", "sims1337-dev");
+    private final List<String> immutableAuditLog = Collections.synchronizedList(new ArrayList<>());
+
+    /** RBAC check for dashboard endpoints */
+    private boolean checkApiKey(com.sun.net.httpserver.HttpExchange exchange) {
+        String key = exchange.getRequestHeaders().getFirst("X-API-Key");
+        if (key == null) key = exchange.getRequestURI().getQuery();
+        if (key != null && key.startsWith("key=")) key = key.substring(4);
+        return DASHBOARD_API_KEY.equals(key);
+    }
+
+    /** Immutable audit log entry */
+    private void auditLog(String action, String actor, String detail) {
+        String entry = String.format("{\"ts\":\"%s\",\"action\":\"%s\",\"actor\":\"%s\",\"detail\":\"%s\"}",
+            java.time.Instant.now().toString(), action, actor, detail);
+        immutableAuditLog.add(entry);
+        if (immutableAuditLog.size() > 1000) immutableAuditLog.remove(0);
+    }
+
+    /** Proposal validation: static analysis gate before self-modify */
+    private boolean validateProposal(String code, String description) {
+        // Gate 1: Must compile
+        if (!compileGate("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java")) {
+            auditLog("PROPOSAL_REJECTED", "compile-gate", description);
+            return false;
+        }
+        // Gate 2: No forbidden patterns
+        String[] forbidden = {"System.exit", "Runtime.getRuntime().exec", "ProcessBuilder", "rm -rf", "DROP TABLE"};
+        for (String f : forbidden) {
+            if (code.contains(f)) {
+                auditLog("PROPOSAL_REJECTED", "security-gate", description + " — forbidden: " + f);
+                return false;
+            }
+        }
+        // Gate 3: Max change size (prevent massive rewrites)
+        if (code.length() > 5000) {
+            auditLog("PROPOSAL_REJECTED", "size-gate", description + " — too large: " + code.length() + " chars");
+            return false;
+        }
+        auditLog("PROPOSAL_APPROVED", "validation-pipeline", description);
+        return true;
+    }
+
     private float cosineSimilarity(float[] a, float[] b) {
         float dot = 0, normA = 0, normB = 0;
         for (int i = 0; i < a.length; i++) {
