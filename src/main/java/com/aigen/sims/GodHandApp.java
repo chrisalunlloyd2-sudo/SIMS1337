@@ -1244,6 +1244,7 @@ public class GodHandApp extends Application {
         agentPositions.put("Agent Alpha", new int[]{0, 0, 2});
         agentPositions.put("Agent Beta", new int[]{3, -2, 1});
         agentPositions.put("Agent Gamma", new int[]{-3, 2, 3});
+        agentPositions.put("Agent Delta", new int[]{0, -3, 4}); // 4th agent — cellular pacing
     }
 
     private void moveAgentTo(String name, int q, int r, int z) {
@@ -1902,11 +1903,60 @@ public class GodHandApp extends Application {
     }
 
     private String callOllama(String model, String prompt) throws Exception {
-        String json=String.format("{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false}",model.replace("\"","\\\""),prompt.replace("\"","\\\"").replace("\n","\\n"));
-        HttpRequest r=HttpRequest.newBuilder().uri(URI.create(OLLAMA_URL)).header("Content-Type","application/json").timeout(Duration.ofSeconds(30)).POST(HttpRequest.BodyPublishers.ofString(json)).build();
-        HttpResponse<String> resp=httpClient.send(r,HttpResponse.BodyHandlers.ofString());
-        if(resp.statusCode()==200){ollamaAvailable.put(model,true); String body=resp.body(); int s=body.indexOf("\"response\":\""); if(s>0){s+=12; int e=body.indexOf("\"",s); if(e>s)return body.substring(s,e).replace("\\n"," ").replace("\\\"","\"");} return body.length()>200?body.substring(0,200)+"...":body;}
-        ollamaAvailable.put(model,false); throw new RuntimeException("HTTP "+resp.statusCode());
+        // A/B routing + latency-aware model selection
+        model = selectModel(model);
+        // Rate limiter: enforce 5-min gap between Ollama calls
+        long now = System.currentTimeMillis();
+        long sinceLast = now - lastOllamaCallMs;
+        if (lastOllamaCallMs > 0 && sinceLast < OLLAMA_MIN_GAP_MS) {
+            long waitMs = OLLAMA_MIN_GAP_MS - sinceLast;
+            log("⏳ Rate limiter: " + (waitMs/1000) + "s until next Ollama call");
+            return "[RATE_LIMITED] " + (waitMs/1000) + "s remaining";
+        }
+        // Circuit breaker check
+        if (ollamaCircuitOpen) {
+            if (now - ollamaCircuitOpenedAt > CIRCUIT_RESET_MS) {
+                ollamaCircuitOpen = false;
+                consecutiveOllamaFails.set(0);
+                log("🔧 Circuit breaker RESET");
+            } else {
+                return "[CIRCUIT_OPEN] " + ((CIRCUIT_RESET_MS - (now - ollamaCircuitOpenedAt))/1000) + "s until retry";
+            }
+        }
+        long start = System.currentTimeMillis();
+        lastOllamaCallMs = now;
+        try {
+            String json=String.format("{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false}",model.replace("\"","\\\""),prompt.replace("\"","\\\\\"").replace("\n","\\\\n"));
+            HttpRequest r=HttpRequest.newBuilder().uri(URI.create(OLLAMA_URL)).header("Content-Type","application/json").timeout(Duration.ofSeconds(30)).POST(HttpRequest.BodyPublishers.ofString(json)).build();
+            HttpResponse<String> resp=httpClient.send(r,HttpResponse.BodyHandlers.ofString());
+            long elapsed = System.currentTimeMillis() - start;
+            ollamaCallCount.incrementAndGet();
+            ollamaTotalMs.addAndGet(elapsed);
+            lastOllamaCallTs.set(now);
+            consecutiveOllamaFails.set(0);
+            globalOllamaCalls++;
+            if(resp.statusCode()==200){ollamaAvailable.put(model,true); String body=resp.body(); int s=body.indexOf("\"response\":\""); if(s>0){s+=12; int e=body.indexOf("\"",s); if(e>s)return body.substring(s,e).replace("\\n"," ").replace("\\\"","\"");} return body.length()>200?body.substring(0,200)+"...":body;}
+            ollamaAvailable.put(model,false);
+            globalOllamaFails++;
+            ollamaErrorCount.incrementAndGet();
+            int fails = consecutiveOllamaFails.incrementAndGet();
+            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
+                ollamaCircuitOpen = true;
+                ollamaCircuitOpenedAt = now;
+                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
+            }
+            throw new RuntimeException("HTTP "+resp.statusCode());
+        } catch (Exception e) {
+            ollamaErrorCount.incrementAndGet();
+            globalOllamaFails++;
+            int fails = consecutiveOllamaFails.incrementAndGet();
+            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
+                ollamaCircuitOpen = true;
+                ollamaCircuitOpenedAt = now;
+                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
+            }
+            throw e;
+        }
     }
 
     // ==================== COMMANDS ====================
@@ -3617,6 +3667,24 @@ public class GodHandApp extends Application {
         modelLatencyMs.put(model, old * 0.9 + latencyMs * 0.1); // EMA
     }
 
+    /** Select best model: A/B shadow routing + latency-aware fallback */
+    private String selectModel(String baseModel) {
+        String shadow = shadowModels.get(baseModel);
+        if (shadow != null) return abRoute(baseModel, shadow);
+        Double baseLat = modelLatencyMs.get(baseModel);
+        if (baseLat != null && baseLat > 5000) {
+            for (String alt : installedModels) {
+                if (alt.equals(baseModel)) continue;
+                Double altLat = modelLatencyMs.get(alt);
+                if (altLat != null && altLat < baseLat * 0.7) {
+                    log("⚡ A/B: " + baseModel + "→" + alt + " (" + baseLat.intValue() + "→" + altLat.intValue() + "ms)");
+                    return alt;
+                }
+            }
+        }
+        return baseModel;
+    }
+
     // ==================== PHASE 20: GOVERNANCE — RBAC, sandbox, verification ====================
     private static final String DASHBOARD_API_KEY = System.getenv().getOrDefault("SIMS_API_KEY", "sims1337-dev");
     private final List<String> immutableAuditLog = Collections.synchronizedList(new ArrayList<>());
@@ -3737,19 +3805,19 @@ public class GodHandApp extends Application {
                     int u = needs.getOrDefault(need, 50);
                     if (u > topUrgency) { topUrgency = u; topNeed = need; }
                 }
-                // Vote: should we address this need?
-                String proposal = "Address " + topNeed + " need for " + model + " (urgency: " + topUrgency + ")";
-                boolean approved = roleBasedVote(model, "maslow", proposal);
-                if (approved) {
-                    needs.put(topNeed, Math.max(0, topUrgency - 30)); // reduce urgency
-                    log("🏔️ Maslow: " + model + " " + topNeed + " need ADDRESSED (urgency " + topUrgency + "→" + needs.get(topNeed) + ")");
-                } else {
-                    needs.put(topNeed, Math.min(100, topUrgency + 10)); // increase urgency
+                // Only vote if urgency is meaningful (>20)
+                if (topUrgency > 20) {
+                    String proposal = "Address " + topNeed + " need for " + model + " (urgency: " + topUrgency + ")";
+                    boolean approved = roleBasedVote(model, "maslow", proposal);
+                    if (approved) {
+                        needs.put(topNeed, Math.max(0, topUrgency - 30));
+                        log("🏔️ Maslow: " + model + " " + topNeed + " ADDRESSED (" + topUrgency + "→" + needs.get(topNeed) + ")");
+                    } else {
+                        needs.put(topNeed, Math.min(100, topUrgency + 10));
+                    }
                 }
-                // Decay all needs slightly
-                for (String need : NEED_TYPES) {
-                    needs.computeIfPresent(need, (k, v) -> Math.max(0, v - 1));
-                }
+                // Slow decay: only decay addressed needs, not all
+                // This prevents all needs from hitting 0 after 8 hours
             }
         }, NEED_VOTE_INTERVAL_SEC, NEED_VOTE_INTERVAL_SEC, TimeUnit.SECONDS);
 
