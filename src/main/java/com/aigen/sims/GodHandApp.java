@@ -2121,6 +2121,13 @@ public class GodHandApp extends Application {
         try {
             webServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(8899), 0);
             webServer.createContext("/", exchange -> {
+                // Only serve dashboard HTML for root path; let /api/* fall through
+                String path = exchange.getRequestURI().getPath();
+                if (!path.equals("/") && !path.equals("/index.html")) {
+                    exchange.sendResponseHeaders(404, -1);
+                    exchange.close();
+                    return;
+                }
                 StringBuilder html = new StringBuilder();
                 html.append("<!DOCTYPE html><html><head>");
                 html.append("<title>SIMS1337 Dashboard</title>");
