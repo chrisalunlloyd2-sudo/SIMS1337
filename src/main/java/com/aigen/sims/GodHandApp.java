@@ -485,6 +485,11 @@ public class GodHandApp extends Application {
         multiAgentTopologyInit();
         webDashboardInit();
         distributedInit(); // PHASE 16: multi-instance coordination
+        maslowInit(); // Maslow's hierarchy: model needs tracking
+        eulerDBInit(); // Euler spherical DB for vision
+        audioPipelineInit(); // TTS readouts + Talon routing
+        cloudflareClockSync(); // Atomic clock sync
+        evidenceLogInit(); // Mission-critical log persistence
         preEmbedKG(); // PHASE 6: pre-embed KG nodes in background
         pluginSystemInit();
         perfectPromptInit();
@@ -3683,6 +3688,276 @@ public class GodHandApp extends Application {
         }
         sb.append("],\"count\":").append(peerInstances.size()).append("}");
         return sb.toString();
+    }
+
+    // ==================== MASLOW'S HIERARCHY — model needs tracking ====================
+    // Every model has needs: ACL, KQML, RAG, KG, LoRA, quantization, speed.
+    // Needs are voted on by the collective. Unmet needs → degradation.
+    private final Map<String, Map<String, Integer>> modelNeeds = new ConcurrentHashMap<>(); // model -> {need -> urgency 0-100}
+    private static final String[] NEED_TYPES = {"acl","kqml","rag","kg","lora","quant","speed","vision","audio","memory"};
+    private static final int NEED_VOTE_INTERVAL_SEC = 600; // every 10 min
+
+    private void maslowInit() {
+        log("🏔️ Maslow: Model needs hierarchy initialized");
+        addToGodChat("🏔️ MASLOW", "System", "10 need types tracked per model, voted every 10min");
+
+        // Initialize needs for all models
+        for (String model : installedModels) {
+            Map<String, Integer> needs = new ConcurrentHashMap<>();
+            for (String need : NEED_TYPES) needs.put(need, 50); // start at 50% urgency
+            modelNeeds.put(model, needs);
+        }
+
+        // Every 10 min: vote on which need to address
+        chatScheduler.scheduleAtFixedRate(() -> {
+            for (String model : installedModels) {
+                Map<String, Integer> needs = modelNeeds.get(model);
+                if (needs == null) continue;
+                // Find highest-urgency need
+                String topNeed = NEED_TYPES[0];
+                int topUrgency = 0;
+                for (String need : NEED_TYPES) {
+                    int u = needs.getOrDefault(need, 50);
+                    if (u > topUrgency) { topUrgency = u; topNeed = need; }
+                }
+                // Vote: should we address this need?
+                String proposal = "Address " + topNeed + " need for " + model + " (urgency: " + topUrgency + ")";
+                boolean approved = roleBasedVote(model, "maslow", proposal);
+                if (approved) {
+                    needs.put(topNeed, Math.max(0, topUrgency - 30)); // reduce urgency
+                    log("🏔️ Maslow: " + model + " " + topNeed + " need ADDRESSED (urgency " + topUrgency + "→" + needs.get(topNeed) + ")");
+                } else {
+                    needs.put(topNeed, Math.min(100, topUrgency + 10)); // increase urgency
+                }
+                // Decay all needs slightly
+                for (String need : NEED_TYPES) {
+                    needs.computeIfPresent(need, (k, v) -> Math.max(0, v - 1));
+                }
+            }
+        }, NEED_VOTE_INTERVAL_SEC, NEED_VOTE_INTERVAL_SEC, TimeUnit.SECONDS);
+
+        // /api/maslow endpoint
+        try {
+            webServer.createContext("/api/maslow", exchange -> {
+                StringBuilder json = new StringBuilder("{\"needs\":{");
+                boolean firstModel = true;
+                for (var e : modelNeeds.entrySet()) {
+                    if (!firstModel) json.append(",");
+                    json.append("\"").append(e.getKey()).append("\":{");
+                    boolean firstNeed = true;
+                    for (var n : e.getValue().entrySet()) {
+                        if (!firstNeed) json.append(",");
+                        json.append("\"").append(n.getKey()).append("\":").append(n.getValue());
+                        firstNeed = false;
+                    }
+                    json.append("}");
+                    firstModel = false;
+                }
+                json.append("}}");
+                byte[] resp = json.toString().getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    // ==================== EULER SPHERICAL DB — fast image storage for Kaden vision ====================
+    // Spherical coordinate indexing: (theta, phi, r) → image hash.
+    // O(1) lookup by angle, ideal for vision model outputs.
+    private final Map<String, String> eulerDB = new ConcurrentHashMap<>(); // "theta_phi" → base64 thumbnail
+    private static final int EULER_DB_MAX = 1000;
+
+    private void eulerDBInit() {
+        log("🌐 Euler DB: Spherical image store initialized (max " + EULER_DB_MAX + " entries)");
+        addToGodChat("🌐 EULER", "System", "Spherical vision DB online — O(1) angle lookup");
+
+        // /api/euler endpoint
+        try {
+            webServer.createContext("/api/euler", exchange -> {
+                String query = exchange.getRequestURI().getQuery();
+                String key = query != null && query.startsWith("k=") ? query.substring(2) : "";
+                if (!key.isEmpty()) {
+                    String val = eulerDB.get(key);
+                    byte[] resp = (val != null ? "{\"key\":\"" + key + "\",\"found\":true,\"hash\":\"" + val + "\"}"
+                        : "{\"key\":\"" + key + "\",\"found\":false}").getBytes("UTF-8");
+                    exchange.sendResponseHeaders(200, resp.length);
+                    exchange.getResponseBody().write(resp);
+                } else {
+                    // List all keys
+                    String json = "{\"count\":" + eulerDB.size() + ",\"keys\":[" +
+                        String.join(",", eulerDB.keySet().stream().map(k -> "\"" + k + "\"").toArray(String[]::new)) + "]}";
+                    byte[] resp = json.getBytes("UTF-8");
+                    exchange.sendResponseHeaders(200, resp.length);
+                    exchange.getResponseBody().write(resp);
+                }
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    /** Store a vision output at spherical coordinates */
+    private void eulerPut(double theta, double phi, String imageHash) {
+        if (eulerDB.size() >= EULER_DB_MAX) {
+            // Evict oldest (first key)
+            String first = eulerDB.keySet().iterator().next();
+            eulerDB.remove(first);
+        }
+        String key = String.format("%.2f_%.2f", theta, phi);
+        eulerDB.put(key, imageHash);
+    }
+
+    // ==================== AUDIO PIPELINE — TTS readouts + Talon-like routing ====================
+    private volatile boolean audioEnabled = false;
+    private final List<String> audioQueue = Collections.synchronizedList(new ArrayList<>());
+    private static final String TTS_SCRIPT = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/scripts/tts_readout.py";
+
+    private void audioPipelineInit() {
+        log("🔊 Audio: TTS pipeline initialized (Talon-like routing)");
+        addToGodChat("🔊 AUDIO", "System", "TTS readouts for votes, Talon routing active");
+
+        // Audio flush every 5s
+        chatScheduler.scheduleAtFixedRate(() -> {
+            if (!audioEnabled || audioQueue.isEmpty()) return;
+            List<String> batch;
+            synchronized (audioQueue) {
+                batch = new ArrayList<>(audioQueue);
+                audioQueue.clear();
+            }
+            for (String text : batch) {
+                try {
+                    new ProcessBuilder("python", TTS_SCRIPT, text).start();
+                } catch (Exception ignored) {}
+            }
+        }, 5, 5, TimeUnit.SECONDS);
+
+        // /api/audio endpoint — toggle + queue
+        try {
+            webServer.createContext("/api/audio", exchange -> {
+                String query = exchange.getRequestURI().getQuery();
+                if (query != null && query.equals("toggle")) {
+                    audioEnabled = !audioEnabled;
+                }
+                String json = "{\"enabled\":" + audioEnabled + ",\"queue\":" + audioQueue.size() + "}";
+                byte[] resp = json.getBytes("UTF-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    /** Route audio to appropriate model based on content (Talon-like) */
+    private void audioRoute(String text, String source) {
+        if (!audioEnabled) return;
+        // Determine target model by keyword matching
+        String target = "phi:latest"; // default
+        if (text.contains("vote") || text.contains("ballot")) target = "phi3:mini";
+        else if (text.contains("code") || text.contains("java")) target = "codellama:7b";
+        else if (text.contains("topology") || text.contains("graph")) target = "deepseek-r1:1.5b";
+        else if (text.contains("dream") || text.contains("imagine")) target = "tinyllama:1.1b";
+        String entry = "[" + source + "→" + target + "] " + text;
+        audioQueue.add(entry);
+    }
+
+    // ==================== CLOUDFLARE ATOMIC CLOCK SYNC ====================
+    private volatile long clockOffsetMs = 0;
+    private volatile boolean clockSynced = false;
+
+    private void cloudflareClockSync() {
+        log("🕐 Cloudflare: Atomic clock sync initialized");
+        addToGodChat("🕐 CLOCK", "System", "Cloudflare time sync active");
+
+        chatScheduler.scheduleAtFixedRate(() -> {
+            try {
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create("https://time.cloudflare.com/")).timeout(Duration.ofSeconds(5))
+                    .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+                long t0 = System.currentTimeMillis();
+                java.net.http.HttpResponse<Void> resp = httpClient.send(req,
+                    java.net.http.HttpResponse.BodyHandlers.discarding());
+                long t1 = System.currentTimeMillis();
+                if (resp.statusCode() == 200) {
+                    String dateStr = resp.headers().firstValue("date").orElse(null);
+                    if (dateStr != null) {
+                        long serverTime = java.time.ZonedDateTime.parse(dateStr,
+                            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
+                        long rtt = t1 - t0;
+                        clockOffsetMs = serverTime - (t0 + rtt / 2);
+                        clockSynced = true;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }, 300, 300, TimeUnit.SECONDS); // every 5 min
+
+        // /api/clock endpoint
+        try {
+            webServer.createContext("/api/clock", exchange -> {
+                String json = "{\"synced\":" + clockSynced + ",\"offset_ms\":" + clockOffsetMs +
+                    ",\"local_ms\":" + System.currentTimeMillis() + "}";
+                byte[] resp = json.getBytes("UTF-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    // ==================== MISSION-CRITICAL LOG PERSISTENCE ====================
+    private static final String EVIDENCE_LOG = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/evidence.jsonl";
+    private final List<String> evidenceBuffer = Collections.synchronizedList(new ArrayList<>());
+
+    private void evidenceLogInit() {
+        log("📁 Evidence: Mission-critical log persistence initialized");
+        addToGodChat("📁 EVIDENCE", "System", "Scientific evidence store online — logs/evidence.jsonl");
+
+        // Flush evidence every 60s
+        chatScheduler.scheduleAtFixedRate(() -> {
+            if (evidenceBuffer.isEmpty()) return;
+            List<String> batch;
+            synchronized (evidenceBuffer) {
+                batch = new ArrayList<>(evidenceBuffer);
+                evidenceBuffer.clear();
+            }
+            try {
+                java.nio.file.Files.writeString(
+                    java.nio.file.Path.of(EVIDENCE_LOG),
+                    String.join("\n", batch) + "\n",
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+            } catch (Exception ignored) {}
+        }, 60, 60, TimeUnit.SECONDS);
+
+        // /api/evidence endpoint
+        try {
+            webServer.createContext("/api/evidence", exchange -> {
+                String json;
+                try {
+                    String content = java.nio.file.Files.readString(java.nio.file.Path.of(EVIDENCE_LOG));
+                    // Return last 50 lines
+                    String[] lines = content.split("\n");
+                    int start = Math.max(0, lines.length - 50);
+                    json = "{\"lines\":" + (lines.length - start) + ",\"entries\":[" +
+                        String.join(",", java.util.Arrays.stream(lines, start, lines.length)
+                            .map(l -> "\"" + l.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                            .toArray(String[]::new)) + "]}";
+                } catch (Exception e) {
+                    json = "{\"lines\":0,\"entries\":[]}";
+                }
+                byte[] resp = json.getBytes("UTF-8");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
+            });
+        } catch (Exception ignored) {}
+    }
+
+    /** Log a scientific evidence entry */
+    private void evidenceLog(String category, String model, String observation) {
+        String entry = String.format("{\"ts\":\"%s\",\"cat\":\"%s\",\"model\":\"%s\",\"obs\":\"%s\"}",
+            java.time.Instant.now().toString(), category, model,
+            observation.replace("\\", "\\\\").replace("\"", "\\\""));
+        evidenceBuffer.add(entry);
     }
 
     private float cosineSimilarity(float[] a, float[] b) {
