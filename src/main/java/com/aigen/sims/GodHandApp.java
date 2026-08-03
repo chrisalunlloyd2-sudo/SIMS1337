@@ -4146,6 +4146,16 @@ public class GodHandApp extends Application {
             log("⚡ Pipeline Scheduler: Dependency-driven triggers initialized");
             addToGodChat("⚡ PIPELINE", "System", "Event-driven pipeline: mining→deploy→tune→grow");
 
+            // Schedule pipeline cycle every 60 minutes (staggered from night cycle)
+            chatScheduler.scheduleAtFixedRate(() -> {
+                try {
+                    pipelineScheduler.runCycle();
+                    log("⚡ Pipeline: Cycle triggered — mining→deploy→tune→grow");
+                } catch (Exception ex) {
+                    log("⚠️ Pipeline cycle: " + ex.getMessage());
+                }
+            }, 120, 3600, TimeUnit.SECONDS); // first at 2min, then every 60min
+
             webServer.createContext("/api/pipeline", exchange -> {
                 String json = "{\"status\":\"active\",\"cycle_log\":\"" +
                     pipelineScheduler.cycleLog().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") +
