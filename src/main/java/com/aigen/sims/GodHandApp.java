@@ -119,6 +119,53 @@ public class GodHandApp extends Application {
     private final AtomicInteger taskStagger = new AtomicInteger(0);
     private static final int STAGGER_STEP_SECONDS = 30; // 30s between each task's initial delay
 
+    // === UI BATCH BUFFER — prevents JavaFX thread flooding ===
+    // Instead of 211 individual Platform.runLater() calls, buffer log entries
+    // and flush every 2 seconds in a single batch.
+    private final List<String> uiBuffer = Collections.synchronizedList(new ArrayList<>());
+    private volatile long lastUiFlush = System.currentTimeMillis();
+    private static final int UI_FLUSH_MS = 2000; // flush every 2 seconds
+    private static final int MAX_GODCHAT_LINES = 500; // cap godChat to prevent OOM
+    private static final int MAX_OVERNIGHT_MB = 10; // rotate overnight data at 10MB
+
+    /** Batch a UI log entry — flushes every 2s to avoid flooding JavaFX */
+    private void bufferedLog(String entry) {
+        uiBuffer.add(entry);
+        long now = System.currentTimeMillis();
+        if (now - lastUiFlush > UI_FLUSH_MS) {
+            lastUiFlush = now;
+            List<String> batch = new ArrayList<>(uiBuffer);
+            uiBuffer.clear();
+            safeUiUpdate(() -> {
+                for (String e : batch) godChat.appendText(e);
+                // Truncate if over limit
+                String text = godChat.getText();
+                String[] lines = text.split("\n");
+                if (lines.length > MAX_GODCHAT_LINES) {
+                    StringBuilder trimmed = new StringBuilder();
+                    for (int i = lines.length - MAX_GODCHAT_LINES; i < lines.length; i++)
+                        trimmed.append(lines[i]).append("\n");
+                    godChat.setText(trimmed.toString());
+                }
+                godChat.setScrollTop(Double.MAX_VALUE);
+            });
+        }
+    }
+
+    /** Rotate overnight data if it exceeds size limit */
+    private void rotateOvernightIfNeeded() {
+        try {
+            java.io.File f = new java.io.File(OVERNIGHT_DATA);
+            if (f.exists() && f.length() > MAX_OVERNIGHT_MB * 1024 * 1024) {
+                String ts = java.time.LocalDateTime.now().toString().replace(":", "-").substring(0, 19);
+                java.io.File rotated = new java.io.File(OVERNIGHT_DATA.replace(".json", "-" + ts + ".json"));
+                f.renameTo(rotated);
+                overnightLog.clear();
+                log("📦 Overnight data rotated: " + rotated.getName());
+            }
+        } catch (Exception ignored) {}
+    }
+
     /** Rate-limited Ollama call — enforces global pacing, returns null if too soon */
     private String rateLimitedOllama(String model, String systemPrompt, String userPrompt) {
         long now = System.currentTimeMillis();
@@ -2255,6 +2302,22 @@ public class GodHandApp extends Application {
                 exchange.close();
             });
 
+            // PHASE 15: Web search via DuckDuckGo (no API key needed)
+            webServer.createContext("/api/websearch", exchange -> {
+                String query = exchange.getRequestURI().getQuery();
+                if (query != null && query.startsWith("q=")) {
+                    query = java.net.URLDecoder.decode(query.substring(2), "UTF-8");
+                } else {
+                    query = "";
+                }
+                String result = webSearch(query);
+                byte[] response = result.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
             webServer.setExecutor(Executors.newFixedThreadPool(2));
             webServer.start();
             log("🌐 Web Dashboard: http://localhost:8899");
@@ -3334,6 +3397,57 @@ public class GodHandApp extends Application {
         } catch (Exception ex) { return null; }
     }
 
+    // ==================== PHASE 15: WEB SEARCH via DuckDuckGo ====================
+    private String webSearch(String query) {
+        if (query.isEmpty()) return "{\"results\":[],\"query\":\"\"}";
+        try {
+            String encoded = java.net.URLEncoder.encode(query, "UTF-8");
+            String ddgUrl = "https://api.duckduckgo.com/?q=" + encoded + "&format=json&no_html=1&skip_disambig=1";
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create(ddgUrl))
+                .header("User-Agent", "SIMS1337/0.18.0")
+                .timeout(Duration.ofSeconds(10)).GET().build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req,
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) {
+                return "{\"error\":\"DDG returned " + resp.statusCode() + "\",\"query\":\"" + query.replace("\"", "\\\"") + "\"}";
+            }
+            // Parse DDG JSON: extract AbstractText + RelatedTopics
+            String body = resp.body();
+            StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
+            // Abstract
+            int absIdx = body.indexOf("\"AbstractText\":\"");
+            if (absIdx > 0) {
+                absIdx += 17;
+                int absEnd = body.indexOf("\"", absIdx);
+                if (absEnd > absIdx) {
+                    String abs = body.substring(absIdx, absEnd).replace("\\\"", "\"");
+                    if (!abs.isEmpty()) json.append("{\"source\":\"abstract\",\"text\":\"").append(abs.replace("\"", "\\\"")).append("\"},");
+                }
+            }
+            // RelatedTopics
+            int relIdx = 0;
+            int count = 0;
+            while ((relIdx = body.indexOf("\"Text\":\"", relIdx)) > 0 && count < 5) {
+                relIdx += 8;
+                int relEnd = body.indexOf("\"", relIdx);
+                if (relEnd > relIdx) {
+                    String text = body.substring(relIdx, relEnd).replace("\\\"", "\"");
+                    if (!text.isEmpty()) {
+                        if (count > 0 || json.charAt(json.length()-1) == ',') json.append(",");
+                        json.append("{\"source\":\"related\",\"text\":\"").append(text.replace("\"", "\\\"")).append("\"}");
+                        count++;
+                    }
+                }
+                relIdx = relEnd;
+            }
+            json.append("]}");
+            return json.toString();
+        } catch (Exception e) {
+            return "{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\",\"query\":\"" + query.replace("\"", "\\\"") + "\"}";
+        }
+    }
+
     private float cosineSimilarity(float[] a, float[] b) {
         float dot = 0, normA = 0, normB = 0;
         for (int i = 0; i < a.length; i++) {
@@ -3608,6 +3722,7 @@ public class GodHandApp extends Application {
                 json.append("\n");
             }
             json.append("]\n");
+            rotateOvernightIfNeeded(); // rotate if > 10MB
             java.nio.file.Files.writeString(java.nio.file.Path.of(OVERNIGHT_DATA), json.toString());
         } catch (Exception e) {
             log("⚠️ Overnight data flush failed: " + e.getMessage());
