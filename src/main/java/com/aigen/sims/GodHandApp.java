@@ -3023,6 +3023,8 @@ public class GodHandApp extends Application {
         overnightLog.add(entry);
 
         log("🗳️ [" + modelName + "] " + (approve ? "✅ YES" : "❌ NO") + " [" + category + "]");
+        evidenceLog("vote", modelName, category + ": " + (approve ? "YES" : "NO") + " — " + description.substring(0, Math.min(100, description.length())));
+        audioRoute("Vote " + (approve ? "YES" : "NO") + " on " + category + " by " + modelName, "voting");
         return approve;
     }
 
