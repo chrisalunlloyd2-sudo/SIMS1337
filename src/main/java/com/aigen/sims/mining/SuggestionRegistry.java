@@ -58,12 +58,22 @@ public class SuggestionRegistry {
     private void saveToDisk() {
         try {
             Files.createDirectories(Paths.get(storagePath));
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             for (Suggestion s : suggestions.values()) {
-                String json = String.format("{\"id\":\"%s\",\"repoName\":\"%s\",\"filePath\":\"%s\",\"insertAfter\":\"%s\",\"code\":\"%s\",\"modelName\":\"%s\",\"timestamp\":%d,\"status\":\"%s\",\"hexQ\":%d,\"hexR\":%d,\"description\":\"%s\"}",
-                    s.id, s.repoName, s.filePath, s.insertAfter,
-                    s.code.replace("\"","\\\"").replace("\n","\\n"),
-                    s.modelName, s.timestamp, s.status, s.hexQ, s.hexR,
-                    s.description.replace("\"","\\\""));
+                // Use Jackson for proper JSON escaping (handles backslashes, quotes, unicode)
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", s.id);
+                map.put("repoName", s.repoName);
+                map.put("filePath", s.filePath);
+                map.put("insertAfter", s.insertAfter);
+                map.put("code", s.code);
+                map.put("modelName", s.modelName);
+                map.put("timestamp", s.timestamp);
+                map.put("status", s.status);
+                map.put("hexQ", s.hexQ);
+                map.put("hexR", s.hexR);
+                map.put("description", s.description);
+                String json = mapper.writeValueAsString(map);
                 Files.writeString(Paths.get(storagePath, s.id + ".json"), json);
             }
         } catch (IOException e) { System.err.println("Save error: " + e.getMessage()); }

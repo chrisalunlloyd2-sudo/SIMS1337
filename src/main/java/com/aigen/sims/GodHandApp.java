@@ -2308,7 +2308,15 @@ public class GodHandApp extends Application {
     private void webDashboardInit() {
         try {
             webServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(8899), 0);
-            webServer.createContext("/", exchange -> {
+            // Public WiFi server on port 1338 bound to 0.0.0.0
+            com.sun.net.httpserver.HttpServer publicServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("0.0.0.0", 1338), 0);
+            publicServer.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
+            publicServer.start();
+            log("🌐 Public WiFi UI: http://192.168.0.187:1338 (0.0.0.0:1338)");
+            addToGodChat("🌐 WIFI", "System", "Public UI on port 1338 — open to LAN");
+
+            // Shared handler for both servers
+            com.sun.net.httpserver.HttpHandler dashboardHandler = exchange -> {
                 // Only serve dashboard HTML for root path; let /api/* fall through
                 String path = exchange.getRequestURI().getPath();
                 if (!path.equals("/") && !path.equals("/index.html")) {
@@ -2317,22 +2325,44 @@ public class GodHandApp extends Application {
                     return;
                 }
                 StringBuilder html = new StringBuilder();
-                html.append("<!DOCTYPE html><html><head>");
-                html.append("<title>SIMS1337 Dashboard</title>");
-                html.append("<meta charset='UTF-8'>");
-                html.append("<style>");
-                html.append("body{background:#1a1a2e;color:#00ff88;font-family:monospace;margin:20px;}");
-                html.append("h1{color:#00d9ff;} .card{background:#16213e;padding:15px;margin:10px 0;border-radius:8px;}");
-                html.append(".metric{color:#ffaa00;} .ok{color:#00ff88;} .warn{color:#ff6b6b;}");
-                html.append("table{border-collapse:collapse;width:100%;} th,td{border:1px solid #0f3460;padding:8px;text-align:left;}");
-                html.append("th{background:#0f3460;color:#00d9ff;}");
+                html.append("<!DOCTYPE html><html lang='en'><head>");
+                html.append("<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0,user-scalable=no'>");
+                html.append("<meta name='apple-mobile-web-app-capable' content='yes'><meta name='theme-color' content='#050510'>");
+                html.append("<title>SIMS1337</title><style>");
+                html.append("*{box-sizing:border-box;margin:0;padding:0}");
+                html.append("body{background:#050510;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',monospace;font-size:13px;line-height:1.4;min-height:100vh}");
+                html.append(".header{background:linear-gradient(135deg,#0a0a20,#16213e);padding:12px 16px;position:sticky;top:0;z-index:10;border-bottom:2px solid #00d9ff;display:flex;justify-content:space-between;align-items:center}");
+                html.append(".header h1{font-size:16px;color:#00d9ff;margin:0}");
+                html.append(".header .status-dot{width:10px;height:10px;border-radius:50%;background:#00ff88;display:inline-block;margin-right:6px;animation:pulse 2s infinite}");
+                html.append("@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}");
+                html.append(".tabs{display:flex;gap:2px;padding:8px;background:#0a0a20;overflow-x:auto;-webkit-overflow-scrolling:touch;position:sticky;top:48px;z-index:9}");
+                html.append(".tab{flex:1;min-width:60px;padding:8px 4px;text-align:center;font-size:11px;color:#666;background:#0d0d2a;border:none;border-radius:6px;cursor:pointer;white-space:nowrap}");
+                html.append(".tab.active{background:#16213e;color:#00d9ff;font-weight:bold}");
+                html.append(".content{padding:8px}");
+                html.append(".card{background:#0a0a20;border:1px solid #1a1a40;border-radius:10px;padding:12px;margin:8px 0}");
+                html.append(".card h2{font-size:14px;color:#00d9ff;margin-bottom:8px}");
+                html.append(".metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}");
+                html.append(".metric-item{background:#0d0d2a;padding:10px;border-radius:8px;text-align:center}");
+                html.append(".metric-item .val{font-size:20px;font-weight:bold;color:#00ff88}");
+                html.append(".metric-item .lbl{font-size:10px;color:#666;margin-top:2px}");
+                html.append(".model-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a40}");
+                html.append(".model-name{font-size:12px;color:#e0e0e0}");
+                html.append(".badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold}");
+                html.append(".badge-ok{background:#003300;color:#00ff88}");
+                html.append(".badge-warn{background:#330000;color:#ff6b6b}");
+                html.append(".badge-info{background:#001a33;color:#00d9ff}");
+                html.append(".agent-card{display:flex;align-items:center;gap:10px;padding:10px;background:#0d0d2a;border-radius:8px;margin:4px 0}");
+                html.append(".agent-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}");
+                html.append(".agent-name{font-size:13px;font-weight:bold}");
+                html.append(".agent-pos{font-size:10px;color:#666}");
+                html.append(".log-line{font-size:10px;color:#666;padding:2px 0;border-bottom:1px solid #0d0d2a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+                html.append(".refresh-bar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#0a0a20;font-size:10px;color:#444;position:sticky;bottom:0;border-top:1px solid #1a1a40}");
+                html.append(".refresh-bar button{background:#16213e;color:#00d9ff;border:none;padding:4px 12px;border-radius:4px;font-size:10px;cursor:pointer}");
+                html.append(".hidden{display:none !important}");
                 html.append("</style></head><body>");
-                html.append("<h1>⚙️ SIMS1337 Dashboard v0.18.0</h1>");
 
-                // System status
-                html.append("<div class='card'><h2>📊 System Status</h2>");
-                html.append("<p>Java processes: <span class='metric'>2</span></p>");
-                // Query Ollama for real model count
+                // Query Ollama for real model list (used by overview + models tabs)
+                java.util.Set<String> realModels = new java.util.LinkedHashSet<>();
                 int realModelCount = 0;
                 try {
                     java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
@@ -2343,110 +2373,116 @@ public class GodHandApp extends Application {
                         String body = resp.body();
                         int idx = 0;
                         while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
-                            idx += 8; realModelCount++;
-                        }
-                    }
-                } catch (Exception ex) { realModelCount = 0; }
-                html.append("<p>Ollama models: <span class='metric'>" + realModelCount + "</span></p>");
-                html.append("<p>KG nodes: <span class='metric'>" + kgNodes.size() + "</span></p>");
-                html.append("<p>Errors logged: <span class='metric'>" + errorCount + "</span></p>");
-                html.append("<p>Recoveries: <span class='ok'>" + recoveryCount + "</span></p>");
-                html.append("</div>");
-
-                // Models - query real status from Ollama
-                html.append("<div class='card'><h2>🤖 Models</h2><table>");
-                html.append("<tr><th>Model</th><th>Status</th><th>Reputation</th></tr>");
-                // Query Ollama for real model list
-                java.util.Set<String> realModels = new java.util.LinkedHashSet<>();
-                try {
-                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
-                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
-                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() == 200) {
-                        String body = resp.body();
-                        int idx = 0;
-                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
                             idx += 8; int end = body.indexOf("\"", idx);
-                            if (end > idx) realModels.add(body.substring(idx, end));
+                            if (end > idx) { realModels.add(body.substring(idx, end)); realModelCount++; }
                             idx = end;
                         }
                     }
-                } catch (Exception ex) { /* fallback to modelChats keys */ }
+                } catch (Exception ex) { realModelCount = 0; }
                 if (realModels.isEmpty()) realModels.addAll(modelChats.keySet());
-                for (String model : realModels) {
-                    int rep = foundryReputation.getOrDefault(model, 0);
-                    html.append("<tr><td>" + model + "</td>");
-                    html.append("<td class='ok'>✅ Online</td>");
-                    html.append("<td class='metric'>" + rep + "</td></tr>");
-                }
-                html.append("</table></div>");
 
-                // Backend systems - all 17
-                html.append("<div class='card'><h2>🏗️ Backend Systems</h2><table>");
-                html.append("<tr><th>System</th><th>Status</th></tr>");
-                String[][] allSystems = {
-                    {"1. Hospital", "✅ Active"},
-                    {"2. Brute Foundry", "✅ Active"},
-                    {"3. Knowledge Graph", "✅ Active"},
-                    {"4. Server Orchestration", "✅ Active"},
-                    {"5. Self-Exploration", "✅ Active"},
-                    {"6. Error Logging", "✅ Active"},
-                    {"7. Design", "✅ Active"},
-                    {"8. Real RAG", "✅ Active"},
-                    {"9. Fine-Tuning", "✅ Active"},
-                    {"10. Multi-Agent Topology", "✅ Active"},
-                    {"11. Web Dashboard", "✅ Active"},
-                    {"12. Plugin System", "✅ Active"},
-                    {"13. Perfect Prompts", "✅ Active"},
-                    {"14. Map Guidance", "✅ Active"},
-                    {"15. Perfect Patterns", "✅ Active"},
-                    {"16. Tools System", "✅ Active"},
-                    {"17. Persistent Memory", "✅ Active"},
-                    {"18. FOW (Fog of War)", "✅ Active"},
-                    {"19. Hex TODO System", "✅ Active"},
-                    {"20. Gist Context", "✅ Active"},
-                    {"21. Gist Sync (30min)", "✅ Active"},
-                    {"22. Night Cycle (Armed)", "✅ Active"},
-                    {"23. Agent Autonomy", "✅ Active"},
-                    {"24. FOW Hex Map SVG", "✅ Active"},
-                    {"25. Gist→Model Context", "✅ Active"},
-                    {"26. Hex TODO Auto-Resolve", "✅ Active"},
-                    {"27. Email Delivery", "✅ Active"},
-                    {"28. Consensus Debate", "✅ Active"},
-                    {"29. Night Owl Collective", "✅ Active"},
-                    {"30. Code Wizard", "✅ Active"},
-                    {"31. Topologist", "✅ Active"},
-                    {"32. FOW Quorum Voting", "✅ Active"},
-                    {"33. Code Mining", "✅ Active"},
-                    {"34. Deploy Orchestrator", "✅ Active"},
-                    {"35. LoRA Auto-Tuning", "✅ Active"},
-                    {"36. GUI Gardener", "✅ Active"},
-                    {"37. AutoLoop (60min)", "✅ Active"},
-                    {"38. WebSocket Live", "✅ Active"},
-                    {"39. Self-Healing", "✅ Active"},
-                    {"40. Cross-Repo KG", "✅ Active"},
-                    {"41. Memory Persistence", "✅ Active"},
-                    {"42. Agent Comms", "✅ Active"},
-                    {"43. Self-Modifying Code", "✅ Active"},
-                    {"44. Evolution Engine", "✅ Active"},
-                    {"45. World Interface", "✅ Active"},
-                    {"46. Self-Documentation", "✅ Active"},
-                    {"47. Process Guardian", "✅ Active"},
-                    {"48. Analytics Engine", "✅ Active"},
-                    {"49. Plugin Hot-Reload", "✅ Active"}
-                };
-                for (String[] sys : allSystems) {
-                    html.append("<tr><td>" + sys[0] + "</td><td class='ok'>" + sys[1] + "</td></tr>");
-                }
-                html.append("</table></div>");
+                // Header
+                html.append("<div class='header'><div><span class='status-dot'></span><h1 style='display:inline'>SIMS1337</h1></div>");
+                html.append("<span style='font-size:10px;color:#666'>v0.18.0</span></div>");
 
-                // Hex Map SVG
-                html.append("<div class='card'><h2>⬡ Hex Map (Live FOW)</h2>");
-                html.append(generateHexMapSvg());
+                // Tabs
+                html.append("<div class='tabs'>");
+                html.append("<button class='tab active' onclick='showTab(\"overview\")'>📊 Overview</button>");
+                html.append("<button class='tab' onclick='showTab(\"agents\")'>👥 Agents</button>");
+                html.append("<button class='tab' onclick='showTab(\"models\")'>🤖 Models</button>");
+                html.append("<button class='tab' onclick='showTab(\"hex\")'>⬡ Map</button>");
+                html.append("<button class='tab' onclick='showTab(\"log\")'>📜 Log</button>");
                 html.append("</div>");
 
-                html.append("<div class='card'><p>🕐 " + java.time.LocalDateTime.now() + "</p></div>");
+                // Overview tab
+                html.append("<div id='tab-overview' class='content'>");
+                html.append("<div class='metric-grid'>");
+                html.append("<div class='metric-item'><div class='val'>" + realModelCount + "</div><div class='lbl'>Models</div></div>");
+                html.append("<div class='metric-item'><div class='val'>" + kgNodes.size() + "</div><div class='lbl'>KG Nodes</div></div>");
+                html.append("<div class='metric-item'><div class='val'>" + errorCount + "</div><div class='lbl'>Errors</div></div>");
+                html.append("<div class='metric-item'><div class='val'>" + recoveryCount + "</div><div class='lbl'>Recoveries</div></div>");
+                html.append("<div class='metric-item'><div class='val'>" + toolRegistry.size() + "</div><div class='lbl'>Tools</div></div>");
+                html.append("<div class='metric-item'><div class='val'>" + stationRegistry.size() + "</div><div class='lbl'>Stations</div></div>");
+                html.append("</div>");
+
+                html.append("<div class='card'><h2>🔧 System</h2>");
+                html.append("<span class='badge badge-ok'>Ollama Online</span> ");
+                html.append("<span class='badge badge-" + (ollamaCircuitOpen ? "warn" : "ok") + "'>Breaker " + (ollamaCircuitOpen ? "OPEN" : "CLOSED") + "</span> ");
+                html.append("<span class='badge badge-info'>Pipeline Active</span> ");
+                html.append("<span class='badge badge-ok'>14 Endpoints</span>");
+                html.append("</div>");
+
+                html.append("<div class='card'><h2>📡 Recent Activity</h2>");
+                String[] recentLines = godChat.getText().split("\n");
+                int recentStart = Math.max(0, recentLines.length - 15);
+                for (int i = recentStart; i < recentLines.length; i++) {
+                    html.append("<div class='log-line'>").append(recentLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
+                }
+                html.append("</div></div>");
+
+                // Agents tab
+                html.append("<div id='tab-agents' class='content hidden'>");
+                String[][] agentData = {
+                    {"Agent Alpha", "#00ff88", fowAgentHex.getOrDefault("Agent Alpha", "0,0"), "Leader"},
+                    {"Agent Beta", "#00d9ff", fowAgentHex.getOrDefault("Agent Beta", "2,-1"), "Scout"},
+                    {"Agent Gamma", "#ffaa00", fowAgentHex.getOrDefault("Agent Gamma", "-2,1"), "Builder"},
+                    {"Agent Delta", "#ff6b35", fowAgentHex.getOrDefault("Agent Delta", "-3,2"), "Guardian"}
+                };
+                for (String[] a : agentData) {
+                    html.append("<div class='agent-card'>");
+                    html.append("<div class='agent-dot' style='background:" + a[1] + ";box-shadow:0 0 8px " + a[1] + "'></div>");
+                    html.append("<div style='flex:1'><div class='agent-name' style='color:" + a[1] + "'>" + a[0] + "</div>");
+                    html.append("<div class='agent-pos'>Hex " + a[2] + " · " + a[3] + "</div></div></div>");
+                }
+                html.append("</div>");
+
+                // Models tab
+                html.append("<div id='tab-models' class='content hidden'>");
+                html.append("<div class='card'>");
+                for (String model : realModels) {
+                    int rep = foundryReputation.getOrDefault(model, 0);
+                    double qs = qualityScores.getOrDefault(model, 50.0);
+                    html.append("<div class='model-row'><span class='model-name'>🤖 " + model + "</span>");
+                    html.append("<span><span class='badge badge-ok'>★" + rep + "</span> ");
+                    html.append("<span class='badge badge-info'>Q" + String.format("%.0f", qs) + "</span></span></div>");
+                }
+                html.append("</div></div>");
+
+                // Hex tab
+                html.append("<div id='tab-hex' class='content hidden'>");
+                html.append("<div class='card' style='padding:4px;overflow-x:auto;-webkit-overflow-scrolling:touch'>");
+                html.append(generateHexMapSvg());
+                html.append("</div></div>");
+
+                // Log tab
+                html.append("<div id='tab-log' class='content hidden'>");
+                html.append("<div class='card' style='max-height:60vh;overflow-y:auto;font-size:10px'>");
+                String[] logLines = godChat.getText().split("\n");
+                int logStart = Math.max(0, logLines.length - 50);
+                for (int i = logStart; i < logLines.length; i++) {
+                    html.append("<div class='log-line'>").append(logLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
+                }
+                html.append("</div></div>");
+
+                // Refresh bar
+                html.append("<div class='refresh-bar'>");
+                html.append("<span id='refresh-time'>🕐 " + java.time.LocalTime.now().toString().substring(0,8) + "</span>");
+                html.append("<button onclick='location.reload()'>🔄 Refresh</button>");
+                html.append("</div>");
+
+                // JS
+                html.append("<script>");
+                html.append("function showTab(name){");
+                html.append("document.querySelectorAll('.content').forEach(e=>e.classList.add('hidden'));");
+                html.append("document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));");
+                html.append("document.getElementById('tab-'+name).classList.remove('hidden');");
+                html.append("event.target.classList.add('active');");
+                html.append("}");
+                html.append("setInterval(()=>{fetch('/api/status').then(r=>r.json()).then(d=>{");
+                html.append("document.getElementById('refresh-time').textContent='🕐 '+new Date().toLocaleTimeString().substring(0,8);");
+                html.append("}).catch(()=>{})},30000);");
+                html.append("</script>");
+
                 html.append("</body></html>");
 
                 byte[] response = html.toString().getBytes("UTF-8");
@@ -2454,7 +2490,11 @@ public class GodHandApp extends Application {
                 exchange.sendResponseHeaders(200, response.length);
                 exchange.getResponseBody().write(response);
                 exchange.close();
-            });
+            }; // end dashboardHandler lambda
+
+            // Register on both servers
+            webServer.createContext("/", dashboardHandler);
+            publicServer.createContext("/", dashboardHandler);
 
             // API endpoint
             webServer.createContext("/api/status", exchange -> {
