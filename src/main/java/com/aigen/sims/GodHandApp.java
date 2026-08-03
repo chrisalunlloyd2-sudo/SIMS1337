@@ -3469,7 +3469,16 @@ public class GodHandApp extends Application {
     // ==================== 24. FOW HEX MAP SVG — Web Dashboard Visualization ====================
     private String generateHexMapSvg() {
         StringBuilder svg = new StringBuilder();
-        svg.append("<svg viewBox='0 0 700 600' xmlns='http://www.w3.org/2000/svg' style='background:#0a0a1a;border:2px solid #00d9ff;border-radius:8px;'>");
+        svg.append("<svg viewBox='0 0 800 650' xmlns='http://www.w3.org/2000/svg' style='background:#050510;border:2px solid #00d9ff;border-radius:8px;'>");
+
+        // Station colors for hex blocks
+        Map<String, String> stationColors = Map.of(
+            "Brute Foundry", "#ff6b35",
+            "Hospital", "#ff3366",
+            "Knowledge Tree", "#00d9ff",
+            "Research", "#c77dff",
+            "GitHub", "#00ff88"
+        );
 
         // Draw all 61 hexes
         for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
@@ -3497,22 +3506,41 @@ public class GodHandApp extends Application {
                         visible = true; break;
                     }
                 }
-                double opacity = visible ? 0.85 : 0.15;
-                String fill = visible ? "#16213e" : "#0a0a15";
-                String stroke = key.equals("0,0") ? "#ffaa00" : "#0f3460";
+                double opacity = visible ? 0.9 : 0.12;
+
+                // Colored hex blocks based on station proximity
+                String fill = "#0a0a20";
+                String stroke = "#1a1a40";
+                double strokeW = 0.8;
+                for (var station : stationRegistry.entrySet()) {
+                    if (station.getValue().contains(key)) {
+                        fill = stationColors.getOrDefault(station.getKey(), "#16213e");
+                        stroke = fill;
+                        strokeW = 1.5;
+                        break;
+                    }
+                }
+                if (key.equals("0,0")) { fill = "#1a1a3e"; stroke = "#ffaa00"; strokeW = 2; }
+                if (!visible) { fill = "#050510"; stroke = "#0a0a15"; }
 
                 svg.append("<path d='").append(path).append("' fill='").append(fill)
-                   .append("' stroke='").append(stroke).append("' stroke-width='1' opacity='").append(opacity).append("'/>");
+                   .append("' stroke='").append(stroke).append("' stroke-width='").append(strokeW).append("' opacity='").append(opacity).append("'/>");
 
-                // Agent markers
+                // Agent markers with full names
                 for (var entry : fowAgentHex.entrySet()) {
                     if (entry.getValue().equals(key)) {
-                        String color = entry.getKey().contains("Alpha") ? "#00ff88" : entry.getKey().contains("Beta") ? "#00d9ff" : "#ffaa00";
+                        String name = entry.getKey();
+                        String color = name.contains("Alpha") ? "#00ff88" : name.contains("Beta") ? "#00d9ff" : name.contains("Gamma") ? "#ffaa00" : "#ff6b35";
+                        // Glow
                         svg.append("<circle cx='").append(String.format("%.1f", cx)).append("' cy='").append(String.format("%.1f", cy))
-                           .append("' r='6' fill='").append(color).append("' stroke='#fff' stroke-width='1'/>");
-                        svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy - 10))
-                           .append("' fill='").append(color).append("' font-size='8' text-anchor='middle'>")
-                           .append(entry.getKey().substring(6, 7)).append("</text>");
+                           .append("' r='10' fill='").append(color).append("' opacity='0.3'/>");
+                        // Agent dot
+                        svg.append("<circle cx='").append(String.format("%.1f", cx)).append("' cy='").append(String.format("%.1f", cy))
+                           .append("' r='5' fill='").append(color).append("' stroke='#fff' stroke-width='1.5'/>");
+                        // Agent name
+                        svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy - 12))
+                           .append("' fill='").append(color).append("' font-size='9' font-weight='bold' text-anchor='middle'>")
+                           .append(name).append("</text>");
                     }
                 }
 
@@ -3525,12 +3553,24 @@ public class GodHandApp extends Application {
             }
         }
 
+        // === ROUTING OVERLAY — show current model + A/B/C route ===
+        svg.append("<rect x='10' y='560' width='780' height='80' rx='6' fill='#0a0a20' stroke='#1a1a40' stroke-width='1'/>");
+        svg.append("<text x='20' y='580' fill='#00d9ff' font-size='11' font-weight='bold'>📡 CELLULAR ROUTING</text>");
+        String curModel = currentLoadedModel != null ? currentLoadedModel : "none";
+        svg.append("<text x='20' y='600' fill='#00ff88' font-size='10'>Loaded: ").append(curModel).append("</text>");
+        svg.append("<text x='20' y='618' fill='#888' font-size='9'>A/B/C: primary → shadow → qwen2.5:0.5b (fallback)</text>");
+        svg.append("<text x='20' y='633' fill='#666' font-size='8'>Gap: 5min | Calls: ").append(ollamaCallCount.get())
+           .append(" | Fails: ").append(ollamaErrorCount.get()).append(" | Fencing: 1 model at a time</text>");
+
         // Legend
-        svg.append("<text x='10' y='585' fill='#00ff88' font-size='10'>● Alpha</text>");
-        svg.append("<text x='80' y='585' fill='#00d9ff' font-size='10'>● Beta</text>");
-        svg.append("<text x='150' y='585' fill='#ffaa00' font-size='10'>● Gamma</text>");
-        svg.append("<text x='230' y='585' fill='#c77dff' font-size='10'>⚙ TODOs</text>");
-        svg.append("<text x='320' y='585' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
+        svg.append("<text x='400' y='580' fill='#00ff88' font-size='10'>● Alpha</text>");
+        svg.append("<text x='470' y='580' fill='#00d9ff' font-size='10'>● Beta</text>");
+        svg.append("<text x='540' y='580' fill='#ffaa00' font-size='10'>● Gamma</text>");
+        svg.append("<text x='610' y='580' fill='#ff6b35' font-size='10'>● Delta</text>");
+        svg.append("<text x='400' y='600' fill='#c77dff' font-size='10'>⚙ TODOs</text>");
+        svg.append("<text x='400' y='618' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
+        svg.append("<text x='400' y='633' fill='#666' font-size='10'>Colored = station hex</text>");
+
         svg.append("</svg>");
         return svg.toString();
     }
