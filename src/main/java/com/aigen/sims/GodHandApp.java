@@ -3017,8 +3017,21 @@ public class GodHandApp extends Application {
 
             String idea = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
             dreamIdeas.add(idea);
+            dreamCount.incrementAndGet();
             log("💤 DREAM [" + model + "]: " + idea);
             addToGodChat("💤 DREAM", model, idea);
+            // Euler DB: store dream as spherical vision data
+            double theta = (i * 45.0) % 360; // spread dreams around sphere
+            double phi = (i * 30.0) % 180;
+            eulerPut(theta, phi, Integer.toHexString(idea.hashCode()));
+            // Audio: speak dream summary
+            audioRoute(idea.length() > 100 ? idea.substring(0, 100) : idea, "dream");
+            // Evidence: log dream
+            evidenceLog("dream", model, idea.length() > 80 ? idea.substring(0, 80) : idea);
+            // KV store: persist dream
+            if (kvStore != null) {
+                try { kvStore.getClass().getMethod("put", String.class, String.class).invoke(kvStore, "dream:" + model + ":" + i, idea); } catch (Exception ignored) {}
+            }
         }
 
         // Convert top dreams into proposals
@@ -3899,8 +3912,9 @@ public class GodHandApp extends Application {
     private static final String TTS_SCRIPT = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/scripts/tts_readout.py";
 
     private void audioPipelineInit() {
-        log("🔊 Audio: TTS pipeline initialized (Talon-like routing)");
-        addToGodChat("🔊 AUDIO", "System", "TTS readouts for votes, Talon routing active");
+        audioEnabled = true; // auto-enable for vote/dream readouts
+        log("🔊 Audio: TTS pipeline initialized (Talon-like routing, auto-enabled)");
+        addToGodChat("🔊 AUDIO", "System", "TTS readouts active — votes + dreams spoken");
 
         // Audio flush every 5s
         chatScheduler.scheduleAtFixedRate(() -> {
@@ -3952,29 +3966,12 @@ public class GodHandApp extends Application {
 
     private void cloudflareClockSync() {
         log("🕐 Cloudflare: Atomic clock sync initialized");
-        addToGodChat("🕐 CLOCK", "System", "Cloudflare time sync active");
+        addToGodChat("🕐 CLOCK", "System", "Cloudflare time sync active (first sync immediate)");
 
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://time.cloudflare.com/")).timeout(Duration.ofSeconds(5))
-                    .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody()).build();
-                long t0 = System.currentTimeMillis();
-                java.net.http.HttpResponse<Void> resp = httpClient.send(req,
-                    java.net.http.HttpResponse.BodyHandlers.discarding());
-                long t1 = System.currentTimeMillis();
-                if (resp.statusCode() == 200) {
-                    String dateStr = resp.headers().firstValue("date").orElse(null);
-                    if (dateStr != null) {
-                        long serverTime = java.time.ZonedDateTime.parse(dateStr,
-                            java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
-                        long rtt = t1 - t0;
-                        clockOffsetMs = serverTime - (t0 + rtt / 2);
-                        clockSynced = true;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }, 300, 300, TimeUnit.SECONDS); // every 5 min
+        // Immediate first sync
+        syncWithCloudflare();
+
+        chatScheduler.scheduleAtFixedRate(() -> syncWithCloudflare(), 300, 300, TimeUnit.SECONDS);
 
         // /api/clock endpoint
         try {
@@ -3987,6 +3984,31 @@ public class GodHandApp extends Application {
                 exchange.close();
             });
         } catch (Exception ignored) {}
+    }
+
+    private void syncWithCloudflare() {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("https://time.cloudflare.com/")).timeout(Duration.ofSeconds(5))
+                .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            long t0 = System.currentTimeMillis();
+            java.net.http.HttpResponse<Void> resp = httpClient.send(req,
+                java.net.http.HttpResponse.BodyHandlers.discarding());
+            long t1 = System.currentTimeMillis();
+            if (resp.statusCode() == 200) {
+                String dateStr = resp.headers().firstValue("date").orElse(null);
+                if (dateStr != null) {
+                    long serverTime = java.time.ZonedDateTime.parse(dateStr,
+                        java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
+                    long rtt = t1 - t0;
+                    clockOffsetMs = serverTime - (t0 + rtt / 2);
+                    clockSynced = true;
+                }
+            }
+        } catch (Exception e) {
+            // Fallback: use system time as reference
+            if (!clockSynced) clockOffsetMs = 0;
+        }
     }
 
     // ==================== MISSION-CRITICAL LOG PERSISTENCE ====================
