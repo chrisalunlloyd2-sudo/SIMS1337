@@ -672,6 +672,7 @@ public class GodHandApp extends Application {
         pipelineSchedulerInit();
         evaluationFrameworkInit();
         telemetryInit();
+        quorumGistInit(); // multi-machine Gist protocol
         webDashboardV2Init();
     }
 
@@ -4591,6 +4592,105 @@ public class GodHandApp extends Application {
             exchange.sendResponseHeaders(200, resp.length);
             exchange.getResponseBody().write(resp); exchange.close();
         }); } catch (Exception ignored) {}
+
+        // /api/lexical
+        try { webServer.createContext("/api/lexical", exchange -> {
+            String q = exchange.getRequestURI().getQuery();
+            StringBuilder json = new StringBuilder("{");
+            json.append("\"vectors\":" + lexicalVectors.size() + ",");
+            json.append("\"functors\":" + functorMappings.size() + ",");
+            if (q != null && q.startsWith("match=")) {
+                String word = java.net.URLDecoder.decode(q.substring(6), "UTF-8");
+                double[] vec = lexicalVectors.getOrDefault(word, randomVector(64));
+                String match = semanticMatch(vec);
+                json.append("\"query\":\"" + word + "\",\"match\":\"" + match + "\",");
+            }
+            json.append("\"sample\":[");
+            int i = 0;
+            for (var e : lexicalVectors.entrySet()) {
+                if (i++ >= 10) break;
+                if (i > 1) json.append(",");
+                json.append("\"" + e.getKey() + "\"");
+            }
+            json.append("]}");
+            byte[] resp = json.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+
+        // /api/quorum
+        try { webServer.createContext("/api/quorum", exchange -> {
+            StringBuilder json = new StringBuilder("{");
+            json.append("\"node\":\"" + NODE_ID + "\",");
+            json.append("\"master_gist\":\"" + (MASTER_GIST_ID.isEmpty() ? "not set" : MASTER_GIST_ID.substring(0, 8) + "...") + "\",");
+            json.append("\"peers\":" + peerGists.size() + ",");
+            json.append("\"proposals\":" + consensusProposals.size() + ",");
+            json.append("\"votes\":" + proposalVotes.size());
+            json.append("}");
+            byte[] resp = json.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+
+        // /api/ideafile
+        try { webServer.createContext("/api/ideafile", exchange -> {
+            String q = exchange.getRequestURI().getQuery();
+            StringBuilder json = new StringBuilder("{");
+            try {
+                java.nio.file.Path dir = java.nio.file.Path.of(IDEAFILES_DIR);
+                if (!java.nio.file.Files.exists(dir)) java.nio.file.Files.createDirectories(dir);
+                if (q != null && q.startsWith("compress=")) {
+                    String code = java.net.URLDecoder.decode(q.substring(9), "UTF-8");
+                    String compressed = compressToIdeaFile(code);
+                    String name = "if_" + System.currentTimeMillis() + ".if";
+                    java.nio.file.Files.writeString(dir.resolve(name), compressed);
+                    json.append("\"action\":\"compressed\",\"file\":\"" + name + "\",\"ratio\":" + (100 - compressed.length() * 100 / Math.max(1, code.length())));
+                } else if (q != null && q.startsWith("expand=")) {
+                    String name = q.substring(7);
+                    String compressed = java.nio.file.Files.readString(dir.resolve(name));
+                    String expanded = expandIdeaFile(compressed);
+                    json.append("\"action\":\"expanded\",\"file\":\"" + name + "\",\"code\":\"" + expanded.replace("\"", "\\\"").substring(0, Math.min(200, expanded.length())) + "\"");
+                } else {
+                    java.io.File[] files = dir.toFile().listFiles();
+                    json.append("\"files\":[");
+                    if (files != null) {
+                        for (int i = 0; i < files.length; i++) {
+                            if (i > 0) json.append(",");
+                            json.append("\"" + files[i].getName() + "\"");
+                        }
+                    }
+                    json.append("]");
+                }
+            } catch (Exception e) { json.append("\"error\":\"" + e.getMessage() + "\""); }
+            json.append("}");
+            byte[] resp = json.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+
+        // /api/email/send
+        try { webServer.createContext("/api/email/send", exchange -> {
+            String body = new String(exchange.getRequestBody().readAllBytes(), "UTF-8");
+            String to = extractJsonField(body, "to");
+            String subject = extractJsonField(body, "subject");
+            String text = extractJsonField(body, "body");
+            try {
+                sendEmail(to, subject, text);
+                byte[] resp = "{\"status\":\"sent\"}".getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+            } catch (Exception e) {
+                byte[] resp = ("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}").getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(500, resp.length);
+                exchange.getResponseBody().write(resp);
+            }
+            exchange.close();
+        }); } catch (Exception ignored) {}
     }
 
     // Replayable event log — append-only JSONL with sequence numbers
@@ -7058,5 +7158,298 @@ public class GodHandApp extends Application {
         primaryStageRef = null;
         chatScheduler.shutdown();
         log("⏹️ SIMS1337 shutting down...");
+    }
+
+    // ==================== PHASE 29: LEXICAL MATH + QUORUM GIST + IDEAFILES + MMAP + SELF-EMAIL ====================
+    // MMAP mode: keep_alive=0, num_predict=40, slow HDD-friendly inference
+    private static final boolean MMAP_MODE = true;
+    private static final int MMAP_NUM_PREDICT = 40;
+    private static final int MMAP_NUM_CTX = 512;
+
+    private String mmapOllama(String model, String system, String prompt) {
+        try {
+            String body = String.format(
+                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":%d,\"num_ctx\":%d,\"keep_alive\":0}}",
+                model,
+                system.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
+                MMAP_NUM_PREDICT, MMAP_NUM_CTX);
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:11434/api/generate"))
+                .timeout(Duration.ofSeconds(600)) // 10 min timeout for slow HDD
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                String r = resp.body();
+                int ri = r.indexOf("\"response\":\"");
+                if (ri > 0) {
+                    ri += 12;
+                    int re = r.indexOf("\"", ri);
+                    if (re > ri) return r.substring(ri, re).replace("\\n", "\n").replace("\\\"", "\"");
+                }
+            }
+            return null;
+        } catch (Exception e) { return null; }
+    }
+
+    // Lexical math engine: functor mapping, wavefunction collapse, vector fields
+    private final Map<String, double[]> lexicalVectors = new ConcurrentHashMap<>(); // word -> embedding
+    private final Map<String, Map<String, Double>> functorMappings = new ConcurrentHashMap<>(); // source -> target -> weight
+
+    // Functor: maps objects and morphisms from source domain to target domain preserving structure
+    private double[] functorMap(String sourceWord, String targetWord) {
+        double[] sv = lexicalVectors.getOrDefault(sourceWord, new double[64]);
+        double[] tv = lexicalVectors.getOrDefault(targetWord, new double[64]);
+        double[] result = new double[64];
+        for (int i = 0; i < 64; i++) result[i] = sv[i] * 0.5 + tv[i] * 0.5;
+        functorMappings.computeIfAbsent(sourceWord, k -> new ConcurrentHashMap<>()).merge(targetWord, 1.0, Double::sum);
+        return result;
+    }
+
+    // Wavefunction collapse: high-entropy concept → deterministic state via metaphor
+    private String collapseWavefunction(String concept, String metaphor) {
+        // Σ c_i|φ_i⟩ → measurement operator M̂ → eigenstate
+        double[] conceptVec = lexicalVectors.getOrDefault(concept, randomVector(64));
+        double[] metaphorVec = lexicalVectors.getOrDefault(metaphor, randomVector(64));
+        double[] collapsed = new double[64];
+        double dot = 0;
+        for (int i = 0; i < 64; i++) { collapsed[i] = conceptVec[i] * metaphorVec[i]; dot += collapsed[i]; }
+        // Normalize to eigenstate
+        if (dot != 0) for (int i = 0; i < 64; i++) collapsed[i] /= Math.abs(dot);
+        return vectorToHex(collapsed);
+    }
+
+    // Vector field: gradient descent toward attractor
+    private double[] gradientDescent(double[] current, double[] attractor, double step) {
+        double[] grad = new double[64];
+        for (int i = 0; i < 64; i++) grad[i] = current[i] + (attractor[i] - current[i]) * step;
+        return grad;
+    }
+
+    private double[] randomVector(int dim) {
+        double[] v = new double[dim];
+        for (int i = 0; i < dim; i++) v[i] = Math.random() * 2 - 1;
+        return v;
+    }
+
+    private String vectorToHex(double[] v) {
+        StringBuilder sb = new StringBuilder();
+        for (double d : v) sb.append(String.format("%02x", (int)((d + 1) * 127.5) & 0xFF));
+        return sb.toString();
+    }
+
+    // Semantic matching: find closest word by cosine similarity
+    private String semanticMatch(double[] queryVec) {
+        String best = null;
+        double bestSim = -1;
+        for (var e : lexicalVectors.entrySet()) {
+            double sim = cosineSimilarity(queryVec, e.getValue());
+            if (sim > bestSim) { bestSim = sim; best = e.getKey(); }
+        }
+        return best != null ? best + "(" + String.format("%.2f", bestSim) + ")" : "?";
+    }
+
+    // /api/lexical endpoint — registered in phase28EndpointsInit()
+
+    // Multi-machine quorum Gist protocol
+    private static final String MASTER_GIST_ID = System.getenv().getOrDefault("MASTER_GIST_ID", "");
+    private static final String NODE_ID = "node-" + System.getenv().getOrDefault("NODE_ID", "01");
+    private final Map<String, String> peerGists = new ConcurrentHashMap<>(); // node_id -> gist_id
+    private final List<Map<String, String>> consensusProposals = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, Map<String, Integer>> proposalVotes = new ConcurrentHashMap<>(); // proposal_id -> node_id -> vote
+
+    private void quorumGistInit() {
+        if (gistToken == null || gistToken.isEmpty()) {
+            log("📡 Quorum Gist: No GIST_TOKEN, skipping multi-machine sync");
+            return;
+        }
+        log("📡 Quorum Gist: Node " + NODE_ID + " initializing...");
+        // Register this node in master gist
+        registerNode();
+        // Poll peer gists every 60s
+        chatScheduler.scheduleAtFixedRate(this::pollPeerGists, 60, 60, TimeUnit.SECONDS);
+        // Process consensus proposals every 5min
+        chatScheduler.scheduleAtFixedRate(this::processConsensus, 300, 300, TimeUnit.SECONDS);
+    }
+
+    private void registerNode() {
+        try {
+            String body = String.format("{\"files\":{\"nodes.json\":{\"content\":\"{\\\"node\\\":\\\"%s\\\",\\\"status\\\":\\\"active\\\",\\\"ts\\\":\\\"%s\\\"}\"}}}",
+                NODE_ID, java.time.Instant.now().toString());
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("https://api.github.com/gists/" + MASTER_GIST_ID))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "token " + gistToken)
+                .header("Accept", "application/vnd.github.v3+json")
+                .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            log("📡 Registered node " + NODE_ID + " in master gist");
+        } catch (Exception e) { log("📡 Node registration failed: " + e.getMessage()); }
+    }
+
+    private void pollPeerGists() {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("https://api.github.com/gists/" + MASTER_GIST_ID))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "token " + gistToken)
+                .header("Accept", "application/vnd.github.v3+json").GET().build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                // Parse peer nodes from master gist
+                String body = resp.body();
+                // Extract node entries
+                int nodesIdx = body.indexOf("\"nodes.json\"");
+                if (nodesIdx > 0) {
+                    int contentIdx = body.indexOf("\"content\":\"", nodesIdx);
+                    if (contentIdx > 0) {
+                        contentIdx += 11;
+                        int endIdx = body.indexOf("\"}", contentIdx);
+                        if (endIdx > contentIdx) {
+                            String content = body.substring(contentIdx, endIdx).replace("\\\"", "\"");
+                            log("📡 Peer nodes: " + content.substring(0, Math.min(80, content.length())));
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void processConsensus() {
+        if (consensusProposals.isEmpty()) return;
+        List<Map<String, String>> batch;
+        synchronized (consensusProposals) {
+            batch = new ArrayList<>(consensusProposals);
+            consensusProposals.clear();
+        }
+        for (Map<String, String> prop : batch) {
+            String propId = prop.get("id");
+            int agrees = proposalVotes.getOrDefault(propId, Map.of()).values().stream().mapToInt(v -> v).sum();
+            // Quorum: 3/4 nodes agree → accept into long-term memory
+            if (agrees >= 3) {
+                log("📡 CONSENSUS: Proposal " + propId + " accepted (" + agrees + "/4 votes)");
+                // Store in KG
+                kgNodes.put("quorum:" + propId, prop.getOrDefault("content", ""));
+                logEvent("consensus_accepted", NODE_ID, propId);
+            } else {
+                log("📡 Quorum: Proposal " + propId + " rejected (" + agrees + "/4 votes)");
+            }
+        }
+    }
+
+    // /api/quorum endpoint — registered in phase28EndpointsInit()
+
+    // IdeaFiles: compressed human readable ↔ full program
+    private static final String IDEAFILES_DIR = "C:/Users/viper/AIGEN_SYS/ideafiles/";
+
+    private String compressToIdeaFile(String code) {
+        // SUPER compressed: keep structure, drop whitespace, use shorthand
+        return code
+            .replaceAll("\\s+", " ")
+            .replace("public class", "cls")
+            .replace("private", "prv")
+            .replace("String", "S")
+            .replace("return", "ret")
+            .replace("void", "v")
+            .replace("static", "st")
+            .replace("final", "fn")
+            .replace("ConcurrentHashMap", "CHM")
+            .replace("ArrayList", "AL")
+            .replace("new ", "n.")
+            .replace("this.", "t.")
+            .replace("System.out", "so")
+            .trim();
+    }
+
+    private String expandIdeaFile(String compressed) {
+        return compressed
+            .replace(" cls ", " public class ")
+            .replace(" prv ", " private ")
+            .replace(" S ", " String ")
+            .replace(" ret ", " return ")
+            .replace(" v ", " void ")
+            .replace(" st ", " static ")
+            .replace(" fn ", " final ")
+            .replace(" CHM ", " ConcurrentHashMap ")
+            .replace(" AL ", " ArrayList ")
+            .replace(" n. ", " new ")
+            .replace(" t. ", " this. ")
+            .replace(" so ", " System.out ");
+    }
+
+    // /api/ideafile endpoint — registered in phase28EndpointsInit()
+
+    // Daily self-email with quorum summary
+    private void sendDailySelfEmail() {
+        try {
+            String subject = "SIMS1337 Daily Quorum Summary — " + java.time.LocalDate.now();
+            StringBuilder body = new StringBuilder();
+            body.append("=== SIMS1337 DAILY QUORUM SUMMARY ===\n");
+            body.append("Node: " + NODE_ID + "\n");
+            body.append("Date: " + java.time.LocalDate.now() + "\n\n");
+            body.append("--- AGENTS ---\n");
+            for (var e : agentLives.entrySet()) {
+                body.append(e.getKey() + ": life #" + e.getValue() + ", " + agentTaskCount.getOrDefault(e.getKey(), 0) + " tasks, status=" + agentStatus.getOrDefault(e.getKey(), "?") + "\n");
+            }
+            body.append("\n--- MODELS ---\n");
+            body.append("Installed: " + installedModels.size() + "\n");
+            body.append("Ollama calls: " + ollamaCallCount.get() + ", errors: " + ollamaErrorCount.get() + "\n");
+            body.append("Circuit breaker: " + (ollamaCircuitOpen ? "OPEN" : "CLOSED") + "\n");
+            body.append("\n--- KNOWLEDGE GRAPH ---\n");
+            body.append("KG nodes: " + kgNodes.size() + "\n");
+            body.append("Stations: " + stationRegistry.size() + "\n");
+            body.append("\n--- QUORUM ---\n");
+            body.append("Proposals: " + consensusProposals.size() + ", votes: " + proposalVotes.size() + "\n");
+            body.append("Peers: " + peerGists.size() + "\n");
+            body.append("\n--- TELEMETRY ---\n");
+            body.append("Sticking points: " + stickingPoints.size() + "\n");
+            body.append("Model entropy: " + modelEntropy + "\n");
+            body.append("\n--- ERRORS ---\n");
+            body.append("Total: " + errorCount + "\n");
+            body.append("Dead letters: " + deadLetterQueue.size() + "\n");
+            body.append("\nGenerated by SIMS1337 v0.18.0 — " + java.time.Instant.now() + "\n");
+
+            // Send via SMTP
+            String emailJson = String.format(
+                "{\"to\":\"chrisalunlloyd2@gmail.com\",\"subject\":\"%s\",\"body\":\"%s\"}",
+                subject, body.toString().replace("\"", "\\\"").replace("\n", "\\n"));
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8899/api/email/send"))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(emailJson)).build();
+            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            log("📧 Daily self-email sent");
+        } catch (Exception e) { log("📧 Self-email failed: " + e.getMessage()); }
+    }
+
+    // /api/email/send endpoint — registered in phase28EndpointsInit()
+
+    private String extractJsonField(String json, String field) {
+        int idx = json.indexOf("\"" + field + "\":\"");
+        if (idx < 0) return "";
+        idx += field.length() + 4;
+        int end = json.indexOf("\"", idx);
+        return end > idx ? json.substring(idx, end).replace("\\\"", "\"").replace("\\n", "\n") : "";
+    }
+
+    private void sendEmail(String to, String subject, String body) throws Exception {
+        // Write to mail queue file; Python smtp_send.py handles delivery
+        String entry = "To: " + to + "\nSubject: " + subject + "\n\n" + body + "\n---END---\n";
+        java.nio.file.Files.writeString(
+            java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/mail_queue.txt"), entry,
+            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        log("\uD83D\uDCE7 Queued email to " + to + ": " + subject);
+    }
+
+    // SMTP handled by Python smtp_send.py (mail_queue.txt)
+
+    // Schedule daily self-email at 06:00
+    { chatScheduler.scheduleAtFixedRate(this::sendDailySelfEmail, 3600, 86400, TimeUnit.SECONDS); }
+
+    // Seed lexical vectors from common words
+    { String[] seedWords = {"code","build","deploy","vote","dream","learn","grow","heal","flow","map","bridge","river","rock","spike","cat","hair","fire","water","earth","air","void","light","dark","time","space","node","edge","graph","tree","root","leaf","seed","fruit","bloom","wilt","rise","fall","spin","orbit","pulse","wave","field","force","mass","energy","entropy","order","chaos","form"};
+        for (String w : seedWords) lexicalVectors.put(w, randomVector(64));
     }
 }
