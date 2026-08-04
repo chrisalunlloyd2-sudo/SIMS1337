@@ -3017,6 +3017,7 @@ public class GodHandApp extends Application {
         fowAgentHex.put("Agent Alpha", "0,0");
         fowAgentHex.put("Agent Beta", "3,-2");
         fowAgentHex.put("Agent Gamma", "-3,2");
+        fowAgentHex.put("Agent Delta", "0,-3");
 
         log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents pinned");
 
@@ -3486,71 +3487,140 @@ public class GodHandApp extends Application {
     private final Map<String, String> agentModels = new ConcurrentHashMap<>(); // agent -> ollama model
     private int agentAutonomyRound = 0;
 
+    // ==================== PHASE 27: ONE-HOT AGENT LIFECYCLE — death & rebirth ====================
+    private volatile String hotAgent = null; // only ONE agent active at a time
+    private final Map<String, Long> agentBirthTimes = new ConcurrentHashMap<>();
+    private final Map<String, Long> agentDeathTimes = new ConcurrentHashMap<>();
+    private final Map<String, Integer> agentLives = new ConcurrentHashMap<>(); // how many times reborn
+    private final Map<String, String> agentStatus = new ConcurrentHashMap<>(); // alive, dead, reborn
+    private static final long AGENT_LIFESPAN_MS = 600_000; // 10 min life, then die & reborn
+    private static final long AGENT_REBIRTH_DELAY_MS = 60_000; // 1 min between death and rebirth
+    private final AtomicLong agentLifecycleRound = new AtomicLong(0);
+
     private void agentAutonomyInit() {
-        agentTasks.put("Agent Alpha", "idle");
-        agentTasks.put("Agent Beta", "idle");
-        agentTasks.put("Agent Gamma", "idle");
-        agentTaskCount.put("Agent Alpha", 0);
-        agentTaskCount.put("Agent Beta", 0);
-        agentTaskCount.put("Agent Gamma", 0);
-        // Assign SLM models to agents
-        agentModels.put("Agent Alpha", "deepseek-r1:1.5b");
-        agentModels.put("Agent Beta", "phi3:mini");
-        agentModels.put("Agent Gamma", "llama3.2:1b");
+        // All 4 agents initialized
+        String[] allAgents = {"Agent Alpha", "Agent Beta", "Agent Gamma", "Agent Delta"};
+        for (String a : allAgents) {
+            agentTasks.put(a, "idle");
+            agentTaskCount.put(a, 0);
+            agentLives.put(a, 1);
+            agentStatus.put(a, "alive");
+            agentBirthTimes.put(a, System.currentTimeMillis());
+        }
+        // Assign SLM models — mistral:7b for Alpha (leader), rotate others
+        agentModels.put("Agent Alpha", "mistral:7b");
+        agentModels.put("Agent Beta", "deepseek-r1:1.5b");
+        agentModels.put("Agent Gamma", "phi3:mini");
+        agentModels.put("Agent Delta", "llama3.2:1b");
 
-        log("🤖 Agent Autonomy: Real tool execution + SLM reasoning (90s cycle, paced)");
+        // Activate first agent
+        hotAgent = allAgents[0];
+        log("🔥 ONE-HOT: " + hotAgent + " activated — only one agent at a time");
+        addToGodChat("🔥 LIFECYCLE", "System", "One-hot agent mode: " + hotAgent + " alive, others dormant");
 
-        // Every 90 seconds: one agent acts (round-robin, not all at once)
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-                String agent = agents[agentAutonomyRound % agents.length];
-                agentAutonomyRound++;
-                try {
-                    String task = pickAutonomyTask(agent);
-                    agentTasks.put(agent, task);
-                    String result = executeAutonomyTask(agent, task);
-                    agentTaskCount.merge(agent, 1, Integer::sum);
-                    log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
-
-                    // SLM reasoning: have the agent's model reflect on the result
-                    String model = agentModels.getOrDefault(agent, "llama3.2:1b");
-                    String systemPrompt = "You are " + agent + " in the SIMS1337 multi-agent grid. " +
-                        "You just completed the task: " + task + ". Result: " + result + ". " +
-                        "Provide ONE short insight or observation (max 80 chars) about what this means.";
-                    String userPrompt = "Task done: " + task + ". Result: " + result + ". Your insight?";
-                    String insight = rateLimitedOllama(model, systemPrompt, userPrompt);
-                    if (insight != null && !insight.isEmpty()) {
-                        addToGodChat("🤖 AUTONOMY", agent, task + " ✅ → \"" + insight + "\" (" + agentTaskCount.get(agent) + " tasks)");
-                    } else {
-                        addToGodChat("🤖 AUTONOMY", agent, task + " ✅ (" + agentTaskCount.get(agent) + " tasks done)");
-                    }
-                } catch (Exception e) {
-                    log("🤖 [" + agent + "] task failed: " + e.getMessage());
+        // /api/agents endpoint — full lifecycle state
+        try {
+            webServer.createContext("/api/agents", exchange -> {
+                StringBuilder json = new StringBuilder("{");
+                json.append("\"hot_agent\":\"" + (hotAgent != null ? hotAgent : "none") + "\",");
+                json.append("\"round\":" + agentLifecycleRound.get() + ",");
+                json.append("\"agents\":{");
+                boolean first = true;
+                for (String a : allAgents) {
+                    if (!first) json.append(",");
+                    json.append("\"" + a + "\":{");
+                    json.append("\"status\":\"" + agentStatus.getOrDefault(a, "unknown") + "\",");
+                    json.append("\"lives\":" + agentLives.getOrDefault(a, 0) + ",");
+                    json.append("\"tasks\":" + agentTaskCount.getOrDefault(a, 0) + ",");
+                    json.append("\"model\":\"" + agentModels.getOrDefault(a, "?") + "\",");
+                    json.append("\"hex\":\"" + fowAgentHex.getOrDefault(a, "?") + "\",");
+                    json.append("\"task\":\"" + agentTasks.getOrDefault(a, "idle") + "\"");
+                    json.append("}");
+                    first = false;
                 }
+                json.append("}}");
+                byte[] resp = json.toString().getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, resp.length);
+                exchange.getResponseBody().write(resp);
+                exchange.close();
             });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
+        } catch (Exception ignored) {}
 
-        // === REAL INTER-AGENT MESSAGING — Ollama-generated messages between agents ===
-        // After each autonomy round, one agent sends a real message to another.
+        // One-hot agent cycle: every 5 min, current agent acts, then dies, next is reborn
         chatScheduler.scheduleAtFixedRate(() -> {
-            String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-            String from = agents[new Random().nextInt(agents.length)];
-            String to = agents[new Random().nextInt(agents.length)];
-            if (from.equals(to)) to = agents[(agents.length + new Random().nextInt(agents.length - 1) + 1) % agents.length];
-            String fromModel = agentModels.getOrDefault(from, "llama3.2:1b");
-            String toModel = agentModels.getOrDefault(to, "llama3.2:1b");
-            String fromTask = agentTasks.getOrDefault(from, "idle");
-            String toTask = agentTasks.getOrDefault(to, "idle");
-            String systemPrompt = "You are " + from + " in the SIMS1337 multi-agent grid. " +
-                "You just completed: " + fromTask + ". " + to + " is working on: " + toTask + ". " +
-                "Send " + to + " ONE short message (max 80 chars) — share an insight, ask a question, or offer help. Be specific.";
-            String userPrompt = "Message to " + to + " about their task '" + toTask + "' or your task '" + fromTask + "':";
-            String fallback = "Hey " + to + ", noticed something interesting — want to compare notes?";
-            String message = ollamaOrFallback(fromModel, systemPrompt, userPrompt, fallback);
-            addToGodChat("💬 " + from + " → " + to, from, message);
-            log("💬 [" + from + " → " + to + "]: " + (message.length() > 60 ? message.substring(0, 60) + "..." : message));
-        }, 600, 600, TimeUnit.SECONDS); // 10 min — telemetry pace
+            try {
+                agentLifecycleRound.incrementAndGet();
+                String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma", "Agent Delta"};
+
+                if (hotAgent == null) {
+                    // First activation or all dead — reborn Alpha
+                    hotAgent = "Agent Alpha";
+                    agentStatus.put(hotAgent, "alive");
+                    agentBirthTimes.put(hotAgent, System.currentTimeMillis());
+                    agentLives.merge(hotAgent, 1, Integer::sum);
+                    log("🔥 REBORN: " + hotAgent + " (life #" + agentLives.get(hotAgent) + ")");
+                    addToGodChat("🔥 REBORN", hotAgent, "Life #" + agentLives.get(hotAgent) + " — awakened");
+                }
+
+                // Current agent acts
+                String agent = hotAgent;
+                String task = pickAutonomyTask(agent);
+                agentTasks.put(agent, task);
+                String result = executeAutonomyTask(agent, task);
+                agentTaskCount.merge(agent, 1, Integer::sum);
+                log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
+
+                // SLM reasoning
+                String model = agentModels.getOrDefault(agent, "llama3.2:1b");
+                String systemPrompt = "You are " + agent + " in the SIMS1337 multi-agent grid. " +
+                    "You just completed: " + task + ". Result: " + result + ". " +
+                    "Provide ONE short insight (max 80 chars).";
+                String insight = rateLimitedOllama(model, systemPrompt, "Task done: " + task + ". Your insight?");
+                if (insight != null && !insight.isEmpty()) {
+                    addToGodChat("🤖 " + agent, "System", task + " ✅ → \"" + insight + "\" (life #" + agentLives.get(agent) + ", " + agentTaskCount.get(agent) + " tasks)");
+                    recordModelOutput(model, insight);
+                } else {
+                    addToGodChat("🤖 " + agent, "System", task + " ✅ (life #" + agentLives.get(agent) + ", " + agentTaskCount.get(agent) + " tasks)");
+                }
+
+                // Check lifespan — if exceeded, die and pass torch
+                long lifeMs = System.currentTimeMillis() - agentBirthTimes.getOrDefault(agent, System.currentTimeMillis());
+                if (lifeMs > AGENT_LIFESPAN_MS) {
+                    // Current agent dies
+                    agentStatus.put(agent, "dead");
+                    agentDeathTimes.put(agent, System.currentTimeMillis());
+                    log("💀 DEATH: " + agent + " died after " + (lifeMs / 1000) + "s (life #" + agentLives.get(agent) + ")");
+                    addToGodChat("💀 DEATH", agent, "Died after " + (lifeMs / 1000) + "s — " + agentTaskCount.get(agent) + " tasks completed");
+
+                    // Find next agent to reborn (round-robin)
+                    int currentIdx = java.util.Arrays.asList(agents).indexOf(agent);
+                    int nextIdx = (currentIdx + 1) % agents.length;
+                    hotAgent = agents[nextIdx];
+
+                    // Reborn next agent
+                    agentStatus.put(hotAgent, "alive");
+                    agentBirthTimes.put(hotAgent, System.currentTimeMillis());
+                    agentLives.merge(hotAgent, 1, Integer::sum);
+                    log("🔥 REBORN: " + hotAgent + " (life #" + agentLives.get(hotAgent) + ")");
+                    addToGodChat("🔥 REBORN", hotAgent, "Life #" + agentLives.get(hotAgent) + " — torch passed from " + agent);
+                }
+
+                // Inter-agent message: hot agent sends to a random other
+                String to = agents[new Random().nextInt(agents.length)];
+                if (to.equals(hotAgent)) to = agents[(java.util.Arrays.asList(agents).indexOf(hotAgent) + 1) % agents.length];
+                String toModel = agentModels.getOrDefault(to, "llama3.2:1b");
+                String msgPrompt = "You are " + hotAgent + ". Send " + to + " ONE short message (max 80 chars) about your task: " + task + ". Be helpful.";
+                String fallback = "Hey " + to + ", working on " + task + " — any thoughts?";
+                String message = ollamaOrFallback(model, msgPrompt, "Message to " + to + ":", fallback);
+                addToGodChat("💬 " + hotAgent + " → " + to, hotAgent, message);
+                log("💬 [" + hotAgent + " → " + to + "]: " + (message.length() > 60 ? message.substring(0, 60) + "..." : message));
+                recordModelOutput(model, message);
+
+            } catch (Exception e) {
+                log("🤖 Agent cycle error: " + e.getMessage());
+            }
+        }, 300, 300, TimeUnit.SECONDS); // 5 min — one agent acts per cycle
     }
 
     private String pickAutonomyTask(String agent) {
