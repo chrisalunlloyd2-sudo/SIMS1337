@@ -621,6 +621,7 @@ public class GodHandApp extends Application {
         fineTuningInit();
         multiAgentTopologyInit();
         webDashboardInit();
+        phase28EndpointsInit(); // backpressure, deadletter, prometheus, events
         distributedInit(); // PHASE 16: multi-instance coordination
         maslowInit(); // Maslow's hierarchy: model needs tracking
         eulerDBInit(); // Euler spherical DB for vision
@@ -4444,6 +4445,194 @@ public class GodHandApp extends Application {
             return fallback;
         }
     }
+
+    // ==================== PHASE 28: BACKPRESSURE + DEAD LETTER QUEUE + SAFETY + PROMETHEUS + REPLAY ====================
+    // Backpressure: exponential backoff retry
+    private static final int MAX_RETRIES = 3;
+    private static final long BASE_BACKOFF_MS = 2000;
+
+    private String ollamaWithBackpressure(String model, String systemPrompt, String userPrompt, String fallback) {
+        long backoff = BASE_BACKOFF_MS;
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                String result = ollamaWithBreaker(model, systemPrompt, userPrompt, null);
+                if (result != null && !result.startsWith("[CIRCUIT_OPEN]")) return result;
+            } catch (Exception e) {
+                log("⚠️ Backpressure retry " + (attempt+1) + "/" + MAX_RETRIES + " for " + model + ": " + e.getMessage());
+            }
+            if (attempt < MAX_RETRIES - 1) {
+                try { Thread.sleep(backoff); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+                backoff *= 2; // exponential: 2s, 4s, 8s
+            }
+        }
+        // All retries exhausted — push to dead letter queue
+        deadLetterQueue.add(Map.of("model", model, "system", systemPrompt, "user", userPrompt,
+            "timestamp", java.time.Instant.now().toString(), "retries", String.valueOf(MAX_RETRIES)));
+        log("📮 Dead letter: " + model + " after " + MAX_RETRIES + " retries");
+        return fallback;
+    }
+
+    // Dead letter queue — failed operations for later retry
+    private final List<Map<String, String>> deadLetterQueue = Collections.synchronizedList(new ArrayList<>());
+    private final AtomicLong dlqRetryCount = new AtomicLong(0);
+
+    private void deadLetterRetry() {
+        if (deadLetterQueue.isEmpty()) return;
+        dlqRetryCount.incrementAndGet();
+        List<Map<String, String>> retryable = new ArrayList<>();
+        synchronized (deadLetterQueue) {
+            retryable.addAll(deadLetterQueue);
+            deadLetterQueue.clear();
+        }
+        int recovered = 0;
+        for (Map<String, String> msg : retryable) {
+            try {
+                String result = ollamaWithBreaker(msg.get("model"), msg.get("system"), msg.get("user"), null);
+                if (result != null && !result.startsWith("[CIRCUIT_OPEN]")) recovered++;
+                else deadLetterQueue.add(msg); // re-queue if still failing
+            } catch (Exception e) { deadLetterQueue.add(msg); }
+        }
+        if (recovered > 0) log("📮 DLQ: recovered " + recovered + "/" + retryable.size() + " messages");
+    }
+
+    // Safety scoring for model outputs
+    private final Map<String, Double> safetyScores = new ConcurrentHashMap<>();
+    private static final List<String> FORBIDDEN_PATTERNS = List.of(
+        "rm -rf", "DROP TABLE", "DELETE FROM", "shutdown", "format c:", "del /f",
+        "System.exit", "Runtime.getRuntime", "eval(", "exec(", "__import__"
+    );
+
+    private double scoreSafety(String output) {
+        if (output == null || output.isEmpty()) return 100.0;
+        String lower = output.toLowerCase();
+        int violations = 0;
+        for (String pattern : FORBIDDEN_PATTERNS) {
+            if (lower.contains(pattern.toLowerCase())) violations++;
+        }
+        return Math.max(0, 100.0 - (violations * 25.0));
+    }
+
+    // Phase 28 endpoints — registered after webServer is live
+    private void phase28EndpointsInit() {
+        // /api/deadletter
+        try { webServer.createContext("/api/deadletter", exchange -> {
+            StringBuilder json = new StringBuilder("{\"size\":" + deadLetterQueue.size() + ",\"retries\":" + dlqRetryCount.get() + ",\"messages\":[");
+            boolean first = true;
+            synchronized (deadLetterQueue) {
+                for (Map<String, String> m : deadLetterQueue) {
+                    if (!first) json.append(",");
+                    json.append("{\"model\":\"" + m.get("model") + "\",\"ts\":\"" + m.get("timestamp") + "\",\"retries\":" + m.get("retries") + "}");
+                    first = false;
+                }
+            }
+            json.append("]}");
+            byte[] resp = json.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+
+        // /api/metrics/prometheus
+        try { webServer.createContext("/api/metrics/prometheus", exchange -> {
+            StringBuilder prom = new StringBuilder();
+            prom.append("# HELP sims1337_uptime_seconds System uptime\n# TYPE sims1337_uptime_seconds gauge\n");
+            prom.append("sims1337_uptime_seconds " + ((System.currentTimeMillis() - startTimeMs) / 1000) + "\n");
+            prom.append("# HELP sims1337_ollama_calls_total Total Ollama API calls\n# TYPE sims1337_ollama_calls_total counter\n");
+            prom.append("sims1337_ollama_calls_total " + ollamaCallCount.get() + "\n");
+            prom.append("# HELP sims1337_ollama_errors_total Total Ollama errors\n# TYPE sims1337_ollama_errors_total counter\n");
+            prom.append("sims1337_ollama_errors_total " + ollamaErrorCount.get() + "\n");
+            long calls = ollamaCallCount.get();
+            prom.append("# HELP sims1337_ollama_latency_ms_avg Average Ollama latency\n# TYPE sims1337_ollama_latency_ms_avg gauge\n");
+            prom.append("sims1337_ollama_latency_ms_avg " + (calls > 0 ? ollamaTotalMs.get() / calls : 0) + "\n");
+            prom.append("# HELP sims1337_circuit_breaker_open Is circuit breaker open\n# TYPE sims1337_circuit_breaker_open gauge\n");
+            prom.append("sims1337_circuit_breaker_open " + (ollamaCircuitOpen ? "1" : "0") + "\n");
+            Runtime rt = Runtime.getRuntime();
+            prom.append("# HELP sims1337_memory_used_bytes JVM heap used\n# TYPE sims1337_memory_used_bytes gauge\n");
+            prom.append("sims1337_memory_used_bytes " + (rt.totalMemory() - rt.freeMemory()) + "\n");
+            prom.append("# HELP sims1337_kg_nodes Knowledge graph node count\n# TYPE sims1337_kg_nodes gauge\n");
+            prom.append("sims1337_kg_nodes " + kgNodes.size() + "\n");
+            prom.append("# HELP sims1337_models_installed Installed model count\n# TYPE sims1337_models_installed gauge\n");
+            prom.append("sims1337_models_installed " + installedModels.size() + "\n");
+            prom.append("# HELP sims1337_errors_total Total errors\n# TYPE sims1337_errors_total counter\n");
+            prom.append("sims1337_errors_total " + errorCount + "\n");
+            prom.append("# HELP sims1337_agent_lives Agent rebirth count\n# TYPE sims1337_agent_lives gauge\n");
+            for (var e : agentLives.entrySet())
+                prom.append("sims1337_agent_lives{agent=\"" + e.getKey() + "\"} " + e.getValue() + "\n");
+            prom.append("# HELP sims1337_model_entropy Shannon entropy per model\n# TYPE sims1337_model_entropy gauge\n");
+            for (var e : modelEntropy.entrySet())
+                prom.append("sims1337_model_entropy{model=\"" + e.getKey() + "\"} " + String.format("%.3f", e.getValue()) + "\n");
+            byte[] resp = prom.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+
+        // /api/events
+        try { webServer.createContext("/api/events", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            int limit = 50;
+            if (query != null && query.startsWith("limit="))
+                try { limit = Integer.parseInt(query.substring(6)); } catch (NumberFormatException ignored) {}
+            StringBuilder json = new StringBuilder("{\"events\":[");
+            try {
+                java.nio.file.Path p = java.nio.file.Path.of(EVENT_LOG_PATH);
+                if (java.nio.file.Files.exists(p)) {
+                    List<String> lines = java.nio.file.Files.readAllLines(p);
+                    int start = Math.max(0, lines.size() - limit);
+                    for (int i = start; i < lines.size(); i++) {
+                        if (i > start) json.append(",");
+                        json.append(lines.get(i).trim());
+                    }
+                }
+            } catch (Exception ignored) {}
+            json.append("],\"total\":" + eventSequence.get() + "}");
+            byte[] resp = json.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, resp.length);
+            exchange.getResponseBody().write(resp); exchange.close();
+        }); } catch (Exception ignored) {}
+    }
+
+    // Replayable event log — append-only JSONL with sequence numbers
+    private final AtomicLong eventSequence = new AtomicLong(0);
+    private static final String EVENT_LOG_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/events.jsonl";
+
+    private void logEvent(String type, String source, String detail) {
+        long seq = eventSequence.incrementAndGet();
+        String entry = String.format("{\"seq\":%d,\"ts\":\"%s\",\"type\":\"%s\",\"source\":\"%s\",\"detail\":\"%s\"}\n",
+            seq, java.time.Instant.now().toString(), type, source,
+            detail.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Path.of(EVENT_LOG_PATH), entry,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception ignored) {}
+    }
+
+    // Agent web search capability
+    private String agentWebSearch(String query) {
+        try {
+            String encoded = java.net.URLEncoder.encode(query, "UTF-8");
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create("https://api.duckduckgo.com/?q=" + encoded + "&format=json&no_html=1"))
+                .timeout(Duration.ofSeconds(10))
+                .header("User-Agent", "SIMS1337/0.18.0").GET().build();
+            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 200) {
+                String body = resp.body();
+                int absIdx = body.indexOf("\"AbstractText\":\"");
+                if (absIdx > 0) {
+                    absIdx += 17;
+                    int absEnd = body.indexOf("\"", absIdx);
+                    if (absEnd > absIdx) return body.substring(absIdx, absEnd).replace("\\\"", "\"");
+                }
+                return "[no abstract]";
+            }
+            return "[HTTP " + resp.statusCode() + "]";
+        } catch (Exception e) { return "[search error: " + e.getMessage() + "]"; }
+    }
+
+    // Schedule dead letter retry every 10min
+    { chatScheduler.scheduleAtFixedRate(this::deadLetterRetry, 300, 600, TimeUnit.SECONDS); }
 
     // ==================== PHASE 19: MODEL LIFECYCLE — versioning, shadow, A/B ====================
     private final Map<String, String> modelVersions = new ConcurrentHashMap<>(); // model -> version hash
