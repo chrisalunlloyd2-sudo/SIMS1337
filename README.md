@@ -266,3 +266,6 @@ qwen2.5:0.5b         qwen3:4b            qwen3:latest
 > Nothing lives forever, nothing runs for free.
 > Always advancing, always progressing.
 > Never delete, only add and merge.
+## White Paper
+
+Full technical white paper: [SIMS1337_White_Paper.md](SIMS1337_White_Paper.md)
