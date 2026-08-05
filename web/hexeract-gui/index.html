@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIMS1337 — Breathing Hexeract Engine</title>
+    <meta name="description" content="6-Dimensional Hypercube State Space Visualization — Viscoelastic Heartbeat Dynamics for Decentralized SLM Agent Grid">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════════════════════
+           SIMS1337 HEXERACT — DESIGN SYSTEM
+           Deep Space Theme | No Green | Viscoelastic Pulse
+           ═══════════════════════════════════════════════════════════ */
+        :root {
+            --bg-void: #030108;
+            --bg-nebula: #0a0618;
+            --bg-panel: rgba(12, 8, 32, 0.55);
+            --bg-panel-hover: rgba(20, 14, 48, 0.7);
+            --border-dim: rgba(120, 80, 220, 0.15);
+            --border-glow: rgba(160, 120, 255, 0.35);
+            --accent-primary: #a78bfa;    /* Lavender */
+            --accent-hot: #e879f9;        /* Fuchsia */
+            --accent-plasma: #818cf8;     /* Indigo */
+            --accent-ice: #7dd3fc;        /* Sky */
+            --accent-ember: #f472b6;      /* Pink */
+            --accent-pulse: #c084fc;      /* Purple */
+            --text-bright: #f1e8ff;
+            --text-mid: #c4b5e0;
+            --text-dim: #7a6a9e;
+            --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+            --radius: 12px;
+            --radius-lg: 18px;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            font-family: var(--font-sans);
+            background: var(--bg-void);
+            color: var(--text-bright);
+        }
+
+        /* ── Deep Space Gradient Background ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(99, 50, 180, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(120, 60, 200, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 90%, rgba(200, 80, 180, 0.04) 0%, transparent 40%),
+                linear-gradient(180deg, #030108 0%, #0a0520 40%, #0d0828 70%, #060312 100%);
+            z-index: -1;
+        }
+
+        /* ── Floating Star Particles ── */
+        .star-field {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        }
+
+        /* ── Main Layout Grid ── */
+        #app {
+            display: grid;
+            grid-template-columns: 320px 1fr 360px;
+            grid-template-rows: 56px 1fr 200px;
+            gap: 0;
+            width: 100vw; height: 100vh;
+            position: relative; z-index: 1;
+        }
+
+        /* ── Top Bar ── */
+        #topbar {
+            grid-column: 1 / -1;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 24px;
+            background: rgba(8, 4, 20, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-dim);
+        }
+        #topbar .logo {
+            display: flex; align-items: center; gap: 14px;
+            font-weight: 700; font-size: 15px; letter-spacing: 2px;
+            color: var(--accent-primary);
+        }
+        #topbar .logo .hex-icon {
+            width: 28px; height: 28px;
+            position: relative;
+        }
+        #topbar .logo .hex-icon::before {
+            content: '⬡';
+            font-size: 28px;
+            animation: logo-pulse 3s ease-in-out infinite;
+            display: block;
+        }
+        @keyframes logo-pulse {
+            0%, 100% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); filter: drop-shadow(0 0 8px var(--accent-hot)); }
+        }
+        .topbar-metrics {
+            display: flex; gap: 28px; font-size: 11px; font-family: var(--font-mono);
+        }
+        .topbar-metric { display: flex; align-items: center; gap: 6px; }
+        .topbar-metric .dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            animation: dot-breathe 4s ease-in-out infinite;
+        }
+        @keyframes dot-breathe {
+            0%, 100% { opacity: 0.4; box-shadow: none; }
+            50% { opacity: 1; box-shadow: 0 0 8px currentColor; }
+        }
+        .topbar-metric .label { color: var(--text-dim); }
+        .topbar-metric .value { color: var(--text-bright); font-weight: 600; }
+
+        /* ── Glass Panel Base ── */
+        .glass {
+            background: var(--bg-panel);
+            backdrop-filter: blur(16px) saturate(1.2);
+            border: 1px solid var(--border-dim);
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .glass:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 30px rgba(120, 80, 220, 0.08);
+        }
+
+        /* ── Left Panel: Telemetry & Controls ── */
+        #left-panel {
+            grid-row: 2 / 4;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex; flex-direction: column; gap: 12px;
+            border-right: 1px solid var(--border-dim);
+            background: rgba(6, 3, 16, 0.6);
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-primary) transparent;
+        }
+
+        .panel-section {
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+        .panel-section h3 {
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 2.5px; text-transform: uppercase;
+            color: var(--accent-primary);
+            margin-bottom: 14px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-section h3::before {
+            content: '';
+            width: 3px; height: 12px;
+            background: linear-gradient(180deg, var(--accent-hot), var(--accent-primary));
+            border-radius: 2px;
+        }
+
+        /* Metric Rows */
+        .metric-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 0;
+            font-size: 12px;
+            border-bottom: 1px solid rgba(120, 80, 220, 0.06);
+        }
+        .metric-row:last-child { border-bottom: none; }
+        .metric-row .mk { color: var(--text-dim); font-weight: 400; }
+        .metric-row .mv {
+            font-family: var(--font-mono); font-weight: 600; font-size: 12px;
+        }
+
+        /* Gauge Bars */
+        .gauge-container { margin: 8px 0; }
+        .gauge-label {
+            display: flex; justify-content: space-between;
+            font-size: 11px; margin-bottom: 4px;
+        }
+        .gauge-label .gl { color: var(--text-dim); }
+        .gauge-label .gv { color: var(--text-bright); font-family: var(--font-mono); font-weight: 600; }
+        .gauge-track {
+            height: 4px; border-radius: 4px;
+            background: rgba(120, 80, 220, 0.12);
+            overflow: hidden;
+        }
+        .gauge-fill {
+            height: 100%; border-radius: 4px;
+            transition: width 1s ease;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%; padding: 10px 14px;
+            border: 1px solid var(--border-glow);
+            border-radius: 8px;
+            background: rgba(167, 139, 250, 0.06);
+            color: var(--accent-primary);
+            font-family: var(--font-mono);
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 1.5px; text-transform: uppercase;
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .btn:hover {
+            background: rgba(167, 139, 250, 0.15);
+            box-shadow: 0 0 20px rgba(167, 139, 250, 0.15);
+            transform: translateY(-1px);
+        }
+        .btn.hot {
+            border-color: rgba(232, 121, 249, 0.4);
+            color: var(--accent-hot);
+            background: rgba(232, 121, 249, 0.06);
+        }
+        .btn.hot:hover {
+            background: rgba(232, 121, 249, 0.15);
+            box-shadow: 0 0 20px rgba(232, 121, 249, 0.15);
+        }
+
+        /* ── Center: Hexeract Canvas ── */
+        #hexeract-viewport {
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+        }
+        #hexeract-canvas {
+            width: 100%; height: 100%;
+            display: block;
+        }
+        /* Breathing Phase Indicator Overlay */
+        #breath-overlay {
+            position: absolute;
+            bottom: 16px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; align-items: center; gap: 12px;
+            padding: 8px 20px;
+            border-radius: 24px;
+            background: rgba(6, 3, 16, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-dim);
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+        #breath-phase {
+            display: flex; align-items: center; gap: 6px;
+        }
+        #breath-phase .indicator {
+            width: 8px; height: 8px; border-radius: 50%;
+            transition: all 0.5s;
+        }
+        #breath-wave {
+            width: 120px; height: 24px;
+        }
+
+        /* ── Right Panel: Chat & Agent Console ── */
+        #right-panel {
+            grid-row: 2 / 4;
+            display: flex; flex-direction: column;
+            border-left: 1px solid var(--border-dim);
+            background: rgba(6, 3, 16, 0.6);
+        }
+
+        #chat-header {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 10px; font-weight: 600;
+            letter-spacing: 2.5px; text-transform: uppercase;
+            color: var(--accent-primary);
+            display: flex; align-items: center; gap: 8px;
+        }
+        #chat-header .model-badge {
+            font-size: 9px; font-weight: 500;
+            padding: 2px 8px; border-radius: 10px;
+            background: rgba(232, 121, 249, 0.12);
+            color: var(--accent-hot);
+            border: 1px solid rgba(232, 121, 249, 0.25);
+            letter-spacing: 1px;
+        }
+
+        #chat-messages {
+            flex: 1; overflow-y: auto;
+            padding: 16px;
+            display: flex; flex-direction: column; gap: 12px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-primary) transparent;
+        }
+
+        .msg {
+            max-width: 92%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.55;
+            animation: msg-in 0.3s ease-out;
+        }
+        @keyframes msg-in {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(129, 140, 248, 0.15));
+            border: 1px solid rgba(167, 139, 250, 0.2);
+            color: var(--text-bright);
+        }
+        .msg.ai {
+            align-self: flex-start;
+            background: rgba(16, 12, 36, 0.6);
+            border: 1px solid var(--border-dim);
+            border-left: 3px solid var(--accent-hot);
+            color: var(--text-mid);
+        }
+        .msg .msg-meta {
+            font-size: 9px; color: var(--text-dim);
+            margin-bottom: 4px; font-family: var(--font-mono);
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .msg.ai .msg-meta { color: var(--accent-hot); }
+
+        .typing-indicator {
+            display: flex; gap: 4px; padding: 4px 0;
+        }
+        .typing-indicator span {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent-pulse);
+            animation: typing 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        #chat-input-area {
+            padding: 14px;
+            border-top: 1px solid var(--border-dim);
+        }
+        #chat-input {
+            width: 100%; padding: 12px 16px;
+            background: rgba(12, 8, 28, 0.8);
+            border: 1px solid var(--border-dim);
+            border-radius: 10px;
+            color: var(--text-bright);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            outline: none;
+            transition: all var(--transition);
+        }
+        #chat-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+        }
+        #chat-input::placeholder { color: var(--text-dim); }
+
+        /* ── Bottom Terminal ── */
+        #terminal-panel {
+            overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        #terminal-header {
+            padding: 8px 16px;
+            font-size: 9px; font-weight: 600;
+            letter-spacing: 2.5px; text-transform: uppercase;
+            color: var(--accent-ice);
+            border-bottom: 1px solid var(--border-dim);
+            display: flex; align-items: center; gap: 8px;
+        }
+        #terminal-output {
+            flex: 1; overflow-y: auto; padding: 12px 16px;
+            font-family: var(--font-mono); font-size: 11px;
+            line-height: 1.6; color: var(--text-dim);
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-ice) transparent;
+        }
+        .log-line { margin-bottom: 2px; }
+        .log-tag {
+            font-weight: 700; margin-right: 6px;
+        }
+        .tag-quorum { color: var(--accent-primary); }
+        .tag-gossip { color: var(--accent-ice); }
+        .tag-breath { color: var(--accent-hot); }
+        .tag-model { color: var(--accent-plasma); }
+        .tag-system { color: var(--text-dim); }
+        .tag-consensus { color: var(--accent-ember); }
+
+        /* ── Quorum Node Grid (bottom of left panel) ── */
+        .quorum-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 3px;
+            margin-top: 8px;
+        }
+        .q-node {
+            aspect-ratio: 1;
+            border-radius: 3px;
+            transition: all 0.5s;
+            position: relative;
+        }
+        .q-node.active {
+            background: var(--accent-primary);
+            box-shadow: 0 0 6px rgba(167, 139, 250, 0.4);
+        }
+        .q-node.voting {
+            background: var(--accent-hot);
+            animation: node-vote 0.8s ease-in-out infinite alternate;
+        }
+        .q-node.idle {
+            background: rgba(120, 80, 220, 0.1);
+        }
+        @keyframes node-vote {
+            from { box-shadow: 0 0 2px rgba(232, 121, 249, 0.3); }
+            to { box-shadow: 0 0 10px rgba(232, 121, 249, 0.6); }
+        }
+
+        /* ── Model Selector Dropdown ── */
+        .model-select {
+            width: 100%; padding: 8px 12px;
+            background: rgba(12, 8, 28, 0.8);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            color: var(--text-bright);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            transition: all var(--transition);
+        }
+        .model-select:focus {
+            border-color: var(--accent-primary);
+        }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(167, 139, 250, 0.3); border-radius: 4px; }
+
+        /* ── Responsive ── */
+        @media (max-width: 1200px) {
+            #app { grid-template-columns: 280px 1fr 320px; }
+        }
+        @media (max-width: 900px) {
+            #app { grid-template-columns: 1fr; grid-template-rows: 56px 1fr; }
+            #left-panel, #right-panel { display: none; }
+            #terminal-panel { display: none; }
+            #hexeract-viewport { grid-row: 2; grid-column: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="star-canvas" class="star-field"></canvas>
+
+<div id="app">
+    <!-- ═══ TOP BAR ═══ -->
+    <header id="topbar">
+        <div class="logo">
+            <div class="hex-icon"></div>
+            SIMS1337 HEXERACT
+        </div>
+        <div class="topbar-metrics">
+            <div class="topbar-metric">
+                <div class="dot" style="background: var(--accent-primary); color: var(--accent-primary);"></div>
+                <span class="label">Vertices</span>
+                <span class="value">64</span>
+            </div>
+            <div class="topbar-metric">
+                <div class="dot" style="background: var(--accent-hot); color: var(--accent-hot);"></div>
+                <span class="label">Edges</span>
+                <span class="value">192</span>
+            </div>
+            <div class="topbar-metric">
+                <div class="dot" style="background: var(--accent-ice); color: var(--accent-ice);"></div>
+                <span class="label">Cubic Cells</span>
+                <span class="value">160</span>
+            </div>
+            <div class="topbar-metric">
+                <div class="dot" style="background: var(--accent-ember); color: var(--accent-ember);"></div>
+                <span class="label">Quorum</span>
+                <span class="value" id="quorum-status">43/64</span>
+            </div>
+            <div class="topbar-metric">
+                <div class="dot" style="background: var(--accent-pulse); color: var(--accent-pulse);"></div>
+                <span class="label">Phase</span>
+                <span class="value" id="topbar-phase">INHALE</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══ LEFT PANEL ═══ -->
+    <aside id="left-panel">
+        <!-- Hexeract Parameters -->
+        <section class="panel-section glass">
+            <h3>Hexeract Parameters</h3>
+            <div class="metric-row"><span class="mk">Dimension (n)</span><span class="mv" style="color:var(--accent-primary)">6</span></div>
+            <div class="metric-row"><span class="mk">6-Volume (L⁶)</span><span class="mv" style="color:var(--accent-ice)">1.000</span></div>
+            <div class="metric-row"><span class="mk">Space Diagonal</span><span class="mv" style="color:var(--accent-hot)">L√6 ≈ 2.449</span></div>
+            <div class="metric-row"><span class="mk">Circumradius</span><span class="mv" style="color:var(--accent-plasma)">L√6/2</span></div>
+            <div class="metric-row"><span class="mk">5-Cube Facets</span><span class="mv" style="color:var(--accent-primary)">12</span></div>
+            <div class="metric-row"><span class="mk">Tesseract 4-Faces</span><span class="mv" style="color:var(--accent-ember)">60</span></div>
+            <div class="metric-row"><span class="mk">Square Faces</span><span class="mv" style="color:var(--accent-ice)">240</span></div>
+        </section>
+
+        <!-- Viscoelastic Dynamics -->
+        <section class="panel-section glass">
+            <h3>Heartbeat Dynamics</h3>
+            <div class="gauge-container">
+                <div class="gauge-label"><span class="gl">Viscosity η(γ̇)</span><span class="gv" id="viscosity-val">0.42</span></div>
+                <div class="gauge-track"><div class="gauge-fill" id="viscosity-bar" style="width:42%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-hot));"></div></div>
+            </div>
+            <div class="gauge-container">
+                <div class="gauge-label"><span class="gl">Strain Rate γ̇</span><span class="gv" id="strain-val">0.68</span></div>
+                <div class="gauge-track"><div class="gauge-fill" id="strain-bar" style="width:68%; background: linear-gradient(90deg, var(--accent-ice), var(--accent-plasma));"></div></div>
+            </div>
+            <div class="gauge-container">
+                <div class="gauge-label"><span class="gl">Stress τ / τ_yield</span><span class="gv" id="stress-val">0.31</span></div>
+                <div class="gauge-track"><div class="gauge-fill" id="stress-bar" style="width:31%; background: linear-gradient(90deg, var(--accent-plasma), var(--accent-ember));"></div></div>
+            </div>
+            <div class="gauge-container">
+                <div class="gauge-label"><span class="gl">Heartbeat ω_h</span><span class="gv" id="heartbeat-val">1.20 Hz</span></div>
+                <div class="gauge-track"><div class="gauge-fill" id="heartbeat-bar" style="width:60%; background: linear-gradient(90deg, var(--accent-hot), var(--accent-pulse));"></div></div>
+            </div>
+        </section>
+
+        <!-- State Space Axes -->
+        <section class="panel-section glass">
+            <h3>6D State Axes</h3>
+            <div class="metric-row"><span class="mk">x₁ Entity Class</span><span class="mv" style="color:var(--accent-primary)" id="ax1">MODEL</span></div>
+            <div class="metric-row"><span class="mk">x₂ Temporal</span><span class="mv" style="color:var(--accent-ice)" id="ax2">t=0 (NOW)</span></div>
+            <div class="metric-row"><span class="mk">x₃ Comp. Load η</span><span class="mv" style="color:var(--accent-hot)" id="ax3">0.42</span></div>
+            <div class="metric-row"><span class="mk">x₄ Code Δ</span><span class="mv" style="color:var(--accent-plasma)" id="ax4">0.08</span></div>
+            <div class="metric-row"><span class="mk">x₅ Consensus W</span><span class="mv" style="color:var(--accent-ember)" id="ax5">0.87</span></div>
+            <div class="metric-row"><span class="mk">x₆ Topology Shard</span><span class="mv" style="color:var(--accent-pulse)" id="ax6">CORE-0</span></div>
+        </section>
+
+        <!-- SLM Model Selector -->
+        <section class="panel-section glass">
+            <h3>SLM Agent Router</h3>
+            <select class="model-select" id="model-selector">
+                <option value="qwen2.5:3b">qwen2.5:3b</option>
+                <option value="qwen2.5-coder:3b">qwen2.5-coder:3b</option>
+                <option value="phi3:mini">phi3:mini</option>
+                <option value="gemma2:2b">gemma2:2b</option>
+                <option value="codellama:7b">codellama:7b</option>
+                <option value="deepseek-r1:1.5b">deepseek-r1:1.5b</option>
+                <option value="llama3.2:1b">llama3.2:1b</option>
+                <option value="tinyllama:1.1b">tinyllama:1.1b</option>
+                <option value="smollm2:360m">smollm2:360m</option>
+                <option value="qwen2.5:0.5b">qwen2.5:0.5b</option>
+            </select>
+            <button class="btn" onclick="runKarooEvolution()" style="margin-top:10px;">⬡ Run Karoo Evolution</button>
+            <button class="btn hot" onclick="forceEpochShock()" style="margin-top:6px;">⚡ Force Epoch Shock</button>
+        </section>
+
+        <!-- Quorum Vertex Grid -->
+        <section class="panel-section glass">
+            <h3>Quorum Vertices (64)</h3>
+            <div class="quorum-grid" id="quorum-grid"></div>
+            <div class="metric-row" style="margin-top:10px;">
+                <span class="mk">Threshold ⅔</span>
+                <span class="mv" style="color:var(--accent-hot)" id="q-threshold">43 / 64</span>
+            </div>
+        </section>
+    </aside>
+
+    <!-- ═══ CENTER: HEXERACT VIEWPORT ═══ -->
+    <main id="hexeract-viewport">
+        <canvas id="hexeract-canvas"></canvas>
+        <div id="breath-overlay">
+            <div id="breath-phase">
+                <div class="indicator" id="breath-dot"></div>
+                <span id="breath-label" style="color:var(--text-mid)">INHALE</span>
+            </div>
+            <svg id="breath-wave" viewBox="0 0 120 24">
+                <path id="breath-path" fill="none" stroke="var(--accent-pulse)" stroke-width="1.5" d="M0,12 Q30,12 60,12 Q90,12 120,12"/>
+            </svg>
+            <span style="color:var(--text-dim); font-size:10px;" id="breath-freq">ω = 1.20 Hz</span>
+        </div>
+    </main>
+
+    <!-- ═══ RIGHT PANEL: CHAT ═══ -->
+    <aside id="right-panel">
+        <div id="chat-header">
+            Agent Console
+            <span class="model-badge" id="active-model-badge">qwen2.5:3b</span>
+        </div>
+        <div id="chat-messages">
+            <div class="msg ai">
+                <div class="msg-meta">HEXERACT KERNEL</div>
+                Breathing Hexeract online. 64 vertices pulsing across 6 dimensions. Quorum threshold locked at ⅔ supermajority. Awaiting directives.
+            </div>
+        </div>
+        <div id="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Send directive to SLM agent..." autocomplete="off">
+        </div>
+    </aside>
+
+    <!-- ═══ BOTTOM: TERMINAL ═══ -->
+    <section id="terminal-panel" class="glass">
+        <div id="terminal-header">⬡ Gossip Propagation Log</div>
+        <div id="terminal-output" style="display: flex; flex-direction: column;"></div>
+    </section>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   SIMS1337 BREATHING HEXERACT ENGINE
+   6D Hypercube with Viscoelastic Heartbeat Dynamics
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// ── Star Field Background ──
+(function initStarField() {
+    const c = document.getElementById('star-canvas');
+    const ctx = c.getContext('2d');
+    let w, h, stars = [];
+    function resize() {
+        w = c.width = window.innerWidth;
+        h = c.height = window.innerHeight;
+    }
+    function createStars(n) {
+        stars = [];
+        for (let i = 0; i < n; i++) {
+            stars.push({
+                x: Math.random() * w, y: Math.random() * h,
+                r: Math.random() * 1.2 + 0.2,
+                a: Math.random() * 0.6 + 0.2,
+                speed: Math.random() * 0.0003 + 0.0001,
+                phase: Math.random() * Math.PI * 2
+            });
+        }
+    }
+    function draw(t) {
+        ctx.clearRect(0, 0, w, h);
+        stars.forEach(s => {
+            const flicker = 0.5 + 0.5 * Math.sin(t * s.speed * 1000 + s.phase);
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(200, 180, 255, ${s.a * flicker})`;
+            ctx.fill();
+        });
+        requestAnimationFrame(draw);
+    }
+    resize(); createStars(300);
+    window.addEventListener('resize', () => { resize(); createStars(300); });
+    requestAnimationFrame(draw);
+})();
+
+// ── 6D Hypercube Geometry ──
+// Generate all 64 vertices of the 6-cube in {-1, +1}^6
+function generateHexeractVertices() {
+    const verts = [];
+    for (let i = 0; i < 64; i++) {
+        const v = [];
+        for (let d = 0; d < 6; d++) {
+            v.push((i >> d) & 1 ? 1 : -1);
+        }
+        verts.push(v);
+    }
+    return verts;
+}
+
+// Generate 192 edges: connect vertices differing in exactly 1 coordinate
+function generateHexeractEdges(vertices) {
+    const edges = [];
+    for (let i = 0; i < vertices.length; i++) {
+        for (let j = i + 1; j < vertices.length; j++) {
+            let diff = 0;
+            for (let d = 0; d < 6; d++) {
+                if (vertices[i][d] !== vertices[j][d]) diff++;
+            }
+            if (diff === 1) edges.push([i, j]);
+        }
+    }
+    return edges;
+}
+
+// Project 6D → 3D using composition of rotations in pairs of planes
+function project6Dto3D(v6, angles) {
+    // Apply rotations in planes: (0,3), (1,4), (2,5), (0,4), (1,5), (2,3)
+    let v = [...v6];
+    const rotations = [
+        [0, 3], [1, 4], [2, 5],
+        [0, 4], [1, 5], [2, 3],
+        [0, 5], [1, 3], [2, 4]
+    ];
+    for (let r = 0; r < rotations.length; r++) {
+        const [a, b] = rotations[r];
+        const angle = angles[r % angles.length];
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const va = v[a], vb = v[b];
+        v[a] = va * cos - vb * sin;
+        v[b] = va * sin + vb * cos;
+    }
+    // Take first 3 coordinates as projection
+    return [v[0], v[1], v[2]];
+}
+
+// Project 3D → 2D with perspective
+function project3Dto2D(v3, cx, cy, fov, cameraZ) {
+    const scale = fov / (cameraZ + v3[2]);
+    return {
+        x: cx + v3[0] * scale,
+        y: cy + v3[1] * scale,
+        z: v3[2],
+        scale: scale
+    };
+}
+
+// ── Viscoelastic Heartbeat Dynamics ──
+const heartbeat = {
+    omega: 1.2,           // Heartbeat angular frequency
+    eta0: 0.8,            // Zero-shear viscosity
+    etaInf: 0.1,          // Infinite-shear viscosity floor
+    lambda: 2.0,          // Relaxation time constant
+    n: 0.6,               // Shear-thinning index (n < 1)
+    amplitude: 0.4,       // Breathing amplitude
+    phase: 0,             // Current phase
+    breathing: true
+};
+
+function carreau(strainRate) {
+    // Carreau-Yasuda model: η(γ̇) = η∞ + (η0 - η∞) * (1 + (λγ̇)²)^((n-1)/2)
+    const term = 1 + Math.pow(heartbeat.lambda * strainRate, 2);
+    return heartbeat.etaInf + (heartbeat.eta0 - heartbeat.etaInf) * Math.pow(term, (heartbeat.n - 1) / 2);
+}
+
+function breathField(t) {
+    // ψ(t) = A * sin(ωt) * e^(-η/ρ * damping)
+    const psi = heartbeat.amplitude * Math.sin(heartbeat.omega * t);
+    const phase = Math.cos(heartbeat.omega * t) > 0 ? 'INHALE' : 'EXHALE';
+    const strainRate = Math.abs(heartbeat.omega * heartbeat.amplitude * Math.cos(heartbeat.omega * t));
+    const viscosity = carreau(strainRate);
+    const stress = viscosity * strainRate;
+    return { psi, phase, viscosity, strainRate, stress };
+}
+
+// ── Quorum Grid ──
+const quorumGrid = document.getElementById('quorum-grid');
+const quorumNodes = [];
+for (let i = 0; i < 64; i++) {
+    const node = document.createElement('div');
+    node.className = 'q-node idle';
+    quorumGrid.appendChild(node);
+    quorumNodes.push(node);
+}
+
+function updateQuorum(t) {
+    let active = 0;
+    quorumNodes.forEach((node, i) => {
+        const threshold = 0.3 + 0.4 * Math.sin(t * 0.5 + i * 0.15);
+        const hash = Math.sin(i * 12.9898 + t * 0.3) * 43758.5453;
+        const val = hash - Math.floor(hash);
+        if (val > 0.3) {
+            node.className = 'q-node active';
+            active++;
+        } else if (val > 0.15) {
+            node.className = 'q-node voting';
+            active++;
+        } else {
+            node.className = 'q-node idle';
+        }
+    });
+    document.getElementById('q-threshold').textContent = `${active} / 64`;
+    document.getElementById('quorum-status').textContent = `${active}/64`;
+    return active >= 43;
+}
+
+// ── Main Hexeract Renderer ──
+const canvas = document.getElementById('hexeract-canvas');
+const ctx = canvas.getContext('2d');
+const vertices6D = generateHexeractVertices();
+const edges = generateHexeractEdges(vertices6D);
+
+function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Color palette for depth encoding (no green!)
+function depthColor(z, alpha) {
+    // Map z from roughly [-3, 3] to color spectrum
+    const t = (z + 3) / 6; // 0..1
+    const r = Math.floor(120 + 100 * t);
+    const g = Math.floor(60 + 60 * (1 - t));
+    const b = Math.floor(200 + 55 * Math.sin(t * Math.PI));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function hslColor(hue, saturation, lightness, alpha) {
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+}
+
+let mouseX = 0, mouseY = 0;
+canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+});
+
+// Breath waveform SVG
+const breathPath = document.getElementById('breath-path');
+function updateBreathWave(t) {
+    const points = [];
+    for (let x = 0; x <= 120; x += 2) {
+        const y = 12 + 8 * Math.sin(heartbeat.omega * (t - x * 0.03));
+        points.push(`${x},${y.toFixed(1)}`);
+    }
+    breathPath.setAttribute('d', 'M' + points.join(' L'));
+}
+
+let time = 0;
+
+function render() {
+    time += 0.016;
+    const w = canvas.width / window.devicePixelRatio;
+    const h = canvas.height / window.devicePixelRatio;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // ── Breathing dynamics ──
+    const breath = breathField(time);
+    const breathScale = 1.0 + breath.psi * 0.3; // Hexeract breathing scale
+
+    // Update UI gauges
+    document.getElementById('viscosity-val').textContent = breath.viscosity.toFixed(3);
+    document.getElementById('viscosity-bar').style.width = (breath.viscosity * 100) + '%';
+    document.getElementById('strain-val').textContent = breath.strainRate.toFixed(3);
+    document.getElementById('strain-bar').style.width = Math.min(100, breath.strainRate * 100) + '%';
+    document.getElementById('stress-val').textContent = breath.stress.toFixed(3);
+    document.getElementById('stress-bar').style.width = Math.min(100, breath.stress * 50) + '%';
+
+    // Breath overlay
+    const breathDot = document.getElementById('breath-dot');
+    const breathLabel = document.getElementById('breath-label');
+    if (breath.phase === 'INHALE') {
+        breathDot.style.background = 'var(--accent-ice)';
+        breathDot.style.boxShadow = '0 0 10px var(--accent-ice)';
+        breathLabel.textContent = 'INHALE';
+        breathLabel.style.color = 'var(--accent-ice)';
+    } else {
+        breathDot.style.background = 'var(--accent-hot)';
+        breathDot.style.boxShadow = '0 0 10px var(--accent-hot)';
+        breathLabel.textContent = 'EXHALE';
+        breathLabel.style.color = 'var(--accent-hot)';
+    }
+    document.getElementById('topbar-phase').textContent = breath.phase;
+    updateBreathWave(time);
+
+    // ── Rotation angles (slow, organic rotation through 6D) ──
+    const angles = [
+        time * 0.15,
+        time * 0.23,
+        time * 0.11,
+        time * 0.18 + Math.sin(time * 0.3) * 0.2,
+        time * 0.09,
+        time * 0.27
+    ];
+
+    // Project all vertices
+    const cx = w / 2;
+    const cy = h / 2;
+    const baseRadius = Math.min(w, h) * 0.28;
+    const fov = baseRadius * breathScale;
+
+    const projected = vertices6D.map(v => {
+        const v3 = project6Dto3D(v, angles);
+        return project3Dto2D(v3, cx, cy, fov, 5);
+    });
+
+    // ── Draw nebula glow at center ──
+    const pulseAlpha = 0.03 + 0.02 * Math.sin(time * heartbeat.omega);
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseRadius * 1.5);
+    grad.addColorStop(0, `rgba(160, 100, 255, ${pulseAlpha * 2})`);
+    grad.addColorStop(0.3, `rgba(200, 80, 240, ${pulseAlpha})`);
+    grad.addColorStop(0.6, `rgba(120, 60, 200, ${pulseAlpha * 0.5})`);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // ── Draw edges (192) ──
+    // Sort edges by average depth for proper rendering
+    const edgesWithDepth = edges.map(([i, j]) => ({
+        i, j,
+        avgZ: (projected[i].z + projected[j].z) / 2
+    }));
+    edgesWithDepth.sort((a, b) => a.avgZ - b.avgZ);
+
+    edgesWithDepth.forEach(({ i, j, avgZ }) => {
+        const p1 = projected[i];
+        const p2 = projected[j];
+        const depth = (avgZ + 3) / 6; // Normalize to 0..1
+        const alpha = 0.08 + 0.25 * depth;
+
+        // Hue shifts through purple→magenta→blue based on depth, never green
+        const hue = 260 + depth * 60; // 260 (blue-violet) to 320 (magenta)
+        const saturation = 60 + 20 * Math.sin(time * 0.5 + i * 0.1);
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = hslColor(hue, saturation, 60 + 15 * depth, alpha);
+        ctx.lineWidth = 0.5 + 1.0 * depth;
+        ctx.stroke();
+    });
+
+    // ── Draw vertices (64) ──
+    // Sort by depth for proper layering
+    const sortedVerts = projected.map((p, idx) => ({ ...p, idx })).sort((a, b) => a.z - b.z);
+
+    sortedVerts.forEach(p => {
+        const depth = (p.z + 3) / 6;
+        const radius = 1.5 + 3.5 * depth;
+        const alpha = 0.3 + 0.7 * depth;
+
+        // Vertex color: purple → pink → lavender, no green
+        const hue = 270 + depth * 50 + Math.sin(time + p.idx * 0.3) * 15;
+
+        // Outer glow
+        const glowRadius = radius * 3;
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowRadius);
+        glow.addColorStop(0, hslColor(hue, 80, 70, alpha * 0.5));
+        glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Core vertex
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = hslColor(hue, 75, 75, alpha);
+        ctx.fill();
+
+        // Bright center dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius * 0.4, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 240, 255, ${alpha * 0.8})`;
+        ctx.fill();
+    });
+
+    // ── Gossip propagation wave rings ──
+    const wavePhase = (time * heartbeat.omega) % (Math.PI * 2);
+    const waveCount = 3;
+    for (let w = 0; w < waveCount; w++) {
+        const waveT = (wavePhase + w * Math.PI * 2 / waveCount) % (Math.PI * 2);
+        const waveRadius = (waveT / (Math.PI * 2)) * baseRadius * 1.8;
+        const waveAlpha = 0.15 * (1 - waveT / (Math.PI * 2));
+        if (waveAlpha > 0.01) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, waveRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(200, 130, 252, ${waveAlpha})`;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+    }
+
+    // ── Update quorum ──
+    if (Math.floor(time * 2) % 2 === 0) {
+        updateQuorum(time);
+    }
+
+    requestAnimationFrame(render);
+}
+
+render();
+
+// ── Terminal Logging ──
+const termOutput = document.getElementById('terminal-output');
+const logTags = ['QUORUM', 'GOSSIP', 'BREATH', 'MODEL', 'SYSTEM', 'CONSENSUS'];
+const tagClasses = { QUORUM: 'tag-quorum', GOSSIP: 'tag-gossip', BREATH: 'tag-breath', MODEL: 'tag-model', SYSTEM: 'tag-system', CONSENSUS: 'tag-consensus' };
+
+function termLog(tag, msg) {
+    const el = document.createElement('div');
+    el.className = 'log-line';
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+    el.innerHTML = `<span style="color:var(--text-dim)">${ts}</span> <span class="log-tag ${tagClasses[tag] || 'tag-system'}">[${tag}]</span> ${msg}`;
+    termOutput.appendChild(el);
+    if (termOutput.children.length > 200) termOutput.removeChild(termOutput.firstChild);
+    termOutput.scrollTop = termOutput.scrollHeight;
+}
+
+// Simulate gossip propagation logs
+const gossipMessages = [
+    'Anti-entropy vector exchanged across edge e₁₇₃',
+    'State sync: vertex v₄₂ → v₄₃ (Δ = 0.003)',
+    'Propagation coefficient α = 0.92 on sub-face F₅',
+    'Gossip push: model checkpoint hash dispatched to 6 neighbors',
+    'Edge dilation: 192 channels at η_min throughput',
+    'Thread scheduling across PID cluster (N₃ = 160 cells)',
+    'Phase velocity v_p = √(K/ρ₀) matched to packet rate',
+    'Attenuation distance δ_p within diagonal bound L√6',
+    'Relaxation time λ = 2.0s — contention backlog clearing',
+    'Quorum k-face consensus: 160 cubic cells evaluated',
+    'Byzantine fault tolerance: f < 22 nodes tolerated',
+    'Homological closure: δ⁰q* = 0 verified on active sub-complex',
+    'Code delta ΔC committed to repository timeline',
+    'Carreau-Yasuda shear thinning active: n = 0.6',
+    'Bulk modulus K stable — elastic response nominal',
+];
+
+setInterval(() => {
+    const tag = logTags[Math.floor(Math.random() * logTags.length)];
+    const msg = gossipMessages[Math.floor(Math.random() * gossipMessages.length)];
+    termLog(tag, msg);
+}, 2500);
+
+// Initial logs
+termLog('SYSTEM', 'Breathing Hexeract Engine v0.18.1 initialized');
+termLog('SYSTEM', '64 vertices × 192 edges × 160 cubic cells online');
+termLog('BREATH', 'Viscoelastic heartbeat ω_h = 1.20 Hz engaged');
+termLog('QUORUM', 'Threshold ⅔ supermajority = 43/64 vertices');
+termLog('GOSSIP', 'Anti-entropy gossip protocol active on all 192 edges');
+termLog('CONSENSUS', 'Topological homology: β₁ = 0 — no partition deadlocks');
+
+// ── Chat with Ollama ──
+const chatInput = document.getElementById('chat-input');
+const chatMessages = document.getElementById('chat-messages');
+const modelSelector = document.getElementById('model-selector');
+const modelBadge = document.getElementById('active-model-badge');
+
+modelSelector.addEventListener('change', () => {
+    modelBadge.textContent = modelSelector.value;
+    termLog('MODEL', `Router switched to ${modelSelector.value}`);
+});
+
+chatInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && chatInput.value.trim()) {
+        const userMsg = chatInput.value.trim();
+        chatInput.value = '';
+
+        // User message
+        const userDiv = document.createElement('div');
+        userDiv.className = 'msg user';
+        userDiv.innerHTML = `<div class="msg-meta">YOU</div>${escapeHtml(userMsg)}`;
+        chatMessages.appendChild(userDiv);
+
+        // Typing indicator
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'msg ai';
+        typingDiv.innerHTML = `<div class="msg-meta">${modelSelector.value.toUpperCase()}</div><div class="typing-indicator"><span></span><span></span><span></span></div>`;
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        termLog('MODEL', `Directive routed to ${modelSelector.value}: "${userMsg.substring(0, 50)}..."`);
+
+        try {
+            const res = await fetch('http://127.0.0.1:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: modelSelector.value,
+                    prompt: userMsg,
+                    stream: false
+                })
+            });
+            const data = await res.json();
+            typingDiv.innerHTML = `<div class="msg-meta">${modelSelector.value.toUpperCase()}</div>${escapeHtml(data.response || 'No response')}`;
+            termLog('MODEL', `Response received (${(data.total_duration / 1e9).toFixed(2)}s)`);
+        } catch (err) {
+            typingDiv.innerHTML = `<div class="msg-meta">SYSTEM</div><span style="color:var(--accent-ember)">Connection to Ollama failed. Ensure it is running on port 11434.</span>`;
+            termLog('SYSTEM', `Ollama connection error: ${err.message}`);
+        }
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+});
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ── Action Buttons ──
+function runKarooEvolution() {
+    termLog('MODEL', 'Karoo GP evolution cycle initiated');
+    termLog('QUORUM', 'Proposal broadcast to 64 vertices for fitness evaluation');
+    setTimeout(() => termLog('CONSENSUS', 'Evolution proposal accepted: 48/64 vertices agree'), 2000);
+    setTimeout(() => termLog('GOSSIP', 'Mutated state committed to hexeract timeline t → t+1'), 3500);
+}
+
+function forceEpochShock() {
+    termLog('BREATH', '⚡ EPOCH SHOCK — Forcing τ > τ_yield');
+    termLog('SYSTEM', 'Shear thinning activated: auto-scaling PIDs across 64 vertices');
+    heartbeat.omega *= 1.5;
+    setTimeout(() => {
+        heartbeat.omega /= 1.5;
+        termLog('BREATH', 'Heartbeat frequency restored to nominal ω_h');
+    }, 5000);
+}
+
+// ── Dynamic state axis updates ──
+const entityClasses = ['MODEL', 'SERVER', 'PID', 'REPO', 'AGENT', 'COMMIT'];
+const shards = ['CORE-0', 'SHARD-1', 'SHARD-2', 'EDGE-3', 'RELAY-4', 'BRIDGE-5'];
+setInterval(() => {
+    document.getElementById('ax1').textContent = entityClasses[Math.floor(Math.random() * entityClasses.length)];
+    const tVal = (Math.sin(time * 0.1) * 10).toFixed(1);
+    document.getElementById('ax2').textContent = `t=${tVal}`;
+    document.getElementById('ax3').textContent = document.getElementById('viscosity-val').textContent;
+    document.getElementById('ax4').textContent = (Math.random() * 0.2).toFixed(3);
+    document.getElementById('ax5').textContent = (0.6 + Math.random() * 0.4).toFixed(3);
+    document.getElementById('ax6').textContent = shards[Math.floor(Math.random() * shards.length)];
+}, 3000);
+</script>
+</body>
+</html>

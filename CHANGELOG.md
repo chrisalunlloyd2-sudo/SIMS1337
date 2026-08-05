@@ -2,6 +2,17 @@
 
 ---
 
+## [0.2.1] - 2026-08-04 - PHASE 1C: CRASH RECOVERY & DOCS
+
+### Added — Emergency Recovery Procedures
+- **Crash Recovery Protocol**: Initiated agent mesh restart and diagnostic procedures.
+- **NEVER-MAKE-CODE-TWICE DATABASE**: Created SQLite registry for code tracking, deduplication, and hashing.
+- **scan_and_register.py**: Python script to populate database with project source files.
+- **BLUEPRINT.md**: Added system architecture and Hexeract topology.
+- **README.md**: Rebuilt master README with ASCII art and topological tree.
+
+---
+
 ## [0.18.1] - 2026-07-28 - FOW VOTING HOOKUP
 
 ### Added — FOW-Gated Voting System

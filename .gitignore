@@ -1,1 +1,20 @@
-__pycache__/
+# Node
+web/node_modules/
+node_modules/
+
+# Java build
+build/
+target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DB locks
+*.db-journal
+*.db-wal
