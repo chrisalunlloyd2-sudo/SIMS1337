@@ -17,6 +17,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Added]** feat: Phase 23-24 ΓÇö TocTokTree + World Desktop + NyxGate + PipelineScheduler + WebDashboard V2 ($hash)
 - **[Added]** feat: evidence logging + audio routing wired into votes + MMF scripts ($hash)
 - **[Fixed]** fix: Maslow needs populated with hardcoded model list (installedModels not ready at init) ($hash)
-- **[Added]** feat: Maslow hierarchy + Euler DB + Audio pipeline + Cloudflare clock + Evidence log ($hash)
 
