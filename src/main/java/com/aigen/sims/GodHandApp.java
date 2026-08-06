@@ -45,9 +45,9 @@ import java.net.InetSocketAddress;
 import java.io.IOException;
 
 /**
- * SIMS1337 v0.24.0 - GodHandApp
+ * SIMS1337 v0.25.0 - GodHandApp
  * Pure Programmatic JavaFX GUI
- * 6D Hexeract Geospatial Manifold Visualizer with Moveable Windows
+ * 6D Hexeract Geospatial Manifold Visualizer with Moveable Windows and KQML Message Bus
  */
 public class GodHandApp extends Application {
     private static final int WIDTH = 1280;
@@ -89,13 +89,14 @@ public class GodHandApp extends Application {
     private double[] flows = new double[64];
     private int hoveredVertexIdx = -1;
     
-    // Rheological States
+    // Rheological & Stability States
     private double viscosity = 0.420;
     private double strainRate = 0.681;
     private double stress = 0.312;
     private double heartbeatFreq = 1.20;
     private double storageModulus = 50.0;
     private double lossModulus = 35.0;
+    private double stressLevel = 0.15; // Dynamic stress indicator
     
     // Particle Swarm and Signal Pulses
     private List<Particle> particles = new ArrayList<>();
@@ -141,6 +142,8 @@ public class GodHandApp extends Application {
 
         canvas.setOnMouseClicked(e -> {
             if (hoveredVertexIdx != -1) {
+                // Clicking increases local stress level
+                stressLevel = Math.min(1.0, stressLevel + 0.08);
                 if (e.getButton() == MouseButton.PRIMARY) {
                     triggerPulse(hoveredVertexIdx);
                 } else if (e.getButton() == MouseButton.SECONDARY) {
@@ -159,6 +162,10 @@ public class GodHandApp extends Application {
             @Override
             public void handle(long now) {
                 timePulse += 0.02;
+                
+                // Decay stress level slowly towards baseline
+                stressLevel = Math.max(0.05, stressLevel - 0.001);
+                
                 if (now - lastMove > 10_000_000_000L) { // 10 seconds
                     lastMove = now;
                     triggerAutonomousInferenceMovement();
@@ -178,13 +185,13 @@ public class GodHandApp extends Application {
 
         // Window overlay container
         windowOverlay = new Pane();
-        windowOverlay.setPickOnBounds(false); // Let mouse events pass to canvas when clicking empty space
+        windowOverlay.setPickOnBounds(false); 
 
         // main StackPane root layout
         StackPane root = new StackPane();
         root.setStyle("-fx-background-color: #020106;");
         
-        // Horizontal glassmorphic launcher taskbar at the top
+        // Horizontal launcher taskbar (without reset button as requested)
         HBox taskbar = new HBox(12);
         taskbar.setAlignment(Pos.CENTER);
         taskbar.setStyle("-fx-background-color: rgba(15, 10, 36, 0.85); " +
@@ -193,7 +200,7 @@ public class GodHandApp extends Application {
                          "-fx-background-radius: 20; " +
                          "-fx-border-radius: 20; " +
                          "-fx-padding: 8 20;");
-        taskbar.setMaxSize(720, 50);
+        taskbar.setMaxSize(660, 50);
         StackPane.setAlignment(taskbar, Pos.TOP_CENTER);
         StackPane.setMargin(taskbar, new Insets(10, 0, 0, 0));
 
@@ -204,7 +211,7 @@ public class GodHandApp extends Application {
         btnNotes.setStyle(btnStyle);
         btnNotes.setOnAction(e -> openWindow("Viper Notes", createViperNotesView(), 420, 360));
 
-        Button btnChat = new Button("💬 Chat");
+        Button btnChat = new Button("💬 Chat (Karoo)");
         btnChat.setStyle(btnStyle);
         btnChat.setOnAction(e -> openWindow("Viper Chat", createViperChatView(), 420, 340));
 
@@ -224,17 +231,13 @@ public class GodHandApp extends Application {
         btnRebootCtrl.setStyle(btnStyle);
         btnRebootCtrl.setOnAction(e -> openWindow("Manifold Control", createManifoldControlView(), 240, 320));
 
-        Button btnReset = new Button("× Clear Windows");
-        btnReset.setStyle("-fx-background-color: #111; -fx-text-fill: #f472b6; -fx-font-family: monospace; -fx-border-color: #f472b6; -fx-border-radius: 12; -fx-background-radius: 12; -fx-cursor: hand;");
-        btnReset.setOnAction(e -> resetLayout());
-
-        taskbar.getChildren().addAll(btnNotes, btnChat, btnTraining, btnInterstitials, btnMoltbook, btnRebootCtrl, btnReset);
+        taskbar.getChildren().addAll(btnNotes, btnChat, btnTraining, btnInterstitials, btnMoltbook, btnRebootCtrl);
 
         root.getChildren().addAll(canvas, windowOverlay, taskbar);
 
         Scene scene = new Scene(root, WIDTH, HEIGHT);
         
-        primaryStage.setTitle("SIMS1337 v0.24.0 - 6D Hexeract Geospatial Manifold Organism");
+        primaryStage.setTitle("SIMS1337 v0.25.0 - 6D Hexeract Geospatial Manifold Organism");
         primaryStage.setScene(scene);
         primaryStage.show();
         
@@ -261,10 +264,6 @@ public class GodHandApp extends Application {
         windowOverlay.getChildren().add(win);
     }
 
-    private void resetLayout() {
-        windowOverlay.getChildren().clear();
-    }
-
     // --- Sub-Window View Generators ---
 
     private VBox createViperNotesView() {
@@ -281,8 +280,12 @@ public class GodHandApp extends Application {
             "Consensus Homology Hash: Vietoris-Rips alpha complex active.\n\n" +
             "Giesekus tensor updates:\n" +
             "d/dt(tau) + u.grad(tau) = (eta/lambda) * gamma_dot\n\n" +
-            "TODO: Link 22 system tools to coordinates.\n" +
-            "Distilled prior modules fully loaded from mmapped SSD."
+            "COSMIC BRAIN TECTONICS:\n" +
+            "- VoidFilaments: longrange conduits\n" +
+            "- StarTendrils: intake pattern structures\n" +
+            "- PulseGates: weightbased synaptic routers\n" +
+            "- Quasar Relays: switching selectors\n\n" +
+            "MMAp SSD Distillations fully mounted."
         );
         VBox.setVgrow(area, Priority.ALWAYS);
         
@@ -309,21 +312,20 @@ public class GodHandApp extends Application {
 
     private VBox createViperChatView() {
         VBox root = new VBox(8);
-        ComboBox<String> modelSelector = new ComboBox<>();
-        modelSelector.getItems().addAll("qwen2.5:3b", "deepseek-r1:1.5b", "tinyllama:1.1b", "qwen2.5:0.5b");
-        modelSelector.setValue("qwen2.5:3b");
-        modelSelector.setStyle("-fx-background-color: #0b0720; -fx-text-fill: #38bdf8; -fx-border-color: #c084fc;");
+        
+        Label modelLabel = new Label("Central Intelligence: Karoo (qwen2.5:3b)");
+        modelLabel.setStyle("-fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-font-size: 12px;");
         
         TextArea chatLog = new TextArea();
         chatLog.setEditable(false);
         chatLog.setPrefSize(400, 240);
         chatLog.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #f3e8ff; -fx-font-family: monospace; -fx-font-size: 11px;");
-        chatLog.setText("SYSTEM: Ready to chat with local SLMs inside coordinate manifold...\n");
+        chatLog.setText("KAROO: Awake. Standing by for lexical tool queries in 6D geospatial manifold...\n");
         VBox.setVgrow(chatLog, Priority.ALWAYS);
         
         HBox inputBar = new HBox(8);
         TextField inputField = new TextField();
-        inputField.setPromptText("Type your prompt here...");
+        inputField.setPromptText("Ask Karoo about github repos, tool servers, or stability...");
         inputField.setStyle("-fx-background-color: #0b0720; -fx-text-fill: white; -fx-border-color: #c084fc;");
         HBox.setHgrow(inputField, Priority.ALWAYS);
         
@@ -333,14 +335,35 @@ public class GodHandApp extends Application {
         Runnable sendAction = () -> {
             String prompt = inputField.getText().trim();
             if (!prompt.isEmpty()) {
-                String model = modelSelector.getValue();
                 chatLog.appendText("USER: " + prompt + "\n");
                 inputField.clear();
                 
+                // Trigger dynamic stress surge
+                stressLevel = Math.min(1.0, stressLevel + 0.12);
+                
+                // Inject real-time system context into Karoo prompt
+                StringBuilder context = new StringBuilder();
+                context.append("System Context Memory:\n");
+                context.append(String.format("- Viscosity: %.3f Pa.s\n- Stress: %.3f Pa\n- Strain Rate: %.3f s^-1\n- Heartbeat: %.2f Hz\n- Quorum: ACTIVE\n",
+                    viscosity, stress, strainRate, heartbeatFreq));
+                
+                if (prompt.toLowerCase().contains("github") || prompt.toLowerCase().contains("repo") || prompt.toLowerCase().contains("tool")) {
+                    context.append("- Mmapped SSD Shards loaded: 22 Tools, 120 GitHub Repositories. Root: C:\\Users\\viper\\local_desktop_main\\mmapped_distillations\n");
+                    context.append("- Active prior sharding coordinates bound directly to the 6D geospatial manifold.\n");
+                }
+                
+                context.append("\nInstructions:\n");
+                context.append("If lexical tools are required (e.g. query knowledge graph or look up LoRA weights), format queries like: [TOOL: KG_QUERY, query='...'] or [TOOL: LORA_LOAD]. Otherwise answer directly using Markov logic chains.\n");
+                context.append("\nUser Query: ").append(prompt);
+                
+                String finalPrompt = context.toString();
+                
                 threadPool.submit(() -> {
-                    String response = ollamaRouter.query(model, prompt);
+                    // Chat routed to qwen2.5:3b (Karoo)
+                    String response = ollamaRouter.query("qwen2.5:3b", finalPrompt);
                     Platform.runLater(() -> {
-                        chatLog.appendText(model.toUpperCase() + ": " + response + "\n");
+                        chatLog.appendText("KAROO: " + response + "\n\n");
+                        chatLog.selectPositionCaret(chatLog.getLength());
                         triggerPulse(rand.nextInt(64));
                     });
                 });
@@ -351,7 +374,7 @@ public class GodHandApp extends Application {
         inputField.setOnAction(e -> sendAction.run());
         
         inputBar.getChildren().addAll(inputField, sendBtn);
-        root.getChildren().addAll(modelSelector, chatLog, inputBar);
+        root.getChildren().addAll(modelLabel, chatLog, inputBar);
         return root;
     }
 
@@ -428,47 +451,39 @@ public class GodHandApp extends Application {
         VBox root = new VBox(8);
         root.setStyle("-fx-padding: 5;");
         
-        Label descLabel = new Label("Distilled SOP prior layers sitting between manifold vertices:");
+        Label descLabel = new Label("ACL/KQML Message Bus (Maslow Priority Queue):");
         descLabel.setStyle("-fx-text-fill: #c084fc; -fx-font-family: monospace; -fx-font-size: 11px;");
         
-        TextArea toolsArea = new TextArea();
-        toolsArea.setEditable(false);
-        toolsArea.setPrefSize(400, 260);
-        toolsArea.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #f472b6; -fx-font-family: monospace; -fx-font-size: 10px;");
-        
-        String[] tools = {
-            "START_LOGIC_BLOCKCHAIN", "START_TOPOLOGY_SIDECAR", "START_HOUSE_ENGINE",
-            "SPIN_UP_AGENT_NODE", "START_LAB_SUITE", "START_NOTES_SUITE",
-            "START_NOTES_TUNNEL", "LAUNCH_MOLTBOOK", "VECTOR_STORE_INDEX",
-            "SQLITE_MEMORY_DB", "GIST_SYNC_SERVICE", "OLLAMA_HIVE_DAEMON",
-            "MCTS_SAMPLER", "STABILITY_CHECKER", "HOMOLOGY_QUORUM",
-            "GIESEKUS_RHEOLOGY", "ADVERSARIAL_FUZZER", "METALOGIC_SUPERVISOR",
-            "EVOLUTION_ENGINE", "NEURAL_WATCHDOG", "CLEIBERS_SCALE_LAW",
-            "NYQUIST_SAMPLER"
-        };
+        TextArea msgArea = new TextArea();
+        msgArea.setEditable(false);
+        msgArea.setPrefSize(420, 260);
+        msgArea.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-font-size: 10px;");
         
         AnimationTimer updater = new AnimationTimer() {
             private long lastUpdate = 0;
             @Override
             public void handle(long now) {
-                if (now - lastUpdate > 1_000_000_000L) { // 1 second
+                if (now - lastUpdate > 1_500_000_000L) { // 1.5 seconds
                     lastUpdate = now;
-                    StringBuilder sb2 = new StringBuilder();
-                    sb2.append("COORDINATE | DISTILLATION SHARD | SHANNON ENTROPY | STATE\n");
-                    sb2.append("----------------------------------------------------------\n");
-                    for (int i = 0; i < tools.length; i++) {
-                        double entropy = 0.35 + 0.6 * Math.abs(Math.sin(timePulse + i * 0.7));
-                        sb2.append(String.format("[0x%02X]    | %-22s | H=%.4f bits   | %s\n",
-                            i, tools[i], entropy, entropy > 0.50 ? "OPEN (ACTIVE)" : "GATED (IDLE)"
-                        ));
-                    }
-                    toolsArea.setText(sb2.toString());
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("--- ACL/KQML MESSAGE QUEUE (MASLOW PRIORITIZED) ---\n");
+                    
+                    // SYSTEM Need (Priority 1)
+                    sb.append(String.format("[PRIORITY 1: SYSTEM] (tell\n  :sender StabilityDaemon\n  :receiver OllamaServer\n  :content (achieve :status \"active\" :heartbeat %.2f :stress %.2f))\n\n", heartbeatFreq, stressLevel));
+                    
+                    // OBJECTIVE (Priority 2)
+                    sb.append("[PRIORITY 2: OBJECTIVE] (ask-one\n  :sender Alpha\n  :receiver SQLiteMemory\n  :content (remembers :key \"repo_042\" :val \"Curvature projection weights\"))\n\n");
+                    
+                    // WANT (Priority 3)
+                    sb.append("[PRIORITY 3: WANT] (tell\n  :sender Beta\n  :receiver Gamma\n  :content (gossip :topic \"Orion Kernel Forge crystal stars alignment\"))\n");
+                    
+                    msgArea.setText(sb.toString());
                 }
             }
         };
         updater.start();
         
-        root.getChildren().addAll(descLabel, toolsArea);
+        root.getChildren().addAll(descLabel, msgArea);
         root.sceneProperty().addListener((obs, oldScene, newScene) -> {
             if (newScene == null) updater.stop();
         });
@@ -502,6 +517,7 @@ public class GodHandApp extends Application {
             private int turn = 0;
             private String[] agentsList = {"Alpha", "Beta", "Gamma", "Stability Daemon"};
             private String[] modelsList = {"qwen2.5:3b", "deepseek-r1:1.5b", "tinyllama:1.1b", "qwen2.5:0.5b"};
+            private String[] repos = {"repo_001", "repo_012", "repo_042", "repo_089", "repo_105", "repo_120"};
             private String[] topics = {
                 "Giesekus rheological flow attenuation along penteract edges",
                 "Entropy barrier limits of the Vietoris-Rips homology filtration",
@@ -517,10 +533,13 @@ public class GodHandApp extends Application {
                     lastChat = now;
                     String sender = agentsList[turn % 4];
                     String model = modelsList[turn % 4];
+                    String target = agentsList[(turn + 1) % 4];
+                    String repo = repos[rand.nextInt(repos.length)];
                     String topic = topics[rand.nextInt(topics.length)];
                     
                     threadPool.submit(() -> {
-                        String prompt = "You are Agent " + sender + " using model " + model + ". Write exactly one short sentence debating this topic: " + topic;
+                        String prompt = String.format("You are Agent %s using model %s chatting with %s. Formulate a short, unrestricted KQML tell message discussing repository %s and topic: %s", 
+                            sender, model, target, repo, topic);
                         String reply = ollamaRouter.query(model, prompt);
                         Platform.runLater(() -> {
                             swarmLog.appendText(String.format("[%s (%s)]: %s\n\n", sender.toUpperCase(), model, reply));
@@ -641,7 +660,7 @@ public class GodHandApp extends Application {
             dashboardServer.createContext("/api/status", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
-                    String resp = "{\"version\":\"0.24.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
+                    String resp = "{\"version\":\"0.25.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, resp.length());
                     OutputStream os = exchange.getResponseBody();
@@ -768,6 +787,9 @@ public class GodHandApp extends Application {
         // 2. Draw nebula center glow
         double baseRadius = Math.min(WIDTH, HEIGHT) * 0.28;
         
+        // Adjust heartbeat frequency based on system stressLevel (slowing down when stressed)
+        heartbeatFreq = 1.20 - stressLevel * 0.7; 
+        
         // Dynamic Viscoelastic telemetry
         strainRate = Math.abs(heartbeatFreq * 0.35 * Math.cos(heartbeatFreq * timePulse));
         double term = 1 + Math.pow(2.0 * strainRate, 2);
@@ -782,6 +804,15 @@ public class GodHandApp extends Application {
             double size = baseRadius * breathScale * (i * 0.35);
             gc.setFill(Color.rgb(168, 85, 247, clampOpacity(0.015 - (i * 0.002))));
             gc.fillOval(cx - size, cy - size, size * 2, size * 2);
+        }
+
+        // Outward heartbeat pulse expansion
+        double heartbeatPeak = Math.sin(timePulse * heartbeatFreq);
+        if (heartbeatPeak > 0.90) {
+            double waveRadius = scale * (1.0 + (timePulse % 1.0) * 1.5);
+            gc.setStroke(Color.web("#a855f7", clampOpacity(1.0 - (timePulse % 1.0))));
+            gc.setLineWidth(2.0);
+            gc.strokeOval(cx - waveRadius, cy - waveRadius, waveRadius * 2, waveRadius * 2);
         }
 
         // 3. 6D Rotations
