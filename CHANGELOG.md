@@ -23,6 +23,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Added]** feat: Euler DB + audio auto-enable + Cloudflare immediate sync + KV writes ($hash)
 - **[Fixed]** fix: rate limiter + circuit breaker + A/B routing wired into callOllama ($hash)
 - **[Fixed]** fix: PipelineScheduler + WebDashboardV2 fully activated ($hash)
-- **[Docs]** docs: Phase 21 ΓÇö architecture blueprint + threat model + runbook ($hash)
 
