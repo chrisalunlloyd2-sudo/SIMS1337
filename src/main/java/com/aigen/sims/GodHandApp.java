@@ -389,7 +389,7 @@ public class GodHandApp extends Application {
         // Draw background stars
         for (BackgroundStar s : stars) {
             double flicker = 0.3 + 0.7 * Math.sin(timePulse * s.speed * 8.0 + s.phase);
-            gc.setFill(Color.web("#c4b5e0", flicker));
+            gc.setFill(Color.web("#c4b5e0", clampOpacity(flicker)));
             gc.fillOval(s.x, s.y, s.size, s.size);
         }
 
@@ -410,7 +410,7 @@ public class GodHandApp extends Application {
         
         for (int i = 5; i > 0; i--) {
             double size = baseRadius * breathScale * (i * 0.35);
-            gc.setFill(Color.rgb(168, 85, 247, 0.015 - (i * 0.002)));
+            gc.setFill(Color.rgb(168, 85, 247, clampOpacity(0.015 - (i * 0.002))));
             gc.fillOval(cx - size, cy - size, size * 2, size * 2);
         }
 
@@ -474,7 +474,7 @@ public class GodHandApp extends Application {
             double depth = (e.avgZ + 3.0) / 6.0;
             double alpha = 0.05 + 0.25 * depth;
             
-            Color strokeColor = Color.hsb(260.0 + depth * 60.0, 0.7, 0.65 + depth * 0.2, alpha);
+            Color strokeColor = Color.hsb(260.0 + depth * 60.0, 0.7, 0.65 + depth * 0.2, clampOpacity(alpha));
             gc.setStroke(strokeColor);
             gc.setLineWidth(0.5 + 1.2 * depth);
             
@@ -514,10 +514,10 @@ public class GodHandApp extends Application {
             double outerRadius = radius * 3.0 * shimmer;
 
             double hue = 270.0 + depth * 50.0 + Math.sin(timePulse + i * 0.3) * 15.0;
-            Color nodeColor = Color.hsb(hue, 0.8, 0.75 + depth * 0.25, alpha);
+            Color nodeColor = Color.hsb(hue, 0.8, 0.75 + depth * 0.25, clampOpacity(alpha));
 
             // Glowing Outer Aura
-            gc.setFill(Color.hsb(hue, 0.8, 0.7, alpha * 0.2));
+            gc.setFill(Color.hsb(hue, 0.8, 0.7, clampOpacity(alpha * 0.2)));
             gc.fillOval(px - outerRadius/2, py - outerRadius/2, outerRadius, outerRadius);
 
             // Node Core
@@ -525,7 +525,7 @@ public class GodHandApp extends Application {
             gc.fillOval(px - radius/2, py - radius/2, radius, radius);
 
             // Core center point
-            gc.setFill(Color.rgb(255, 245, 255, alpha * 0.8));
+            gc.setFill(Color.rgb(255, 245, 255, clampOpacity(alpha * 0.8)));
             gc.fillOval(px - radius * 0.4 / 2, py - radius * 0.4 / 2, radius * 0.4, radius * 0.4);
             
             if (i == hoveredVertexIdx) {
@@ -697,6 +697,12 @@ public class GodHandApp extends Application {
                 textY += 15;
             }
         }
+    }
+
+    private double clampOpacity(double val) {
+        if (val < 0.0) return 0.0;
+        if (val > 1.0) return 1.0;
+        return val;
     }
 
     private void drawGauge(GraphicsContext gc, String label, double value, double x, double y, String hexColor) {
