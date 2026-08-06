@@ -6,6 +6,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Fixed]** fix: wire PipelineScheduler + WebDashboard into the real AutoLoop entrypoint ($hash)
 - **[Changed]** runbook: verified SmolLM-135M fallback + on-device MatrixVault ladder (no quantize needed) ($hash)
 - **[Docs]** docs: REAL_AGENT_BUILD.md ΓÇö no-simulation runbook for Qwen/any agent ($hash)
-- **[Changed]** agents: REAL inter-agent messaging via house GGUF server (no mocks) ($hash)
 
