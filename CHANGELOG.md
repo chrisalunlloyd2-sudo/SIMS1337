@@ -4,6 +4,7 @@ All notable changes to this project.
 
 ## 2026-08
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Docs]** docs: REAL_AGENT_BUILD.md ΓÇö no-simulation runbook for Qwen/any agent ($hash)
 - **[Changed]** agents: REAL inter-agent messaging via house GGUF server (no mocks) ($hash)
 - **[Changed]** deps: DEPENDENCIES.md + setup_deps.sh (same doctrine as MatrixWinCE) ($hash)
-- **[Chore]** chore: ignore __pycache__ ($hash)
 
