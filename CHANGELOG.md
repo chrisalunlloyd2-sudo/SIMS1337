@@ -3,6 +3,7 @@
 All notable changes to this project.
 
 ## 2026-08
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs(SIMS1337): autonomous update ΓÇö 1 file(s) ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-02 23:43 ($hash)
 - **[Added]** feat: implement unified cosmic operating system, cellular microphone gating, draggable sub-windows, and KQML messaging ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Changed]** hessian learning: curvature-aware LoRA policy + crew procedure doc ($hash)
 - **[Changed]** toc_tok: harden _auto_sync ΓÇö repo-relative node_kv_sync discovery ($hash)
 - **[Changed]** Add TOC-TOK GUI editor: hex-map canvas with drag-drop node relocation ($hash)
-- **[Changed]** Enhance onboarding: board ID stamping, hex claim tracking, tree sync, verification poll; add TocTokTree Java read-side (Jackson) ($hash)
 
