@@ -19,6 +19,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Fixed]** fix: PipelineScheduler + WebDashboardV2 ΓÇö standalone endpoints pending dependency fixes ($hash)
 - **[Fixed]** fix: root context only serves / and /index.html ΓÇö /api/* no longer caught ($hash)
 - **[Added]** feat: Phase 23-24 ΓÇö TocTokTree + World Desktop + NyxGate + PipelineScheduler + WebDashboard V2 ($hash)
-- **[Added]** feat: evidence logging + audio routing wired into votes + MMF scripts ($hash)
 
