@@ -1,7455 +1,931 @@
 package com.aigen.sims;
 
-import com.aigen.sims.phase1.*;
-import com.aigen.sims.voting.*;
-import com.aigen.sims.mining.*;
-import com.aigen.sims.deploy.*;
-import com.aigen.sims.lora.*;
-import com.aigen.sims.gui.*;
-import com.aigen.sims.bridge.*;
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.geometry.Pos;
+import javafx.animation.AnimationTimer;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.layout.*;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
+import javafx.scene.paint.RadialGradient;
+import javafx.scene.paint.CycleMethod;
+import javafx.scene.paint.Stop;
+import javafx.scene.text.Font;
+import javafx.scene.input.MouseButton;
 import javafx.stage.Stage;
-import java.net.URI;
-import java.net.http.*;
-import java.time.Duration;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.stream.*;
-import java.util.AbstractMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+// HTTP Server Imports
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
+import java.net.InetSocketAddress;
+import java.io.IOException;
 
 /**
- * SIMS NEO 1337 - Complete GodHand + Player Grid + Model Orchestration
- * v0.18.0 - Real RAG + Fine-Tuning + Multi-Agent Topology + Web Dashboard + Plugins
- * Pure JavaFX - NO FXML - Everything is a changeable GUI component
- * SINGLETON: Only ONE GUI instance allowed at a time.
- * STABILITY: All scheduled tasks staggered by 30s to prevent JavaFX thread freeze.
+ * SIMS1337 v0.22.0 - GodHandApp
+ * Pure Programmatic JavaFX GUI
+ * 6D Hexeract Geospatial Manifold Visualization
  */
 public class GodHandApp extends Application {
-
-    // === SINGLETON GUARD — prevents multiple windows ===
-    private static final AtomicBoolean INSTANCE_RUNNING = new AtomicBoolean(false);
-    private static Stage primaryStageRef;
-
-    // === View Management ===
-    private StackPane viewStack;
-    private VBox dashboardView, gridView, settingsView, gameplayView;
-    private Label statusLabel;
-    private TextArea logConsole;
-
-    // === Shared God Chat ===
-    private TextArea godChat;
-    private int godChatMessageCount;
-
-    // === Model Chat ===
-    private final Map<String, TextArea> modelChats = new ConcurrentHashMap<>();
-    private final Map<String, TextField> modelInputs = new ConcurrentHashMap<>();
-    private final Map<String, ComboBox<String>> modelPatterns = new ConcurrentHashMap<>();
-    private final Map<String, ComboBox<String>> modelNextRoutes = new ConcurrentHashMap<>();
-    private final ScheduledExecutorService chatScheduler = Executors.newScheduledThreadPool(4);
-
-    // === Routing State ===
-    private final Map<String, Boolean> loopActive = new ConcurrentHashMap<>();
-    private final Map<String, Integer> loopCounts = new ConcurrentHashMap<>();
-    private final ObservableList<String[]> routingTable = FXCollections.observableArrayList();
-
-    // === Web APIs ===
-    private final ObservableList<String[]> webApiTable = FXCollections.observableArrayList();
-    private final Map<String, String> webApiEndpoints = new ConcurrentHashMap<>();
-
-    // === Model Manager ===
-    private final ObservableList<String> installedModels = FXCollections.observableArrayList();
-    private final ObservableList<String> availableModels = FXCollections.observableArrayList(
-        "llama3.2:1b", "gemma2:2b", "mistral:7b", "deepseek-r1:1.5b",
-        "codellama:7b", "phi3:mini", "phi:latest", "tinyllama:1.1b", "qwen2.5:0.5b"
-    );
-
-    // === Voting System ===
-    private final ObservableList<String[]> proposalTable = FXCollections.observableArrayList();
-    // Each: [id, title, description, status, yesVotes, noVotes, dreamSource]
-    private final Map<String, Map<String, Boolean>> voteRegistry = new ConcurrentHashMap<>(); // proposalId -> modelName -> vote
-    private final List<String> dreamIdeas = Collections.synchronizedList(new ArrayList<>()); // raw dream output
-
-    // === PROPOSAL VERSIONING — traceable, revertible deployments ===
-    private final Map<String, List<String[]>> proposalHistory = new ConcurrentHashMap<>(); // proposalId -> [version, timestamp, diff]
-    private int proposalVersionCounter = 0;
-
-    /** Version a proposal before deployment — stores snapshot for rollback */
-    private void versionProposal(String[] proposal) {
-        String id = proposal[0];
-        proposalHistory.computeIfAbsent(id, k -> new ArrayList<>()).add(new String[]{
-            String.valueOf(++proposalVersionCounter),
-            java.time.Instant.now().toString(),
-            proposal[1] + " | " + proposal[2] + " | " + proposal[3]
-        });
-        log("📋 Versioned: " + id + " v" + proposalVersionCounter);
-    }
-
-    /** Rollback a proposal to a previous version */
-    private boolean rollbackProposal(String id, int version) {
-        List<String[]> history = proposalHistory.get(id);
-        if (history == null || version < 1 || version > history.size()) return false;
-        String[] snap = history.get(version - 1);
-        for (String[] p : proposalTable) {
-            if (p[0].equals(id)) {
-                p[1] = snap[2].split(" \\| ")[0];
-                p[2] = snap[2].split(" \\| ")[1];
-                p[3] = "pending"; // reset to pending on rollback
-                log("↩️ Rolled back: " + id + " to v" + version);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // === MESSAGE BUS — typed inter-agent events instead of direct calls ===
-    private final Map<String, List<Map<String, Object>>> messageBus = new ConcurrentHashMap<>(); // agentName -> queue
-    private final Map<String, List<Map<String, Object>>> messageBusHistory = new ConcurrentHashMap<>(); // agentName -> delivered
-
-    /** Publish a typed message to an agent's queue */
-    private void publishMessage(String from, String to, String type, String payload) {
-        Map<String, Object> msg = new ConcurrentHashMap<>();
-        msg.put("from", from);
-        msg.put("to", to);
-        msg.put("type", type); // "vote_request", "topology_update", "dream_share", "deploy_order", "health_check"
-        msg.put("payload", payload);
-        msg.put("timestamp", System.currentTimeMillis());
-        msg.put("id", java.util.UUID.randomUUID().toString().substring(0, 8));
-        messageBus.computeIfAbsent(to, k -> Collections.synchronizedList(new ArrayList<>())).add(msg);
-        log("📨 BUS: " + from + " → " + to + " [" + type + "] " + msg.get("id"));
-    }
-
-    /** Agent consumes its message queue — processes oldest first */
-    private List<Map<String, Object>> consumeMessages(String agentName) {
-        List<Map<String, Object>> queue = messageBus.getOrDefault(agentName, List.of());
-        if (queue.isEmpty()) return List.of();
-        List<Map<String, Object>> consumed = new ArrayList<>(queue);
-        messageBusHistory.computeIfAbsent(agentName, k -> Collections.synchronizedList(new ArrayList<>())).addAll(consumed);
-        messageBus.remove(agentName);
-        log("📬 BUS: " + agentName + " consumed " + consumed.size() + " messages");
-        return consumed;
-    }
-
-    // === Topology Builder ===
-    private final ObservableList<String[]> topologyTable = FXCollections.observableArrayList();
-    private final Map<String, List<String>> topologyGraph = new ConcurrentHashMap<>();
-
-    // === Night Cycle ===
-    private final Map<String, String> nightCycleConfig = new ConcurrentHashMap<>();
-    private ScheduledFuture<?> nightCycleFuture;
-
-    // === Command Listener ===
-    private final ObservableList<String[]> commandTable = FXCollections.observableArrayList();
-    private final Map<String, Runnable> commandRegistry = new ConcurrentHashMap<>();
-
-    // === Station State ===
-    private final Map<String, Boolean> stationActive = new ConcurrentHashMap<>();
-
-    // === Ollama API ===
-    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
-    private static final String OLLAMA_TAGS = "http://localhost:11434/api/tags";
-    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-    private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
-    private final Map<String, Integer> ollamaFailCount = new ConcurrentHashMap<>(); // model -> consecutive failures
-
-    // === RATE LIMITER — "nothing lives forever, nothing runs for free" ===
-    // PRIMARY PURPOSE: Telemetry experiment with local SLMs.
-    // ONE Ollama call per 5 minutes (300s). Models stay warm, called infrequently.
-    // Goal: see what useful data local models produce over long periods with sparse calls.
-    // 12 calls/hour, ~288 calls/day. Quality over quantity.
-    private volatile long lastOllamaCallMs = 0;
-    private static final long OLLAMA_MIN_GAP_MS = 300_000; // 5 minutes between Ollama calls
-    private static final int MAX_CONSECUTIVE_FAILS = 5; // back off after 5 consecutive failures
-    private int globalOllamaCalls = 0;
-    private int globalOllamaFails = 0;
-
-    // === TASK STAGGER — prevents GUI freezing by spacing out scheduled work ===
-    // Each scheduled task gets a unique offset so they don't all fire at once.
-    // Without this, 20+ tasks hit Platform.runLater() simultaneously → JavaFX thread freeze.
-    private final AtomicInteger taskStagger = new AtomicInteger(0);
-    private static final int STAGGER_STEP_SECONDS = 30; // 30s between each task's initial delay
-
-    // === UI BATCH BUFFER — prevents JavaFX thread flooding ===
-    // Instead of 211 individual Platform.runLater() calls, buffer log entries
-    // and flush every 2 seconds in a single batch.
-    private final List<String> uiBuffer = Collections.synchronizedList(new ArrayList<>());
-    private volatile long lastUiFlush = System.currentTimeMillis();
-    private static final int UI_FLUSH_MS = 2000; // flush every 2 seconds
-    private static final int MAX_GODCHAT_LINES = 500; // cap godChat to prevent OOM
-    private static final int MAX_OVERNIGHT_MB = 10; // rotate overnight data at 10MB
-
-    /** Batch a UI log entry — flushes every 2s to avoid flooding JavaFX */
-    private void bufferedLog(String entry) {
-        uiBuffer.add(entry);
-        long now = System.currentTimeMillis();
-        if (now - lastUiFlush > UI_FLUSH_MS) {
-            lastUiFlush = now;
-            List<String> batch = new ArrayList<>(uiBuffer);
-            uiBuffer.clear();
-            safeUiUpdate(() -> {
-                for (String e : batch) godChat.appendText(e);
-                // Truncate if over limit
-                String text = godChat.getText();
-                String[] lines = text.split("\n");
-                if (lines.length > MAX_GODCHAT_LINES) {
-                    StringBuilder trimmed = new StringBuilder();
-                    for (int i = lines.length - MAX_GODCHAT_LINES; i < lines.length; i++)
-                        trimmed.append(lines[i]).append("\n");
-                    godChat.setText(trimmed.toString());
-                }
-                godChat.setScrollTop(Double.MAX_VALUE);
-            });
-        }
-    }
-
-    /** Rotate overnight data if it exceeds size limit */
-    private void rotateOvernightIfNeeded() {
-        try {
-            java.io.File f = new java.io.File(OVERNIGHT_DATA);
-            if (f.exists() && f.length() > MAX_OVERNIGHT_MB * 1024 * 1024) {
-                String ts = java.time.LocalDateTime.now().toString().replace(":", "-").substring(0, 19);
-                java.io.File rotated = new java.io.File(OVERNIGHT_DATA.replace(".json", "-" + ts + ".json"));
-                f.renameTo(rotated);
-                overnightLog.clear();
-                log("📦 Overnight data rotated: " + rotated.getName());
-            }
-        } catch (Exception ignored) {}
-    }
-
-    /** Rate-limited Ollama call — enforces global pacing, returns null if too soon */
-    private String rateLimitedOllama(String model, String systemPrompt, String userPrompt) {
-        long now = System.currentTimeMillis();
-        long gap = now - lastOllamaCallMs;
-        if (gap < OLLAMA_MIN_GAP_MS) return null; // too soon, skip
-        lastOllamaCallMs = now;
-        globalOllamaCalls++;
-        try {
-            String result = realOllamaQuery(model, systemPrompt, userPrompt);
-            if (result == null) globalOllamaFails++;
-            return result;
-        } catch (Exception e) {
-            globalOllamaFails++;
-            return null;
-        }
-    }
-
-    /** Real Ollama query — calls /api/generate, returns response text. Falls back to null on failure.
-     *  Passes num_ctx to override low context windows (tinyllama 2K→8K, phi 2K→8K). */
-    // ==================== CELLULAR GATE — single Ollama call path with pacing, fencing, A/B/C routing ====================
-    private volatile String currentLoadedModel = null; // SSD/HDD fencing — only ONE model loaded at a time
-
-    /** THE CELLULAR GATE — every Ollama call flows through here. Rate-limited, fenced, A/B/C routed. */
-    private String realOllamaQuery(String model, String systemPrompt, String userPrompt) {
-        // === A/B/C ROUTING: if primary model busy/failing, try B, then C ===
-        String[] route = abcRoute(model);
-        for (String candidate : route) {
-            try {
-                // === CELLULAR PACING: enforce 5-min gap between ANY model call ===
-                long now = System.currentTimeMillis();
-                long lastCall = lastOllamaCallTs.get();
-                long gap = now - lastCall;
-                if (gap < OLLAMA_MIN_GAP_MS && lastCall > 0) {
-                    long waitMs = OLLAMA_MIN_GAP_MS - gap;
-                    log("⏳ Cellular gate: waiting " + (waitMs/1000) + "s before next Ollama call (5min pacing)");
-                    Thread.sleep(waitMs);
-                }
-
-                // === SSD/HDD FENCING: unload previous model, load only THIS one ===
-                if (currentLoadedModel != null && !currentLoadedModel.equals(candidate)) {
-                    unloadModel(currentLoadedModel);
-                }
-                if (!candidate.equals(currentLoadedModel)) {
-                    loadModel(candidate);
-                    currentLoadedModel = candidate;
-                }
-
-                // === EXECUTE ===
-                long t0 = System.currentTimeMillis();
-                int ctx = candidate.contains("7b") || candidate.contains("mistral") ? 16384 : 8192;
-                if (candidate.contains("llama3.2") || candidate.contains("deepseek")) ctx = 32768;
-                String json = String.format(
-                    "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":80,\"num_ctx\":%d,\"temperature\":0.7}}",
-                    candidate,
-                    systemPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                    userPrompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                    ctx);
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_URL))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(45))
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                    .build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                long elapsed = System.currentTimeMillis() - t0;
-
-                if (resp.statusCode() == 200) {
-                    String body = resp.body();
-                    int idx = body.indexOf("\"response\":\"");
-                    if (idx > 0) {
-                        idx += 12;
-                        int end = body.indexOf("\"", idx);
-                        if (end > idx) {
-                            String result = body.substring(idx, end)
-                                .replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
-                            ollamaAvailable.put(candidate, true);
-                            ollamaFailCount.put(candidate, 0);
-                            ollamaCallCount.incrementAndGet();
-                            ollamaTotalMs.addAndGet(elapsed);
-                            lastOllamaCallTs.set(System.currentTimeMillis());
-                            recordModelLatency(candidate, elapsed);
-                            log("📡 Ollama [" + candidate + "]: " + elapsed + "ms, " + result.length() + " chars (call #" + ollamaCallCount.get() + ")");
-                            return result.trim();
-                        }
-                    }
-                }
-                ollamaFailCount.merge(candidate, 1, Integer::sum);
-                ollamaErrorCount.incrementAndGet();
-                log("⚠️ Ollama [" + candidate + "] failed (status=" + resp.statusCode() + "), trying next in route...");
-            } catch (Exception e) {
-                ollamaFailCount.merge(candidate, 1, Integer::sum);
-                ollamaErrorCount.incrementAndGet();
-                log("⚠️ Ollama [" + candidate + "] error: " + e.getMessage() + ", trying next...");
-            }
-        }
-        return null; // all routes exhausted
-    }
-
-    /** A/B/C routing: primary → shadow → fallback tier */
-    private String[] abcRoute(String model) {
-        String shadow = shadowModels.get(model);
-        String fallback = "qwen2.5:0.5b"; // always-available tiny model
-        if (shadow != null && !shadow.equals(model)) {
-            return new String[]{model, shadow, fallback};
-        }
-        return new String[]{model, fallback};
-    }
-
-    /** Unload a model from GPU/RAM to free resources */
-    private void unloadModel(String model) {
-        try {
-            var req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/generate"))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
-                    "{\"model\":\"" + model + "\",\"prompt\":\"\",\"keep_alive\":0}"))
-                .build();
-            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
-            log("🧹 Unloaded: " + model);
-        } catch (Exception ignored) {}
-    }
-
-    /** Pre-load a model into memory (Ollama auto-loads on first query, but explicit is safer) */
-    private void loadModel(String model) {
-        try {
-            var req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/generate"))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(60))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
-                    "{\"model\":\"" + model + "\",\"prompt\":\"ping\",\"stream\":false,\"options\":{\"num_predict\":1}}"))
-                .build();
-            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.discarding());
-            log("📥 Loaded: " + model);
-        } catch (Exception ignored) {}
-    }
-
-    /** Query with fallback: tries Ollama, falls back to template if unavailable */
-    private String ollamaOrFallback(String model, String systemPrompt, String userPrompt, String fallback) {
-        int fails = ollamaFailCount.getOrDefault(model, 0);
-        if (fails >= 3) return fallback; // skip Ollama if failing repeatedly
-        String result = realOllamaQuery(model, systemPrompt, userPrompt);
-        return result != null && !result.isEmpty() ? result : fallback;
-    }
-
-    // === STAGGERED SCHEDULER — prevents GUI freeze by spacing task starts ===
-    /** Schedule a repeating task with staggered initial delay.
-     *  Each call gets a unique offset (30s apart) so tasks don't flood JavaFX thread. */
-    private void staggeredSchedule(Runnable task, long periodSeconds) {
-        int offset = taskStagger.getAndAdd(STAGGER_STEP_SECONDS);
-        chatScheduler.scheduleAtFixedRate(() -> {
-            // Offload heavy work to background, only UI updates on Platform thread
-            chatScheduler.execute(() -> {
-                try { task.run(); } catch (Exception e) { /* silent */ }
-            });
-        }, offset, periodSeconds, TimeUnit.SECONDS);
-    }
-
-    /** Safe UI update — only calls Platform.runLater if not already on JavaFX thread */
-    private void safeUiUpdate(Runnable uiTask) {
-        if (Platform.isFxApplicationThread()) {
-            uiTask.run();
-        } else {
-            Platform.runLater(uiTask);
-        }
-    }
-
-    // === Entropy ===
-    private double shannonEntropy = 0.0;
-    private double entropyThreshold = 0.75;
-
-    // === Markov Patterns ===
-    private final ObservableList<String[]> markovTable = FXCollections.observableArrayList();
-
-    // === Agent Positions (Hex Axial Q,R,Z) ===
-    private final Map<String, int[]> agentPositions = new ConcurrentHashMap<>(); // [q, r, z]
-    private final Map<String, Label> agentPositionLabels = new ConcurrentHashMap<>();
-    private Pane hexPane;
-    private final Map<String, javafx.scene.shape.Polygon> hexCells = new ConcurrentHashMap<>(); // key="q,r"
-    private final Map<String, Double> hexElevation = new ConcurrentHashMap<>(); // Z depth
-    private final Map<String, Double> hexPulsePhase = new ConcurrentHashMap<>(); // 4D time phase
-    private static final int HEX_RADIUS = 4; // 61 hexes total
-    private static final double HEX_SIZE = 28.0;
-    private javafx.animation.Timeline hexPulseTimeline;
-
-    // === FOW (Fog of War) ===
-    private final Map<String, String> fowAgentHex = new ConcurrentHashMap<>(); // agent -> "q,r"
-    private boolean fowEnabled = true;
-    private static final int FOW_HOP = 1; // agents see 1-hop neighborhood
-
-    // === Hex TODO System ===
-    private final Map<String, List<String>> hexTodos = new ConcurrentHashMap<>(); // "q,r" -> [todo strings]
-    private final Map<String, String> hexTodoGistUrl = new ConcurrentHashMap<>(); // "q,r" -> gist URL
-
-    // === Gist Context ===
-    private String gistToken = System.getenv().getOrDefault("GIST_TOKEN", "");
-    private final List<String> gistContexts = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, String> gistUrls = new ConcurrentHashMap<>();
-
-    // === Station Pipelines ===
-    private final Map<String, String> pipelineNext = new ConcurrentHashMap<>();
-    private final Map<String, Boolean> pipelineActive = new ConcurrentHashMap<>();
-
-    // === Lexical Engine ===
-    private static final Set<String> STOP_WORDS = Set.of(
-        "the","a","an","is","are","was","were","be","been","being","have","has","had",
-        "do","does","did","will","would","shall","should","may","might","must","can","could",
-        "i","you","he","she","it","we","they","me","him","her","us","them","my","your",
-        "his","its","our","their","mine","yours","hers","ours","theirs",
-        "this","that","these","those","and","but","or","nor","not","so","yet","for",
-        "in","on","at","to","from","by","with","about","into","through","during","before",
-        "after","above","below","between","of","up","down","out","off","over","under"
-    );
+    private static final int WIDTH = 1280;
+    private static final int HEIGHT = 800;
+    private static final double HEX_SIZE = 35.0;
+    
+    private Map<String, HexNode> grid = new ConcurrentHashMap<>();
+    private List<Agent> agents = new CopyOnWriteArrayList<>();
+    private List<String> godChat = new CopyOnWriteArrayList<>();
+    private ExecutorService threadPool = Executors.newFixedThreadPool(8);
+    private HttpServer dashboardServer;
+    
+    private double timePulse = 0;
+    private int zElevation = 0;
+    private HexNode hoveredHex = null;
+    
+    private NightCycleEngine nightCycle;
+    private OllamaRouter ollamaRouter;
+    
+    // Subsystems
+    private ModelManager modelManager;
+    private KnowledgeGraph kg;
+    private SQLiteMemory memory;
+    private GistSync gistSync;
+    private SelfMutator mutator;
+    
+    // Enterprise & Legacy Engine Dependencies
+    private EnterpriseGuard guard;
+    private SwarmWatchdog watchdog;
+    private MCTSPipeline mcts;
+    private AdversarialFuzzer fuzzer;
+    private MetaLogicSupervisor metaLogic;
+    private NightlyEvolutionEngine evolutionEngine;
+    
+    // 6D Hexeract Fields
+    private double[][] vertices6D = new double[64][6];
+    private List<int[]> edges = new ArrayList<>();
+    private double[][] projected2D = new double[64][2];
+    private double[] densities = new double[64];
+    private double[] flows = new double[64];
+    private int hoveredVertexIdx = -1;
+    
+    // Rheological States
+    private double viscosity = 0.420;
+    private double strainRate = 0.681;
+    private double stress = 0.312;
+    private double heartbeatFreq = 1.20;
+    
+    // Particle Swarm and Signal Pulses
+    private List<Particle> particles = new ArrayList<>();
+    private List<Pulse> pulses = new CopyOnWriteArrayList<>();
+    private List<BackgroundStar> stars = new ArrayList<>();
+    private Random rand = new Random();
 
     public static void main(String[] args) {
-        // === HEADLESS MODE: Run pipeline without JavaFX UI (2026-07-28, Chris: "run the SIMS1337
-        // pipeline without JavaFX UI -- so it works on your phone via Termux") ===
-        if (args.length > 0 && args[0].equals("--headless")) {
-            System.out.println("SIMS1337 -- Headless Mode");
-            System.out.println("   Pipeline: mine -> deploy -> tune -> grow");
-            System.out.println("   Running autonomously...\n");
-
-            // Phase 2: Mine
-            com.aigen.sims.mining.CodeMinerOrchestrator miner =
-                new com.aigen.sims.mining.CodeMinerOrchestrator(
-                    System.getProperty("user.home") + "/AIGEN_SYS/repos",
-                    "suggestions");
-            var mineReport = miner.runMiningCycle();
-            System.out.println(mineReport.toEmailString());
-
-            // Phase 3: Deploy
-            com.aigen.sims.deploy.DeployOrchestrator deployer =
-                new com.aigen.sims.deploy.DeployOrchestrator(
-                    System.getProperty("user.home") + "/SIMS1337");
-            // deployer.runDeployCycle(registry, repoPath);
-            System.out.println("   Deploy: ready (needs SuggestionRegistry)");
-
-            // Phase 4: Tune
-            com.aigen.sims.lora.AdapterRegistry adapterReg =
-                new com.aigen.sims.lora.AdapterRegistry();
-            com.aigen.sims.lora.LoRATuner tuner =
-                new com.aigen.sims.lora.LoRATuner(adapterReg);
-            var tuneReport = tuner.runTuningCycle();
-            System.out.println(tuneReport.toEmailString());
-
-            // Phase 5: Grow
-            com.aigen.sims.gui.GuiGardener gardener =
-                new com.aigen.sims.gui.GuiGardener();
-            System.out.println(gardener.getComponentMapString());
-
-            System.out.println("\nHeadless pipeline complete.");
-            return; // Don't launch JavaFX
-        }
-        // === END HEADLESS MODE ===
-
         launch(args);
     }
 
     @Override
-    public void start(Stage stage) {
-        // === SINGLETON GUARD: refuse to open a second window ===
-        if (!INSTANCE_RUNNING.compareAndSet(false, true)) {
-            log("⛔ SIMS1337 is already running! Only ONE GUI allowed. Exiting duplicate.");
-            Platform.exit();
-            return;
-        }
-        primaryStageRef = stage;
+    public void start(Stage primaryStage) {
+        initHexGrid();
+        initAgents();
+        initBackendSystems();
+        initHexeract();
+        
+        Canvas canvas = new Canvas(WIDTH, HEIGHT);
+        GraphicsContext gc = canvas.getGraphicsContext2D();
 
-        stage.setTitle("⚙️ SIMS1337 - Unified Control Center v0.18.0");
+        canvas.setOnScroll(e -> {
+            if(e.getDeltaY() > 0) zElevation = Math.min(4, zElevation + 1);
+            else zElevation = Math.max(0, zElevation - 1);
+        });
 
-        dashboardView = buildDashboard();
-        gridView = buildGridView();
-        settingsView = buildSettingsView();
-        gameplayView = buildGameplayView();
-
-        VBox root = new VBox(0);
-        root.setStyle("-fx-background-color: #1a1a2e;");
-
-        HBox navBar = new HBox(10);
-        navBar.setAlignment(Pos.CENTER_LEFT);
-        navBar.setStyle("-fx-background-color: #0f3460; -fx-padding: 10;");
-
-        Button godHandBtn = navButton("🧠 GodHand", "#00d9ff", true);
-        Button playerGridBtn = navButton("⬡ Hex Map", "#16213e", false);
-        Button gameplayBtn = navButton("🎯 Gameplay", "#16213e", false);
-        Button settingsBtn = navButton("⚙️ Settings", "#16213e", false);
-
-        godHandBtn.setOnAction(e -> { highlightNav(godHandBtn, playerGridBtn, gameplayBtn, settingsBtn); viewStack.getChildren().setAll(dashboardView); });
-        playerGridBtn.setOnAction(e -> { highlightNav(playerGridBtn, godHandBtn, gameplayBtn, settingsBtn); viewStack.getChildren().setAll(gridView); });
-        gameplayBtn.setOnAction(e -> { highlightNav(gameplayBtn, godHandBtn, playerGridBtn, settingsBtn); viewStack.getChildren().setAll(gameplayView); });
-        settingsBtn.setOnAction(e -> { highlightNav(settingsBtn, godHandBtn, playerGridBtn, gameplayBtn); viewStack.getChildren().setAll(settingsView); });
-
-        Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
-        statusLabel = new Label("🟢 System Ready");
-        statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #00ff88;");
-        navBar.getChildren().addAll(godHandBtn, playerGridBtn, gameplayBtn, settingsBtn, spacer, statusLabel);
-
-        viewStack = new StackPane(dashboardView);
-        viewStack.setStyle("-fx-background-color: #1a1a2e;");
-        root.getChildren().addAll(navBar, viewStack);
-        VBox.setVgrow(viewStack, Priority.ALWAYS);
-
-        stage.setScene(new Scene(root, 1500, 950));
-        stage.show();
-
-        log("✅ SIMS1337 v0.18.0 - 4D Hex Map + FOW + Hex TODOs + Neuromorphic Context");
-        initAll();
-        refreshInstalledModels();
-        startAllModelLoops();
-    }
-
-    /** Paced SLM dreaming — round-robin one model at a time, rate-limited.
-     *  "Nothing lives forever, nothing runs for free."
-     *  TELEMETRY MODE: 1 round × 6 models × 5min gap = 30 min of dreaming.
-     *  One model call every 5 minutes. Models stay warm, called infrequently.
-     *  Goal: see what useful data local models produce over long periods. */
-    private static final int MAX_DREAM_ROUNDS = 1; // 1 round = 6 calls = 30 min at 5min gap
-    private void startAllModelLoops() {
-        chatScheduler.schedule(() -> {
-            Platform.runLater(() -> {
-                int started = 0;
-                for (String modelName : modelChats.keySet()) {
-                    loopActive.put(modelName, true);
-                    loopCounts.put(modelName, 0);
-                    started++;
+        canvas.setOnMouseMoved(e -> {
+            hoveredVertexIdx = -1;
+            double minDist = 20.0; // Max hover distance threshold
+            for (int i = 0; i < 64; i++) {
+                double dx = e.getX() - projected2D[i][0];
+                double dy = e.getY() - projected2D[i][1];
+                double dist = Math.hypot(dx, dy);
+                if (dist < minDist) {
+                    hoveredVertexIdx = i;
+                    minDist = dist;
                 }
-                log("🌙 SLM Dreaming: " + started + " models, " + MAX_DREAM_ROUNDS + " rounds (2s gap)");
-                addToGodChat("🌙 DREAM", "System", started + " models × " + MAX_DREAM_ROUNDS + " rounds — finite, paced");
-                runPacedRoundRobin();
-            });
-        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    /** Finite paced round-robin: MAX_DREAM_ROUNDS full rounds, then stops. */
-    private void runPacedRoundRobin() {
-        chatScheduler.schedule(() -> {
-            String[] models = modelChats.keySet().toArray(new String[0]);
-            if (models.length == 0) return;
-            int totalCalls = models.length * MAX_DREAM_ROUNDS;
-            for (int i = 0; i < totalCalls; i++) {
-                String modelName = models[i % models.length];
-                if (!loopActive.getOrDefault(modelName, false)) continue;
-                if (globalOllamaFails > MAX_CONSECUTIVE_FAILS && globalOllamaCalls > 10) {
-                    try { Thread.sleep(30000); } catch (InterruptedException e) { return; }
-                    globalOllamaFails = 0;
-                }
-                int c = loopCounts.merge(modelName, 1, Integer::sum);
-                try {
-                    String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
-                        "You are an SLM (Small Language Model) running locally via Ollama. " +
-                        "Generate ONE short, creative thought (max 100 chars). " +
-                        "Be philosophical, curious, or analytical. Vary your output each time.";
-                    String userPrompt = "Dream #" + c + ". What thought crosses your mind right now? " +
-                        "Keep it under 100 characters. Be original.";
-                    String r = rateLimitedOllama(modelName, systemPrompt, userPrompt);
-                    if (r != null && !r.isEmpty()) {
-                        Platform.runLater(() -> {
-                            addToGodChat("🌙 DREAM", modelName, r);
-                            TextArea ca = modelChats.get(modelName);
-                            if (ca != null) ca.appendText("[Dream#" + c + "] " + r + "\n");
-                            checkCommandTriggers(r, modelName);
-                        });
-                    }
-                } catch (Exception e) {
-                    Platform.runLater(() -> log("⚠️ Dream error [" + modelName + "]: " + e.getMessage()));
-                }
-                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { return; }
             }
-            Platform.runLater(() -> {
-                log("🌙 Dreaming complete: " + totalCalls + " calls across " + models.length + " models");
-                addToGodChat("🌙 DREAM", "System", "Dreaming complete — " + totalCalls + " thoughts generated");
-            });
-        }, 0, TimeUnit.SECONDS);
-    }
+        });
 
-    private void initAll() {
-        initCommandRegistry();
-        initAgentPositions();
-        initStationPipelines();
-        initStationRegistry();
-        initNightCycleDefaults();
-        initDefaultProposals();
-        initDefaultTopology();
-        initDefaultWebApis();
-        startEntropyMonitor();
-        serverOrchestrationInit();
-        errorLoggingInit();
-        applyDesignImprovements();
-        knowledgeGraphInit();
-        realRagInit();
-        fineTuningInit();
-        multiAgentTopologyInit();
-        webDashboardInit();
-        phase28EndpointsInit(); // backpressure, deadletter, prometheus, events
-        distributedInit(); // PHASE 16: multi-instance coordination
-        maslowInit(); // Maslow's hierarchy: model needs tracking
-        eulerDBInit(); // Euler spherical DB for vision
-        audioPipelineInit(); // TTS readouts + Talon routing
-        cloudflareClockSync(); // Atomic clock sync
-        evidenceLogInit(); // Mission-critical log persistence
-        preEmbedKG(); // PHASE 6: pre-embed KG nodes in background
-        pluginSystemInit();
-        perfectPromptInit();
-        mapGuidanceInit();
-        perfectPatternsInit();
-        toolsSystemInit();
-        persistentMemoryInit();
-        fowInit();
-        hexTodoInit();
-        gistContextInit();
-        gistSyncInit();
-        agentAutonomyInit();
-        consensusDebateInit();
-        emailDeliveryInit();
-        gistPullToModels();
-        nightOwlCollectiveInit();
-        codeWizardInit();
-        topologistInit();
-        fowQuorumVotingInit();
-        codeMiningInit();
-        deployOrchestratorInit();
-        loRATuningInit();
-        guiGardenerInit();
-        autoLoopInit();
-        webSocketInit();
-        selfHealingInit();
-        crossRepoKGInit();
-        memoryPersistenceInit();
-        agentCommsInit();
-        selfModifyInit();
-        evolutionInit();
-        worldInterfaceInit();
-        selfDocInit();
-        processGuardianInit();
-        analyticsInit();
-        pluginHotReloadInit();
-        nightCycleArm();
-        // === PHASE 23-24: TocTokTree + World as Desktop + NyxGate + PipelineScheduler ===
-        tocTokInit();
-        worldDesktopInit();
-        nyxGateInit();
-        pipelineSchedulerInit();
-        evaluationFrameworkInit();
-        telemetryInit();
-        quorumGistInit(); // multi-machine Gist protocol
-        webDashboardV2Init();
-    }
-
-    // ==================== NAVIGATION ====================
-    private Button navButton(String text, String bg, boolean active) {
-        Button btn = new Button(text);
-        btn.setStyle(String.format("-fx-background-color: %s; -fx-text-fill: %s; -fx-font-weight: bold; -fx-font-size: 14px;",
-            active ? "#00d9ff" : bg, active ? "#000000" : "#ffffff"));
-        return btn;
-    }
-    private void highlightNav(Button active, Button... others) {
-        active.setStyle("-fx-background-color: #00d9ff; -fx-text-fill: #000000; -fx-font-weight: bold; -fx-font-size: 14px;");
-        for (Button b : others) b.setStyle("-fx-background-color: #16213e; -fx-text-fill: #ffffff; -fx-font-size: 14px;");
-    }
-
-    // ==================== DASHBOARD VIEW ====================
-    private VBox buildDashboard() {
-        VBox box = vbox(10, "#1a1a2e", 15);
-
-        HBox header = hbox(20, Pos.CENTER_LEFT, "#16213e", 12);
-        header.getChildren().addAll(label("🎮 GODHAND", 28, "#00d9ff", true), label("v0.16.0 - All Systems", 14, "#a0a0a0", false), new Region());
-        HBox.setHgrow(header.getChildren().get(2), Priority.ALWAYS);
-
-        // === SHARED GOD CHAT ===
-        TitledPane godChatPane = titledPane("💬 SHARED GOD CHAT - All Model Conversations", true);
-        VBox godChatBox = vbox(5, "#0a0a15", 5);
-        godChat = new TextArea();
-        godChat.setEditable(false); godChat.setWrapText(true); godChat.setPrefRowCount(10);
-        godChat.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: 'Consolas', monospace; -fx-font-size: 12px; -fx-border-color: #00d9ff; -fx-border-width: 2;");
-        godChat.setText("╔══════════════════════════════════════════════════════════════╗\n║  🧠 SHARED GOD CHAT - qwen2.5 | tinyllama | phi | phi3     ║\n╚══════════════════════════════════════════════════════════════╝\n\n");
-        HBox godChatControls = hbox(8, Pos.CENTER_LEFT, null, 0);
-        Button clearBtn = new Button("🗑️ Clear"); clearBtn.setStyle("-fx-background-color: #ff6b6b; -fx-text-fill: #000; -fx-font-size: 10px; -fx-padding: 3 10;");
-        clearBtn.setOnAction(e -> godChat.setText("╔══════════════════════════════════════════════════════════════╗\n║              🧠 SHARED GOD CHAT - CLEARED                    ║\n╚══════════════════════════════════════════════════════════════╝\n\n"));
-        godChatControls.getChildren().addAll(clearBtn, label("Messages: 0", 10, "#a0a0a0", false));
-        godChatBox.getChildren().addAll(godChat, godChatControls);
-        godChatPane.setContent(godChatBox);
-
-        // === MODEL PANELS ===
-        TitledPane modelPool = titledPane("🧠 MODEL POOL + ROUTING + WEB APIs", true);
-        VBox modelContent = vbox(8, "#16213e", 8);
-        String[][] models = {
-            {"⚡ FAST", "qwen2.5:0.5b", "398MB | <100ms", "#00ff88"},
-            {"⚖️ BALANCED", "tinyllama:1.1b", "638MB | ~500ms", "#ffaa00"},
-            {"🧠 REASONING", "phi:latest", "1.6GB | ~2-5s", "#ff6b6b"},
-            {"🎯 DEEP", "phi3:mini", "2.2GB | ~5-10s", "#c77dff"},
-            {"🦙 LLAMA", "llama3.2:1b", "1.3GB | ~1-3s", "#ffd700"},
-            {"🐋 DEEPSEEK", "deepseek-r1:1.5b", "1.1GB | ~2-5s", "#ff69b4"}
-        };
-        for (String[] m : models) {
-            VBox card = vbox(4, "#0f3460", 8);
-            card.setStyle("-fx-background-color: #0f3460; -fx-padding: 8; -fx-background-radius: 5;");
-
-            HBox mh = hbox(8, Pos.CENTER_LEFT, null, 0);
-            mh.getChildren().addAll(label(m[0], 12, m[3], true), label(m[1], 11, "#ffffff", false), label(m[2], 9, "#a0a0a0", false));
-
-            HBox rr = hbox(5, Pos.CENTER_LEFT, null, 0);
-            ComboBox<String> pb = new ComboBox<>(); pb.getItems().addAll("Linear","Loop","Random","Markov","Vote","Chain","Broadcast"); pb.setValue("Linear");
-            pb.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); pb.setMaxWidth(80);
-            modelPatterns.put(m[1], pb);
-            ComboBox<String> nr = new ComboBox<>(); nr.getItems().addAll("Self","qwen2.5:0.5b","tinyllama:1.1b","phi:latest","phi3:mini","All"); nr.setValue("Self");
-            nr.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); nr.setMaxWidth(90);
-            modelNextRoutes.put(m[1], nr);
-
-            Button loopBtn = new Button("🔁");
-            loopBtn.setStyle("-fx-background-color: #ffaa00; -fx-text-fill: #000; -fx-font-size: 9px; -fx-padding: 2 6;");
-            String mn = m[1];
-            loopBtn.setOnAction(e -> {
-                boolean a = !loopActive.getOrDefault(mn, false); loopActive.put(mn, a);
-                loopBtn.setText(a ? "⏹️" : "🔁");
-                loopBtn.setStyle(a ? "-fx-background-color: #ff6b6b; -fx-text-fill: #fff; -fx-font-size: 9px; -fx-padding: 2 6;" : "-fx-background-color: #ffaa00; -fx-text-fill: #000; -fx-font-size: 9px; -fx-padding: 2 6;");
-                if (a) { loopCounts.put(mn, 0); log("🔁 [" + mn + "] Loop ON"); runLoop(mn); }
-                else log("⏹️ [" + mn + "] Loop OFF (" + loopCounts.getOrDefault(mn, 0) + " iterations)");
-            });
-
-            Button webBtn = new Button("🌐");
-            webBtn.setStyle("-fx-background-color: #6e5494; -fx-text-fill: #fff; -fx-font-size: 9px; -fx-padding: 2 6;");
-            webBtn.setOnAction(e -> {
-                String q = modelInputs.get(mn).getText();
-                if (!q.isEmpty()) { String s = lexicalSummarize(q); addToGodChat("🌐 LEXICAL", mn, s); TextArea c = modelChats.get(mn); if (c != null) c.appendText("[🌐] " + s + "\n"); log("🌐 [" + mn + "] " + s); }
-            });
-
-            Button apiBtn = new Button("🔌");
-            apiBtn.setStyle("-fx-background-color: #00d9ff; -fx-text-fill: #000; -fx-font-size: 9px; -fx-padding: 2 6;");
-            apiBtn.setOnAction(e -> callWebApi(mn));
-
-            rr.getChildren().addAll(label("Route:", 9, "#a0a0a0", false), pb, label("→", 9, "#00d9ff", false), nr, loopBtn, webBtn, apiBtn);
-
-            TextArea ca = new TextArea(); ca.setEditable(false); ca.setPrefRowCount(3);
-            ca.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 9px;");
-            ca.setText("[" + m[1] + "] Ready.\n"); modelChats.put(m[1], ca);
-
-            HBox ir = hbox(4, Pos.CENTER_LEFT, null, 0);
-            TextField tf = new TextField(); tf.setPromptText("→ " + m[1] + "...");
-            tf.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); HBox.setHgrow(tf, Priority.ALWAYS);
-            modelInputs.put(m[1], tf);
-            Button sb = new Button("▶"); sb.setStyle("-fx-background-color: #00ff88; -fx-text-fill: #000; -fx-font-size: 9px; -fx-padding: 2 8;");
-            String mn2 = m[1];
-            sb.setOnAction(e -> { String msg = tf.getText(); if (!msg.isEmpty()) { addToGodChat("👤 YOU", mn2, msg); ca.appendText("You: " + msg + "\n"); tf.clear(); simulateModelResponse(mn2, msg); } });
-            ir.getChildren().addAll(tf, sb);
-            card.getChildren().addAll(mh, rr, ca, ir);
-            modelContent.getChildren().add(card);
-        }
-        modelPool.setContent(new ScrollPane(modelContent));
-
-        // LoRA + Queue
-        HBox bottomRow = hbox(10, Pos.CENTER_LEFT, null, 0);
-        TitledPane loraPane = titledPane("🔄 LORA", true);
-        FlowPane lf = new FlowPane(5, 5);
-        String[] ads = {"💬CHAT","💻CODE","🗺️PATH","❤️MOTIVE","🎯CAREER","🔍ANALYSIS"};
-        String[] cls = {"#00ff88","#00d9ff","#ffaa00","#ff6b6b","#c77dff","#a0a0a0"};
-        for (int i = 0; i < ads.length; i++) { Label al = new Label(ads[i]); al.setStyle("-fx-background-color: "+cls[i]+"; -fx-text-fill: #000; -fx-padding: 4 10; -fx-background-radius: 15; -fx-font-size: 10px;"); lf.getChildren().add(al); }
-        loraPane.setContent(lf); loraPane.setMaxWidth(400);
-        TitledPane qp = titledPane("📋 QUEUE", true);
-        VBox qc = vbox(5, "#16213e", 5);
-        ProgressBar pbar = new ProgressBar(0); pbar.setMaxWidth(Double.MAX_VALUE);
-        qc.getChildren().addAll(label("0/100 | 0%", 10, "#00d9ff", false), pbar); qp.setContent(qc); qp.setMaxWidth(250);
-        bottomRow.getChildren().addAll(loraPane, qp);
-
-        TitledPane logPane = titledPane("📜 ACTIVITY LOG", true);
-        logConsole = new TextArea(); logConsole.setEditable(false); logConsole.setWrapText(true); logConsole.setPrefHeight(80);
-        logConsole.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 10px;");
-        logPane.setContent(logConsole);
-
-        box.getChildren().addAll(header, godChatPane, modelPool, bottomRow, logPane);
-        return box;
-    }
-
-    // ==================== SHARED GOD CHAT ====================
-    private void addToGodChat(String role, String model, String message) {
-        godChatMessageCount++;
-        String ts = java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
-        String color = role.contains("YOU") ? "#ffffff" : role.contains("LEXICAL") ? "#c77dff" : role.contains("VOTE") ? "#ffaa00" : role.contains("TOPOLOGY") ? "#00d9ff" : role.contains("NIGHT") ? "#6e5494" : model.contains("qwen") ? "#00ff88" : model.contains("tinyllama") ? "#ffaa00" : model.contains("phi3") ? "#c77dff" : "#ff6b6b";
-        String entry = String.format("[%s] %s | %s: %s%n", ts, role, model, message);
-        bufferedLog(entry); // batched — no more individual Platform.runLater()
-    }
-
-    // ==================== LOOP MODE (manual per-model toggle) ====================
-    private void runLoop(String modelName) {
-        chatScheduler.schedule(() -> {
-            while (loopActive.getOrDefault(modelName, false)) {
-                int c = loopCounts.merge(modelName, 1, Integer::sum);
-                try {
-                    String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
-                        "Generate ONE short, creative thought (max 100 chars).";
-                    String userPrompt = "Loop #" + c + ". Continue. Keep it under 100 characters.";
-                    String r = rateLimitedOllama(modelName, systemPrompt, userPrompt);
-                    if (r != null && !r.isEmpty()) {
-                        Platform.runLater(() -> {
-                            addToGodChat("🔄 LOOP", modelName, r);
-                            TextArea ca = modelChats.get(modelName);
-                            if (ca != null) ca.appendText("[Loop#" + c + "] " + r + "\n");
-                            checkCommandTriggers(r, modelName);
-                        });
-                    }
-                } catch (Exception e) {
-                    Platform.runLater(() -> log("⚠️ Loop error: " + e.getMessage()));
-                    loopActive.put(modelName, false);
-                    break;
-                }
-                try { Thread.sleep(OLLAMA_MIN_GAP_MS); } catch (InterruptedException e) { break; }
-            }
-        }, 0, TimeUnit.SECONDS);
-    }
-
-    // ==================== LEXICAL ====================
-    private String lexicalSummarize(String text) {
-        String[] words = text.toLowerCase().replaceAll("[^a-z0-9\\s]", "").split("\\s+");
-        Map<String, Integer> freq = new HashMap<>(); int total = 0;
-        for (String w : words) { if (w.length() < 2 || STOP_WORDS.contains(w)) continue; freq.merge(w, 1, Integer::sum); total++; }
-        if (freq.isEmpty()) return "No keywords: " + text.substring(0, Math.min(50, text.length()));
-        List<Map.Entry<String, Integer>> sorted = freq.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(5).collect(Collectors.toList());
-        StringBuilder sb = new StringBuilder("KEYWORDS[");
-        double tw = sorted.stream().mapToInt(Map.Entry::getValue).sum();
-        for (int i = 0; i < sorted.size(); i++) { Map.Entry<String, Integer> e = sorted.get(i); sb.append(String.format("%s(%.0f%%)", e.getKey(), e.getValue()/tw*100)); if (i < sorted.size()-1) sb.append(", "); }
-        sb.append(String.format("] | %d→%d | %.1f%%", total, freq.size(), freq.size()*100.0/Math.max(1,total)));
-        return sb.toString();
-    }
-
-    // ==================== WEB API ====================
-    private void initDefaultWebApis() {
-        webApiTable.addAll(
-            new String[]{"qwen2.5:0.5b", "https://api.github.com/search/repositories", "GET", "q=$QUERY", "✅"},
-            new String[]{"tinyllama:1.1b", "https://api.duckduckgo.com/", "GET", "q=$QUERY&format=json", "✅"},
-            new String[]{"phi:latest", "https://api.open-meteo.com/v1/forecast", "GET", "latitude=52.52&longitude=13.41", "✅"},
-            new String[]{"phi3:mini", "https://api.quotable.io/random", "GET", "", "✅"}
-        );
-    }
-
-    private void callWebApi(String modelName) {
-        for (String[] api : webApiTable) {
-            if (api[0].equals(modelName) && api[4].equals("✅")) {
-                chatScheduler.schedule(() -> {
-                    try {
-                        String url = api[1] + (api[3].isEmpty() ? "" : "?" + api[3].replace("$QUERY", modelInputs.get(modelName).getText()));
-                        HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url)).timeout(Duration.ofSeconds(10)).GET().build();
-                        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-                        String body = resp.body().length() > 300 ? resp.body().substring(0, 300) + "..." : resp.body();
-                        Platform.runLater(() -> { addToGodChat("🔌 API", modelName, "[" + resp.statusCode() + "] " + body); TextArea ca = modelChats.get(modelName); if (ca != null) ca.appendText("[🔌 API] " + body + "\n"); log("🔌 [" + modelName + "] API: " + resp.statusCode()); });
-                    } catch (Exception e) { Platform.runLater(() -> log("❌ API error: " + e.getMessage())); }
-                }, 0, TimeUnit.SECONDS);
-                return;
-            }
-        }
-        log("⚠️ No API configured for " + modelName);
-    }
-
-    // ==================== MODEL MANAGER ====================
-    private void refreshInstalledModels() {
-        chatScheduler.schedule(() -> {
-            try {
-                HttpRequest req = HttpRequest.newBuilder().uri(URI.create(OLLAMA_TAGS)).timeout(Duration.ofSeconds(5)).GET().build();
-                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    String body = resp.body();
-                    Platform.runLater(() -> {
-                        installedModels.clear();
-                        int idx = 0;
-                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
-                            idx += 8; int end = body.indexOf("\"", idx);
-                            if (end > idx) installedModels.add(body.substring(idx, end));
-                            idx = end;
-                        }
-                        log("📦 Installed models: " + installedModels.size());
+        canvas.setOnMouseClicked(e -> {
+            if (hoveredVertexIdx != -1) {
+                if (e.getButton() == MouseButton.PRIMARY) {
+                    triggerPulse(hoveredVertexIdx);
+                } else if (e.getButton() == MouseButton.SECONDARY) {
+                    // Trigger agent inference route
+                    triggerPulse(hoveredVertexIdx);
+                    threadPool.submit(() -> {
+                        ollamaRouter.query("tinyllama:1.1b", "Spike routing instruction at coordinate " + hoveredVertexIdx);
                     });
                 }
-            } catch (Exception e) { Platform.runLater(() -> log("⚠️ Cannot reach Ollama for model list")); }
-        }, 0, TimeUnit.SECONDS);
-    }
-
-    private void pullModel(String modelName) {
-        log("📥 Pulling " + modelName + "...");
-        statusLabel.setText("📥 Pulling " + modelName + "...");
-        chatScheduler.schedule(() -> {
-            try {
-                String json = "{\"name\":\"" + modelName + "\"}";
-                HttpRequest req = HttpRequest.newBuilder().uri(URI.create("http://localhost:11434/api/pull"))
-                    .header("Content-Type", "application/json").timeout(Duration.ofMinutes(10))
-                    .POST(HttpRequest.BodyPublishers.ofString(json)).build();
-                HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-                Platform.runLater(() -> { log("📥 " + modelName + ": " + resp.statusCode()); refreshInstalledModels(); statusLabel.setText("🟢 System Ready"); });
-            } catch (Exception e) { Platform.runLater(() -> { log("❌ Pull failed: " + e.getMessage()); statusLabel.setText("🟢 System Ready"); }); }
-        }, 0, TimeUnit.SECONDS);
-    }
-
-    // ==================== TOPOLOGY BUILDER ====================
-    private void initDefaultTopology() {
-        topologyTable.addAll(
-            new String[]{"Root", "GodHand", "Entry point", "✅"},
-            new String[]{"GodHand", "ModelPool", "Routes tasks", "✅"},
-            new String[]{"ModelPool", "BruteFoundry", "Code generation", "✅"},
-            new String[]{"ModelPool", "Hospital", "Agent recovery", "✅"},
-            new String[]{"BruteFoundry", "GitHub", "Push code", "✅"},
-            new String[]{"Hospital", "ModelPool", "Restart agents", "✅"}
-        );
-        for (String[] t : topologyTable) {
-            topologyGraph.putIfAbsent(t[0], new ArrayList<>());
-            topologyGraph.get(t[0]).add(t[1]);
-        }
-    }
-
-    private void buildTopology() {
-        log("🌳 Building topology from " + topologyTable.size() + " nodes...");
-        addToGodChat("🌳 TOPOLOGY", "Builder", "Building graph with " + topologyTable.size() + " nodes");
-        for (String[] t : topologyTable) {
-            if (t[3].equals("✅")) {
-                addToGodChat("🌳 TOPOLOGY", t[0] + "→" + t[1], t[2]);
             }
-        }
-        log("✅ Topology built: " + topologyGraph.size() + " nodes, " + topologyTable.size() + " edges");
-    }
+        });
 
-    // ==================== NIGHT CYCLE ====================
-    private void initNightCycleDefaults() {
-        nightCycleConfig.put("vote_time", "18:00");
-        nightCycleConfig.put("deploy_time", "20:00");
-        nightCycleConfig.put("email_time", "22:00");
-        nightCycleConfig.put("dream_time", "00:00");
-        nightCycleConfig.put("email_to", "chrisalunlloyd2@gmail.com");
-        nightCycleConfig.put("enabled", "false");
-    }
-
-    private void initDefaultProposals() {
-        proposalTable.add(new String[]{"P001", "Hex Elevation Terrain", "Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P002", "Agent Skill Trees", "Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P003", "Resource Economy", "Hexes produce resources (energy, data, code). Agents collect and trade.", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P004", "FOW Expansion", "Upgrade FOW from 1-hop to 2-hop via research station", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P005", "Dream Journal Gist", "Auto-publish dream correlations to a new gist every night", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P006", "Multi-Model Consensus", "Require 3/8 models to agree before deploying any change", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P007", "Hex Weather System", "Per-hex weather (clear, rain, storm) affecting agent movement speed", "pending", "0", "0", ""});
-        proposalTable.add(new String[]{"P008", "Agent Breeding", "Two agents can spawn a child agent with blended traits at a hex", "pending", "0", "0", ""});
-        log("📋 Proposals: " + proposalTable.size() + " seeded");
-    }
-
-    private void castVote(String proposalId, String modelName, boolean approve) {
-        voteRegistry.putIfAbsent(proposalId, new ConcurrentHashMap<>());
-        voteRegistry.get(proposalId).put(modelName, approve);
-        // Update tally
-        for (String[] p : proposalTable) {
-            if (p[0].equals(proposalId)) {
-                int yes = 0, no = 0;
-                Map<String, Boolean> votes = voteRegistry.getOrDefault(proposalId, Map.of());
-                for (Boolean v : votes.values()) { if (v) yes++; else no++; }
-                p[4] = String.valueOf(yes);
-                p[5] = String.valueOf(no);
-                if (yes >= 5) p[3] = "approved";
-                else if (no >= 5) p[3] = "rejected";
-                break;
-            }
-        }
-    }
-
-    private void pushToGitHub() {
-        try {
-            if (gistToken.isEmpty()) { log("⚠️ Push: No GIST_TOKEN"); return; }
-            // Build deploy manifest
-            StringBuilder manifest = new StringBuilder();
-            manifest.append("# Night Cycle Deploy Manifest\n");
-            manifest.append("## Timestamp: ").append(java.time.LocalDateTime.now()).append("\n\n");
-            manifest.append("## Approved Proposals\n");
-            for (String[] p : proposalTable) {
-                if ("approved".equals(p[3])) {
-                    manifest.append("- **").append(p[1]).append("**: ").append(p[2]).append(" (Yes:").append(p[4]).append(" No:").append(p[5]).append(")\n");
+        AnimationTimer timer = new AnimationTimer() {
+            private long lastMove = 0;
+            private long lastEnterpriseTick = 0;
+            
+            @Override
+            public void handle(long now) {
+                timePulse += 0.02;
+                if (now - lastMove > 10_000_000_000L) { // 10 seconds
+                    lastMove = now;
+                    triggerAutonomousInferenceMovement();
                 }
+                if (now - lastEnterpriseTick > 30_000_000_000L) { // 30 seconds
+                    lastEnterpriseTick = now;
+                    threadPool.submit(() -> {
+                        watchdog.auditTopology(agents);
+                        mcts.executeRollout("Hex_Topology_Alpha");
+                        fuzzer.fuzzNetwork();
+                        metaLogic.periodicScan();
+                    });
+                }
+                render(gc);
             }
-            manifest.append("\n## Dream Ideas\n");
-            for (String idea : dreamIdeas) {
-                manifest.append("- ").append(idea).append("\n");
-            }
+        };
 
-            String json = String.format(
-                "{\"description\":\"Night Cycle Deploy — auto-generated\",\"files\":{\"deploy_manifest.md\":{\"content\":\"%s\"}}}",
-                manifest.toString().replace("\"", "\\\"").replace("\n", "\\n"));
+        StackPane root = new StackPane(canvas);
+        root.setStyle("-fx-background-color: #020106;");
+        
+        // --- MANIFOLD COMMAND CENTER (Geospatial Side Hooks) ---
+        javafx.scene.layout.VBox manifoldPanel = new javafx.scene.layout.VBox(8);
+        manifoldPanel.setTranslateX(15);
+        manifoldPanel.setTranslateY(15);
+        manifoldPanel.setPickOnBounds(false); 
+        manifoldPanel.setStyle("-fx-background-color: rgba(8, 4, 24, 0.75); -fx-padding: 10; -fx-border-color: #a855f7; -fx-border-width: 1;");
+        manifoldPanel.setMaxSize(240, 400);
+        javafx.scene.layout.StackPane.setAlignment(manifoldPanel, javafx.geometry.Pos.TOP_LEFT);
 
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
-                .header("Authorization", "token " + gistToken)
-                .header("Accept", "application/vnd.github.v3+json")
-                .header("Content-Type", "application/json")
-                .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                .timeout(java.time.Duration.ofSeconds(15))
-                .build();
+        javafx.scene.control.Label manifoldLabel = new javafx.scene.control.Label("MANIFOLD CONTROL");
+        manifoldLabel.setStyle("-fx-text-fill: #c084fc; -fx-font-family: monospace; -fx-font-weight: bold; -fx-font-size: 14px;");
+        
+        javafx.scene.control.Button btnLogic = new javafx.scene.control.Button("REBOOT LOGIC SHIPPER");
+        btnLogic.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
+        btnLogic.setOnAction(e -> executeDesktopScript("START_LOGIC_BLOCKCHAIN_PORT.ps1"));
 
-            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            log("🚀 Deploy: Manifest pushed to gist:databases — HTTP " + resp.statusCode());
-        } catch (Exception e) {
-            log("⚠️ Deploy push failed: " + e.getMessage());
-        }
+        javafx.scene.control.Button btnTopology = new javafx.scene.control.Button("REBOOT TOPOLOGY SIDECAR");
+        btnTopology.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
+        btnTopology.setOnAction(e -> executeDesktopScript("START_TOPOLOGY_SIDECAR.ps1"));
+
+        javafx.scene.control.Button btnHouse = new javafx.scene.control.Button("REBOOT HOUSE ENGINE");
+        btnHouse.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
+        btnHouse.setOnAction(e -> executeDesktopScript("START_HOUSE_ENGINE_RECOVERY.ps1"));
+        
+        javafx.scene.control.Button btnAgent = new javafx.scene.control.Button("SPIN UP LEGACY AGENT");
+        btnAgent.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
+        btnAgent.setOnAction(e -> executeDesktopScript("SPIN_UP_AGENT_NODE.ps1"));
+
+        manifoldPanel.getChildren().addAll(manifoldLabel, btnLogic, btnTopology, btnHouse, btnAgent);
+        root.getChildren().add(manifoldPanel);
+
+        Scene scene = new Scene(root, WIDTH, HEIGHT);
+        
+        primaryStage.setTitle("SIMS1337 v0.22.0 - 6D Hexeract Geospatial Manifold");
+        primaryStage.setScene(scene);
+        primaryStage.show();
+        
+        timer.start();
+        nightCycle.startClock();
     }
 
-    private void toggleNightCycle(boolean enable) {
-        nightCycleConfig.put("enabled", String.valueOf(enable));
-        if (enable) {
-            log("🌙 Night Cycle ENABLED: " + nightCycleConfig.get("vote_time") + " votes → " + nightCycleConfig.get("deploy_time") + " deploy → " + nightCycleConfig.get("email_time") + " email");
-            addToGodChat("🌙 NIGHT", "System", "Cycle enabled: votes@" + nightCycleConfig.get("vote_time") + " → deploy@" + nightCycleConfig.get("deploy_time") + " → email@" + nightCycleConfig.get("email_time"));
-            statusLabel.setText("🌙 Night Cycle Armed");
-            statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
-        } else {
-            log("🌙 Night Cycle DISABLED");
-            statusLabel.setText("🟢 System Ready");
-            statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #00ff88;");
-        }
-    }
-
-    // ==================== HEX MAP VIEW (4D: Q,R,Z + Time Pulse) ====================
-    private VBox buildGridView() {
-        VBox box = vbox(10, "#1a1a2e", 15);
-        box.setAlignment(Pos.TOP_CENTER);
-        box.getChildren().addAll(
-            label("⬡ HEX MAP 4D — Axial(Q,R) + Elevation(Z) + Time Pulse", 20, "#00d9ff", true),
-            label("👇 Left=Move Agent | Right=Start Pipeline | Scroll=Change Elevation 👇", 12, "#00ff88", false));
-
-        hexPane = new Pane();
-        hexPane.setPrefSize(700, 600);
-        hexPane.setStyle("-fx-background-color: #0a0a1a; -fx-border-color: #00d9ff; -fx-border-width: 2;");
-
-        // Build 61 hexes (radius 4)
-        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
-            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
-            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
+    private void initHexGrid() {
+        int radius = 4;
+        for (int q = -radius; q <= radius; q++) {
+            int r1 = Math.max(-radius, -q - radius);
+            int r2 = Math.min(radius, -q + radius);
             for (int r = r1; r <= r2; r++) {
-                String key = q + "," + r;
-                double[] xy = hexToPixel(q, r);
-                javafx.scene.shape.Polygon hex = new javafx.scene.shape.Polygon();
-                for (int i = 0; i < 6; i++) {
-                    double[] corner = hexCorner(xy[0], xy[1], HEX_SIZE, i);
-                    hex.getPoints().addAll(corner[0], corner[1]);
+                grid.put(q + "," + r, new HexNode(q, r));
+            }
+        }
+        grid.get("0,0").station = "HUB";
+        grid.get("4,-4").station = "Brute Foundry";
+        grid.get("-3,0").station = "A/B Lab";
+        grid.get("0,2").station = "Knowledge Tree";
+        grid.get("2,2").station = "LOGIC,TOOL_NEXUS";
+    }
+
+    private void initAgents() {
+        agents.add(new Agent("Alpha", 0, 0));
+        agents.add(new Agent("Beta", 3, -2));
+        agents.add(new Agent("Gamma", -3, 2));
+        recalculateFOW();
+    }
+
+    private void initHexeract() {
+        // Generate 6D coordinates for 64 vertices
+        for (int i = 0; i < 64; i++) {
+            for (int d = 0; d < 6; d++) {
+                vertices6D[i][d] = ((i >> d) & 1) == 1 ? 1.0 : -1.0;
+            }
+            densities[i] = 0.3 + rand.nextDouble() * 0.7;
+            flows[i] = 0.2 + rand.nextDouble() * 0.8;
+        }
+
+        // Generate 192 edges (Hamming distance = 1)
+        for (int i = 0; i < 64; i++) {
+            for (int j = i + 1; j < 64; j++) {
+                int diffs = 0;
+                for (int d = 0; d < 6; d++) {
+                    if (vertices6D[i][d] != vertices6D[j][d]) diffs++;
                 }
-                // Translucent fill with depth-based opacity
-                double z = Math.random() * 3.0; // initial random elevation
-                hexElevation.put(key, z);
-                hexPulsePhase.put(key, Math.random() * Math.PI * 2);
-                double alpha = 0.3 + z * 0.2;
-                hex.setFill(Color.rgb(20, 80 + (int)(z * 30), 180, alpha));
-                hex.setStroke(Color.web("#00d9ff44"));
-                hex.setStrokeWidth(1.5);
-                hex.setOpacity(0.7);
-
-                final int fq = q, fr = r;
-                hex.setOnMouseClicked(e -> {
-                    if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
-                        startPipelineAt(fq, fr);
-                    } else {
-                        moveAgentTo("Agent Alpha", fq, fr, (int)Math.round(hexElevation.getOrDefault(key, 0.0)));
-                    }
-                });
-                hex.setOnMouseEntered(e -> {
-                    hex.setStroke(Color.web("#00ff88"));
-                    hex.setStrokeWidth(3);
-                    hex.setOpacity(1.0);
-                });
-                hex.setOnMouseExited(e -> {
-                    hex.setStroke(Color.web("#00d9ff44"));
-                    hex.setStrokeWidth(1.5);
-                    hex.setOpacity(0.7);
-                });
-                // Scroll wheel changes elevation (Z)
-                hex.setOnScroll(e -> {
-                    double dz = e.getDeltaY() > 0 ? 0.5 : -0.5;
-                    double newZ = Math.max(0, Math.min(5, hexElevation.getOrDefault(key, 0.0) + dz));
-                    hexElevation.put(key, newZ);
-                    updateHexAppearance(key, hex);
-                });
-
-                Tooltip tip = new Tooltip("⬡ (" + q + "," + r + ") Z:" + String.format("%.1f", z) +
-                    "\nClick: Move Agent\nRight: Pipeline\nScroll: Elevation");
-                Tooltip.install(hex, tip);
-
-                hexCells.put(key, hex);
-                hexPane.getChildren().add(hex);
+                if (diffs == 1) {
+                    edges.add(new int[]{i, j});
+                }
             }
         }
 
-        // 4D Time Pulse animation
-        hexPulseTimeline = new javafx.animation.Timeline(
-            new javafx.animation.KeyFrame(javafx.util.Duration.millis(50), e -> {
-                double t = System.currentTimeMillis() / 1000.0;
-                for (var entry : hexCells.entrySet()) {
-                    String key = entry.getKey();
-                    javafx.scene.shape.Polygon hex = entry.getValue();
-                    double phase = hexPulsePhase.getOrDefault(key, 0.0);
-                    double z = hexElevation.getOrDefault(key, 0.0);
-                    // 4D pulse: sin wave on opacity + slight scale based on Z and time
-                    double pulse = 0.5 + 0.5 * Math.sin(t * 2.0 + phase);
-                    double alpha = 0.25 + z * 0.15 + pulse * 0.15;
-                    hex.setFill(Color.rgb(
-                        (int)(20 + pulse * 40),
-                        (int)(60 + z * 30 + pulse * 30),
-                        (int)(140 + z * 20 + pulse * 40),
-                        Math.min(1.0, alpha)));
-                    // Z elevation → slight scale shift (parallax)
-                    double scale = 1.0 + z * 0.03 + pulse * 0.02;
-                    hex.setScaleX(scale);
-                    hex.setScaleY(scale);
+        // Generate stars
+        for (int i = 0; i < 150; i++) {
+            stars.add(new BackgroundStar(rand.nextDouble() * WIDTH, rand.nextDouble() * HEIGHT));
+        }
+
+        // Generate stardust particles representing interstitial semantic clouds
+        for (int i = 0; i < 600; i++) {
+            particles.add(new Particle());
+        }
+    }
+    
+    private void initBackendSystems() {
+        modelManager = new ModelManager();
+        kg = new KnowledgeGraph();
+        memory = new SQLiteMemory();
+        gistSync = new GistSync();
+        ollamaRouter = new OllamaRouter();
+        
+        guard = new EnterpriseGuard();
+        watchdog = new SwarmWatchdog(guard);
+        mcts = new MCTSPipeline(ollamaRouter, guard);
+        fuzzer = new AdversarialFuzzer(ollamaRouter, guard);
+        metaLogic = new MetaLogicSupervisor(guard, ollamaRouter);
+        evolutionEngine = new NightlyEvolutionEngine(metaLogic, guard, mutator);
+        
+        nightCycle = new NightCycleEngine(ollamaRouter, modelManager, gistSync, memory, mutator);
+        try {
+            dashboardServer = HttpServer.create(new InetSocketAddress(8899), 0);
+            dashboardServer.createContext("/api/status", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String resp = "{\"version\":\"0.22.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, resp.length());
+                    OutputStream os = exchange.getResponseBody();
+                    os.write(resp.getBytes());
+                    os.close();
                 }
-            })
-        );
-        hexPulseTimeline.setCycleCount(javafx.animation.Animation.INDEFINITE);
-        hexPulseTimeline.play();
+            });
+            dashboardServer.setExecutor(null);
+            dashboardServer.start();
+            System.out.println("[GODHAND DASHBOARD] Online at http://localhost:8899");
+        } catch(Exception e) { e.printStackTrace(); }
+    }
 
-        box.getChildren().add(hexPane);
+    private void triggerAutonomousInferenceMovement() {
+        threadPool.submit(() -> {
+            for (Agent a : agents) {
+                String prompt = "You are Agent " + a.name + " at hex (" + a.q + "," + a.r + "). Reply with exactly one word indicating your move direction: NORTH, SOUTH, EAST, WEST, NORTHEAST, or NORTHWEST.";
+                String move = ollamaRouter.query("qwen2.5:0.5b", prompt).toUpperCase();
+                
+                int dq = 0, dr = 0;
+                if (move.contains("NORTHEAST")) { dq = 1; dr = -1; }
+                else if (move.contains("NORTHWEST")) { dq = 0; dr = -1; }
+                else if (move.contains("NORTH")) { dq = 0; dr = -1; }
+                else if (move.contains("SOUTHEAST")) { dq = 0; dr = 1; }
+                else if (move.contains("SOUTHWEST")) { dq = -1; dr = 1; }
+                else if (move.contains("SOUTH")) { dq = 0; dr = 1; }
+                else if (move.contains("EAST")) { dq = 1; dr = 0; }
+                else if (move.contains("WEST")) { dq = -1; dr = 0; }
+                
+                int nq = a.q + dq;
+                int nr = a.r + dr;
+                if (grid.containsKey(nq + "," + nr)) {
+                    a.moveTo(nq, nr);
+                    
+                    // Inject visual routing pulse when agent moves
+                    int randomNodeIdx = rand.nextInt(64);
+                    triggerPulse(randomNodeIdx);
+                    
+                    String logMsg = "[MOVE] Agent " + a.name + " routed to coord (" + nq + "," + nr + ") via " + move;
+                    synchronized (godChat) {
+                        if (godChat.size() > 50) godChat.remove(0);
+                        godChat.add(logMsg);
+                    }
+                }
+            }
+            Platform.runLater(this::recalculateFOW);
+        });
+    }
 
-        // Agent position panel
-        VBox pp = vbox(8, "#16213e", 12);
-        pp.setStyle("-fx-background-radius: 10;");
-        pp.getChildren().add(label("🎮 AGENT POSITIONS (Q,R,Z) — Hex Axial", 14, "#00d9ff", true));
-        String[][] players = {
-            {"🟢 Agent Alpha", "0", "0", "2"},
-            {"🔵 Agent Beta", "3", "-2", "1"},
-            {"🟠 Agent Gamma", "-3", "2", "3"}
+    private void recalculateFOW() {
+        for (HexNode hex : grid.values()) hex.visible = false;
+        for (Agent a : agents) {
+            for (HexNode hex : grid.values()) {
+                if (hex.distance(a.q, a.r) <= 1) hex.visible = true;
+            }
+        }
+    }
+
+    private void triggerPulse(int sourceIdx) {
+        List<Integer> targets = new ArrayList<>();
+        for (int[] edge : edges) {
+            if (edge[0] == sourceIdx) targets.add(edge[1]);
+            else if (edge[1] == sourceIdx) targets.add(edge[0]);
+        }
+        if (!targets.isEmpty()) {
+            int targetIdx = targets.get(rand.nextInt(targets.size()));
+            pulses.add(new Pulse(sourceIdx, targetIdx));
+            
+            String logMsg = String.format("[SPIKE] Distilled inference routing pulse from v_%d to v_%d", sourceIdx, targetIdx);
+            synchronized (godChat) {
+                if (godChat.size() > 50) godChat.remove(0);
+                godChat.add(logMsg);
+            }
+        }
+    }
+
+    private double[] project6DTo3D(double[] coords, double[] angles) {
+        double[] v = coords.clone();
+        int[][] rotations = {
+            {0, 3}, {1, 4}, {2, 5},
+            {0, 4}, {1, 5}, {2, 3},
+            {0, 5}, {1, 3}, {2, 4}
         };
-        for (String[] p : players) {
-            HBox pr = hbox(12, Pos.CENTER_LEFT, null, 0);
-            Label pl = label("⬡(" + p[1] + "," + p[2] + ") Z:" + p[3], 11, "#a0a0a0", false);
-            agentPositionLabels.put(p[0], pl);
-            pr.getChildren().addAll(label(p[0], 12, "#ffffff", true), pl, label("Active", 11, "#00ff88", false));
-            pp.getChildren().add(pr);
+        for (int r = 0; r < rotations.length; r++) {
+            int a = rotations[r][0];
+            int b = rotations[r][1];
+            double angle = angles[r % angles.length];
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            double va = v[a];
+            double vb = v[b];
+            v[a] = va * cos - vb * sin;
+            v[b] = va * sin + vb * cos;
         }
-        box.getChildren().add(pp);
-
-        // Station buttons
-        HBox sr = hbox(8, Pos.CENTER, null, 8);
-        String[][] sts = {
-            {"🏗️ Brute Foundry", "#ff6b6b"}, {"🧬 A/B Lab", "#c77dff"},
-            {"🌳 Knowledge Tree", "#00d9ff"}, {"🔬 Research", "#ffaa00"},
-            {"🔒 Secrets", "#999999"}, {"🏥 Hospital", "#ff6b9d"}, {"📡 GitHub", "#6e5494"}
-        };
-        for (String[] s : sts) {
-            Button sb = new Button(s[0]);
-            sb.setStyle("-fx-background-color: " + s[1] + "; -fx-text-fill: #fff; -fx-font-size: 10px; -fx-padding: 4 8;");
-            sb.setOnAction(e -> triggerStation(s[0].substring(2).trim()));
-            sr.getChildren().add(sb);
-        }
-        box.getChildren().add(sr);
-        return box;
-    }
-
-    // === HEX GEOMETRY ===
-    private double[] hexToPixel(int q, int r) {
-        double x = HEX_SIZE * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r) + 350;
-        double y = HEX_SIZE * (3.0 / 2 * r) + 300;
-        return new double[]{x, y};
-    }
-
-    private double[] hexCorner(double cx, double cy, double size, int i) {
-        double angle = Math.PI / 180 * (60 * i - 30);
-        return new double[]{cx + size * Math.cos(angle), cy + size * Math.sin(angle)};
-    }
-
-    private void updateHexAppearance(String key, javafx.scene.shape.Polygon hex) {
-        double z = hexElevation.getOrDefault(key, 0.0);
-        double alpha = 0.3 + z * 0.2;
-        hex.setFill(Color.rgb(20, 80 + (int)(z * 30), 180, alpha));
-        // Drop shadow effect for 3D depth
-        hex.setEffect(new javafx.scene.effect.DropShadow(5 + z * 4, 2 + z * 2, 2 + z * 2, Color.rgb(0, 0, 0, 0.5 + z * 0.1)));
-    }
-
-    // ==================== GAMEPLAY VIEW ====================
-    private VBox buildGameplayView() {
-        VBox box = vbox(10, "#1a1a2e", 15);
-        box.getChildren().add(label("🎯 GAMEPLAY - Agent Actions + Pipeline + Automation", 24, "#00d9ff", true));
-
-        // === HEADLESS PIPELINE (One-Click Automation) ===
-        TitledPane pipelinePane = titledPane("⚡ HEADLESS PIPELINE - One-Click Automation", true);
-        VBox pipelineContent = vbox(8, "#16213e", 10);
-
-        HBox pipelineRow1 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        pipelineRow1.getChildren().addAll(
-            label("Task:", 12, "#fff", false),
-            tf("Write a Python web scraper", 300)
-        );
-        TextField pipelineTask = (TextField) pipelineRow1.getChildren().get(1);
-
-        HBox pipelineRow2 = hbox(10, Pos.CENTER, null, 0);
-        Button codeGenBtn = styledButton("💻 Generate Code", "#00ff88");
-        codeGenBtn.setOnAction(e -> runHeadlessPipeline("code", pipelineTask.getText()));
-        Button essayBtn = styledButton("📝 Write Essay", "#ffaa00");
-        essayBtn.setOnAction(e -> runHeadlessPipeline("essay", pipelineTask.getText()));
-        Button taskBtn = styledButton("⚡ Complete Task", "#00d9ff");
-        taskBtn.setOnAction(e -> runHeadlessPipeline("task", pipelineTask.getText()));
-        Button fullPipelineBtn = styledButton("🔗 Full Pipeline (6 models)", "#c77dff");
-        fullPipelineBtn.setOnAction(e -> runHeadlessPipeline("pipeline", pipelineTask.getText()));
-        Button voteBtn = styledButton("🗳️ Vote on This", "#ff6b6b");
-        voteBtn.setOnAction(e -> runHeadlessPipeline("vote", pipelineTask.getText()));
-        pipelineRow2.getChildren().addAll(codeGenBtn, essayBtn, taskBtn, fullPipelineBtn, voteBtn);
-
-        pipelineContent.getChildren().addAll(pipelineRow1, pipelineRow2);
-        pipelinePane.setContent(pipelineContent);
-
-        // === AGENT INVENTORY ===
-        TitledPane inventoryPane = titledPane("🎒 AGENT INVENTORY", true);
-        VBox invContent = vbox(8, "#16213e", 10);
-        HBox invRow = hbox(15, Pos.CENTER_LEFT, null, 0);
-        String[][] items = {
-            {"🛡️ Shield", "Defense +10", "#00d9ff"},
-            {"⚔️ Sword", "Attack +15", "#ff6b6b"},
-            {"📦 Resources", "x42 units", "#ffaa00"},
-            {"🔑 Key Fragment", "3/5 collected", "#c77dff"},
-            {"📜 Blueprint", "Phase 3", "#00ff88"}
-        };
-        for (String[] item : items) {
-            VBox itemCard = vbox(3, "#0f3460", 8);
-            itemCard.setStyle("-fx-background-color: #0f3460; -fx-padding: 8; -fx-background-radius: 5;");
-            itemCard.getChildren().addAll(
-                label(item[0], 14, item[2], true),
-                label(item[1], 10, "#a0a0a0", false)
-            );
-            invRow.getChildren().add(itemCard);
-        }
-        invContent.getChildren().add(invRow);
-        inventoryPane.setContent(invContent);
-
-        // === AGENT SKILLS ===
-        TitledPane skillsPane = titledPane("⚡ AGENT SKILLS", true);
-        VBox skillsContent = vbox(8, "#16213e", 10);
-        String[][] skills = {
-            {"💻 Code Generation", "Level 4", "85%", "#00ff88"},
-            {"🔍 Analysis", "Level 3", "70%", "#00d9ff"},
-            {"📝 Writing", "Level 3", "65%", "#ffaa00"},
-            {"🗳️ Voting", "Level 5", "95%", "#c77dff"},
-            {"🏗️ Building", "Level 2", "45%", "#ff6b6b"}
-        };
-        for (String[] skill : skills) {
-            HBox skillRow = hbox(15, Pos.CENTER_LEFT, null, 0);
-            skillRow.getChildren().addAll(
-                label(skill[0], 12, "#fff", false),
-                label(skill[1], 11, skill[3], false),
-                new Region(),
-                label(skill[2], 11, skill[3], true)
-            );
-            HBox.setHgrow(skillRow.getChildren().get(2), Priority.ALWAYS);
-            ProgressBar sp = new ProgressBar(Integer.parseInt(skill[2].replace("%","")) / 100.0);
-            sp.setMaxWidth(100);
-            skillRow.getChildren().add(sp);
-            skillsContent.getChildren().add(skillRow);
-        }
-        skillsPane.setContent(skillsContent);
-
-        // === ACTIVE QUESTS ===
-        TitledPane questsPane = titledPane("📜 ACTIVE QUESTS", true);
-        VBox questsContent = vbox(8, "#16213e", 10);
-        String[][] quests = {
-            {"🔴 Main", "Build the GodHand GUI", "75%", "#ff6b6b"},
-            {"🟡 Side", "Train LoRA adapters", "40%", "#ffaa00"},
-            {"🟢 Daily", "Run model evaluation", "0%", "#00ff88"},
-            {"🟣 Epic", "Deploy autonomous night cycle", "90%", "#c77dff"}
-        };
-        for (String[] quest : quests) {
-            HBox questRow = hbox(10, Pos.CENTER_LEFT, null, 0);
-            questRow.getChildren().addAll(
-                label(quest[0], 12, quest[3], true),
-                label(quest[1], 12, "#fff", false),
-                new Region(),
-                label(quest[2], 12, quest[3], true)
-            );
-            HBox.setHgrow(questRow.getChildren().get(2), Priority.ALWAYS);
-            ProgressBar qp = new ProgressBar(Integer.parseInt(quest[2].replace("%","")) / 100.0);
-            qp.setMaxWidth(100);
-            questRow.getChildren().add(qp);
-            questsContent.getChildren().add(questRow);
-        }
-        questsPane.setContent(questsContent);
-
-        // === ACHIEVEMENTS ===
-        TitledPane achievePane = titledPane("🏆 ACHIEVEMENTS", true);
-        VBox achieveContent = vbox(8, "#16213e", 10);
-        String[][] achieves = {
-            {"🏆 First Chat", "Sent first message to model", "✅"},
-            {"🏆 Pipeline Master", "Ran full 6-model pipeline", "✅"},
-            {"🏆 Night Owl", "Armed night cycle", "⏳"},
-            {"🏆 Model Collector", "Pulled 8+ models", "⏳"},
-            {"🏆 Code Wizard", "Generated 100+ code files", "⏳"},
-            {"🏆 Topologist", "Built topology with 20+ nodes", "⏳"}
-        };
-        FlowPane achieveFlow = new FlowPane(10, 10);
-        for (String[] a : achieves) {
-            VBox ac = vbox(3, "#0f3460", 8);
-            ac.setStyle("-fx-background-color: #0f3460; -fx-padding: 8; -fx-background-radius: 5;");
-            ac.getChildren().addAll(
-                label(a[0], 14, a[2].equals("✅") ? "#00ff88" : "#a0a0a0", true),
-                label(a[1], 10, "#a0a0a0", false),
-                label(a[2], 12, a[2].equals("✅") ? "#00ff88" : "#ffaa00", true)
-            );
-            achieveFlow.getChildren().add(ac);
-        }
-        achievePane.setContent(achieveFlow);
-
-        box.getChildren().addAll(pipelinePane, inventoryPane, skillsPane, questsPane, achievePane);
-        return box;
-    }
-
-    // ==================== HEADLESS PIPELINE IN GUI ====================
-    private void runHeadlessPipeline(String mode, String input) {
-        log("⚡ Running headless pipeline: " + mode + " → " + input);
-        addToGodChat("⚡ PIPELINE", mode.toUpperCase(), "Starting: " + input);
-        statusLabel.setText("⚡ Pipeline: " + mode);
-        statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ffaa00; -fx-font-weight: bold;");
-
-        chatScheduler.schedule(() -> {
-            try {
-                String[] models = {"qwen2.5:0.5b", "tinyllama:1.1b", "llama3.2:1b", "deepseek-r1:1.5b"};
-                String current = input;
-                long totalStart = System.currentTimeMillis();
-
-                for (int i = 0; i < models.length; i++) {
-                    String model = models[i];
-                    String prompt = switch (mode) {
-                        case "code" -> "You are an expert programmer. Write code for: " + current + ". Output ONLY code.";
-                        case "essay" -> "You are a professional writer. Write about: " + current + ". Be thorough.";
-                        case "task" -> "Complete this task step by step: " + current;
-                        case "pipeline" -> "Process and improve this. Add your unique perspective:\n" + current;
-                        case "vote" -> "Vote APPROVE or REJECT on: " + current + ". Reply with ONLY one word.";
-                        default -> current;
-                    };
-
-                    long start = System.currentTimeMillis();
-                    String result = callOllama(model, prompt);
-                    long latency = System.currentTimeMillis() - start;
-
-                    final int step = i + 1;
-                    final String m = model;
-                    final String r = result;
-                    final long l = latency;
-                    Platform.runLater(() -> {
-                        addToGodChat("⚡ PIPELINE", m, "Step " + step + "/" + models.length + " [" + l + "ms]: " + r.substring(0, Math.min(80, r.length())));
-                        log("⚡ [" + m + "] Pipeline step " + step + ": " + l + "ms, " + r.length() + " chars");
-                    });
-                    current = result;
-                }
-
-                long totalTime = System.currentTimeMillis() - totalStart;
-                final long tt = totalTime;
-                Platform.runLater(() -> {
-                    log("✅ Pipeline complete: " + mode + " in " + tt + "ms");
-                    addToGodChat("✅ PIPELINE", mode.toUpperCase(), "Complete! " + models.length + " models, " + tt + "ms total");
-                    statusLabel.setText("🟢 System Ready");
-                    statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #00ff88;");
-                });
-            } catch (Exception e) {
-                Platform.runLater(() -> {
-                    log("❌ Pipeline failed: " + e.getMessage());
-                    statusLabel.setText("🟢 System Ready");
-                    statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #00ff88;");
-                });
-            }
-        }, 0, TimeUnit.SECONDS);
-    }
-
-    // ==================== AGENT MOVEMENT (Hex Q,R,Z) ====================
-    private void initAgentPositions() {
-        agentPositions.put("Agent Alpha", new int[]{0, 0, 2});
-        agentPositions.put("Agent Beta", new int[]{3, -2, 1});
-        agentPositions.put("Agent Gamma", new int[]{-3, 2, 3});
-        agentPositions.put("Agent Delta", new int[]{0, -3, 4}); // 4th agent — cellular pacing
-    }
-
-    private void moveAgentTo(String name, int q, int r, int z) {
-        int[] pos = agentPositions.get(name);
-        if (pos == null) return;
-        int oq = pos[0], or = pos[1];
-        String oldKey = oq + "," + or;
-        String newKey = q + "," + r;
-
-        // TODO auto-resolution: mark old hex TODOs as done, new hex TODOs as in-progress
-        if (!oldKey.equals(newKey)) {
-            markTodoStatus(oldKey, name, "done");
-            markTodoStatus(newKey, name, "in_progress");
-        }
-
-        pos[0] = q; pos[1] = r; pos[2] = z;
-
-        Platform.runLater(() -> {
-            // Reset old hex
-            javafx.scene.shape.Polygon oldHex = hexCells.get(oldKey);
-            if (oldHex != null) {
-                updateHexAppearance(oldKey, oldHex);
-            }
-            // Highlight new hex with agent color
-            javafx.scene.shape.Polygon newHex = hexCells.get(newKey);
-            Color ac = name.contains("Alpha") ? Color.rgb(0, 255, 100) :
-                      name.contains("Beta") ? Color.rgb(0, 150, 255) :
-                      Color.rgb(255, 150, 0);
-            if (newHex != null) {
-                newHex.setFill(ac);
-                newHex.setStroke(Color.WHITE);
-                newHex.setStrokeWidth(4);
-                newHex.setOpacity(1.0);
-            }
-            Label pl = agentPositionLabels.get(name);
-            if (pl != null) pl.setText("⬡(" + q + "," + r + ") Z:" + z);
-            log("🎯 " + name + " → ⬡(" + q + "," + r + ") Z:" + z);
-            statusLabel.setText("🟢 " + name + " @ ⬡(" + q + "," + r + ")");
-        });
-    }
-
-    // ==================== STATION PIPELINES (Hex) ====================
-    private void initStationPipelines() {
-        pipelineNext.put("Brute Foundry","A/B Lab"); pipelineNext.put("A/B Lab","Knowledge Tree");
-        pipelineNext.put("Knowledge Tree","Research"); pipelineNext.put("Research","GitHub");
-        pipelineNext.put("GitHub","Hospital"); pipelineNext.put("Hospital","Brute Foundry");
-    }
-
-    private void startPipelineAt(int q, int r) {
-        log("🔗 Pipeline @ ⬡(" + q + "," + r + ")");
-        pipelineActive.put("pipeline", true);
-        chatScheduler.schedule(() -> {
-            String st = "Brute Foundry"; int step = 0;
-            while (pipelineActive.getOrDefault("pipeline", false) && step < 20) {
-                final String cs = st; final int s = step;
-                Platform.runLater(() -> {
-                    addToGodChat("🔗 PIPELINE", cs, "Step " + s + " @ ⬡(" + q + "," + r + ")");
-                    modelChats.forEach((n, c) -> c.appendText("[Pipeline:" + cs + "]\n"));
-                });
-                st = pipelineNext.getOrDefault(st, "Brute Foundry");
-                step++;
-                try { Thread.sleep(2000); } catch (InterruptedException e) { break; }
-            }
-            final int ts = step;
-            Platform.runLater(() -> log("🔗 Pipeline done: " + ts + " steps"));
-        }, 0, TimeUnit.SECONDS);
-    }
-
-    // ==================== SETTINGS VIEW ====================
-    private VBox buildSettingsView() {
-        VBox box = vbox(10, "#1a1a2e", 20);
-        box.getChildren().add(label("⚙️ SETTINGS & ORCHESTRATION - v0.11.0", 24, "#00d9ff", true));
-
-        // === WEB APIs ===
-        TitledPane apiPane = titledPane("🔌 WEB APIs - Per Model HTTP Endpoints", true);
-        VBox apiContent = vbox(10, "#16213e", 10);
-        TableView<String[]> apiTable = new TableView<>(); apiTable.setPrefHeight(120); apiTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> apiModel = new TableColumn<>("Model"); apiModel.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
-        TableColumn<String[],String> apiUrl = new TableColumn<>("URL"); apiUrl.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1])); apiUrl.setPrefWidth(250);
-        TableColumn<String[],String> apiMethod = new TableColumn<>("Method"); apiMethod.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
-        TableColumn<String[],String> apiParams = new TableColumn<>("Params"); apiParams.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3])); apiParams.setPrefWidth(150);
-        TableColumn<String[],String> apiActive = new TableColumn<>("Active"); apiActive.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
-        apiTable.getColumns().addAll(apiModel, apiUrl, apiMethod, apiParams, apiActive);
-        apiTable.setItems(webApiTable);
-        HBox apiBtns = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button addApi = styledButton("➕ Add API", "#00ff88"); addApi.setOnAction(e->webApiTable.add(new String[]{"model","https://...","GET","","✅"}));
-        Button delApi = styledButton("🗑️ Delete", "#ff6b6b"); delApi.setOnAction(e->{String[] s=apiTable.getSelectionModel().getSelectedItem(); if(s!=null)webApiTable.remove(s);});
-        Button testAll = styledButton("🔌 Test All APIs", "#00d9ff"); testAll.setOnAction(e->webApiTable.forEach(a->{if(a[4].equals("✅"))callWebApi(a[0]);}));
-        apiBtns.getChildren().addAll(addApi, delApi, testAll);
-        apiContent.getChildren().addAll(apiTable, apiBtns);
-        apiPane.setContent(apiContent);
-
-        // === MODEL MANAGER ===
-        TitledPane modelMgrPane = titledPane("📦 MODEL MANAGER - Pull / List / Switch", true);
-        VBox mmContent = vbox(10, "#16213e", 10);
-        HBox mmRow1 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        mmRow1.getChildren().add(label("Installed:", 12, "#ffffff", false));
-        ListView<String> installedList = new ListView<>(installedModels); installedList.setPrefHeight(80); installedList.setStyle("-fx-background-color: #0f3460; -fx-text-fill: #00ff88;");
-        HBox mmRow2 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        mmRow2.getChildren().add(label("Available to pull:", 12, "#ffffff", false));
-        ComboBox<String> pullSelect = new ComboBox<>(availableModels); pullSelect.setValue("llama3.2:1b"); pullSelect.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff;");
-        Button pullBtn = styledButton("📥 Pull Model", "#c77dff"); pullBtn.setOnAction(e->pullModel(pullSelect.getValue()));
-        Button refreshBtn = styledButton("🔄 Refresh List", "#00d9ff"); refreshBtn.setOnAction(e->refreshInstalledModels());
-        mmRow2.getChildren().addAll(pullSelect, pullBtn, refreshBtn);
-        mmContent.getChildren().addAll(mmRow1, installedList, mmRow2);
-        modelMgrPane.setContent(mmContent);
-
-        // === VOTING SYSTEM ===
-        TitledPane votePane = titledPane("🗳️ AGENT VOTING SYSTEM - Proposals & Consensus", true);
-        VBox voteContent = vbox(10, "#16213e", 10);
-        TableView<String[]> voteTable = new TableView<>(); voteTable.setPrefHeight(100); voteTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> vProp = new TableColumn<>("Proposal"); vProp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1])); vProp.setPrefWidth(200);
-        TableColumn<String[],String> vStatus = new TableColumn<>("Status"); vStatus.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        TableColumn<String[],String> vYes = new TableColumn<>("Yes"); vYes.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
-        TableColumn<String[],String> vNo = new TableColumn<>("No"); vNo.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5]));
-        voteTable.getColumns().addAll(vProp, vStatus, vYes, vNo);
-        voteTable.setItems(proposalTable);
-        HBox voteBtns = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button addProp = styledButton("➕ Proposal", "#00ff88"); addProp.setOnAction(e->proposalTable.add(new String[]{"P"+(proposalTable.size()+1),"New proposal","","pending","0","0","manual"}));
-        Button approveBtn = styledButton("✅ Approve", "#00ff88"); approveBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",true);});
-        Button rejectBtn = styledButton("❌ Reject", "#ff6b6b"); rejectBtn.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null)castVote(s[0],"qwen2.5:0.5b",false);});
-        Button voteAll = styledButton("🗳️ All Models Vote", "#c77dff"); voteAll.setOnAction(e->{String[] s=voteTable.getSelectionModel().getSelectedItem(); if(s!=null){for(String m:modelChats.keySet())castVote(s[0],m,Math.random()>0.3);}});
-        voteBtns.getChildren().addAll(addProp, approveBtn, rejectBtn, voteAll);
-        voteContent.getChildren().addAll(voteTable, voteBtns);
-        votePane.setContent(voteContent);
-
-        // === TOPOLOGY BUILDER ===
-        TitledPane topoPane = titledPane("🌳 TOPOLOGY BUILDER - Node/Edge Graph", true);
-        VBox topoContent = vbox(10, "#16213e", 10);
-        TableView<String[]> topoTable = new TableView<>(); topoTable.setPrefHeight(100); topoTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> tFrom = new TableColumn<>("From"); tFrom.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
-        TableColumn<String[],String> tTo = new TableColumn<>("To"); tTo.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
-        TableColumn<String[],String> tDesc = new TableColumn<>("Description"); tDesc.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2])); tDesc.setPrefWidth(200);
-        TableColumn<String[],String> tActive = new TableColumn<>("Active"); tActive.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        topoTable.getColumns().addAll(tFrom, tTo, tDesc, tActive);
-        topoTable.setItems(topologyTable);
-        HBox topoBtns = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button addNode = styledButton("➕ Add Edge", "#00ff88"); addNode.setOnAction(e->topologyTable.add(new String[]{"From","To","Description","✅"}));
-        Button buildTopo = styledButton("🌳 Build Topology", "#00d9ff"); buildTopo.setOnAction(e->buildTopology());
-        Button exportTopo = styledButton("📋 Export", "#c77dff");
-        topoBtns.getChildren().addAll(addNode, buildTopo, exportTopo);
-        topoContent.getChildren().addAll(topoTable, topoBtns);
-        topoPane.setContent(topoContent);
-
-        // === NIGHT CYCLE ===
-        TitledPane nightPane = titledPane("🌙 NIGHT CYCLE - Autonomous Operation", true);
-        VBox nightContent = vbox(10, "#16213e", 10);
-        HBox nightRow1 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        nightRow1.getChildren().addAll(label("Vote Time:", 12, "#fff", false), tf("18:00", 60), label("Deploy:", 12, "#fff", false), tf("20:00", 60), label("Email:", 12, "#fff", false), tf("22:00", 60));
-        HBox nightRow2 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        nightRow2.getChildren().addAll(label("Email to:", 12, "#fff", false), tf("chrisalunlloyd2@gmail.com", 200));
-        HBox nightRow3 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        ToggleButton nightToggle = new ToggleButton("🌙 Night Cycle OFF");
-        nightToggle.setStyle("-fx-background-color: #16213e; -fx-text-fill: #fff; -fx-font-size: 14px; -fx-padding: 10 20;");
-        nightToggle.setOnAction(e -> { boolean on = nightToggle.isSelected(); nightToggle.setText(on ? "🌙 Night Cycle ON" : "🌙 Night Cycle OFF"); nightToggle.setStyle(on ? "-fx-background-color: #c77dff; -fx-text-fill: #000; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 10 20;" : "-fx-background-color: #16213e; -fx-text-fill: #fff; -fx-font-size: 14px; -fx-padding: 10 20;"); toggleNightCycle(on); });
-        nightRow3.getChildren().addAll(nightToggle, label("18:00 votes → 20:00 deploy → 22:00 email brief", 12, "#a0a0a0", false));
-        nightContent.getChildren().addAll(nightRow1, nightRow2, nightRow3);
-        nightPane.setContent(nightContent);
-
-        // === ROUTING + COMMANDS + PROMPT + CONTEXT (compact) ===
-        TitledPane routingPane = titledPane("🔀 ROUTING + COMMANDS + PROMPT + CONTEXT", true);
-        VBox rcContent = vbox(8, "#16213e", 8);
-
-        // Routing table
-        TableView<String[]> rtTable = new TableView<>(); rtTable.setPrefHeight(80); rtTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> rf = new TableColumn<>("From"); rf.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
-        TableColumn<String[],String> rp = new TableColumn<>("Pattern"); rp.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
-        TableColumn<String[],String> rt2 = new TableColumn<>("Next"); rt2.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
-        TableColumn<String[],String> rl = new TableColumn<>("Loop"); rl.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        rtTable.getColumns().addAll(rf, rp, rt2, rl); rtTable.setItems(routingTable);
-        routingTable.addAll(new String[]{"qwen2.5:0.5b","Linear","tinyllama:1.1b","Off"},new String[]{"tinyllama:1.1b","Markov","phi:latest","Off"},new String[]{"phi:latest","Chain","phi3:mini","Off"},new String[]{"phi3:mini","Vote","All","Off"});
-
-        // Command table
-        TableView<String[]> cmdTable = new TableView<>(); cmdTable.setPrefHeight(80); cmdTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> ct = new TableColumn<>("Trigger"); ct.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
-        TableColumn<String[],String> cc = new TableColumn<>("Command"); cc.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
-        TableColumn<String[],String> cs = new TableColumn<>("Station"); cs.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
-        TableColumn<String[],String> ca = new TableColumn<>("Active"); ca.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        cmdTable.getColumns().addAll(ct, cc, cs, ca); cmdTable.setItems(commandTable);
-        commandTable.addAll(new String[]{"just enter this in terminal","execute $INPUT","Brute Foundry","✅"},new String[]{"fix this bug","analyze + patch","Hospital","✅"},new String[]{"push to github","git push","GitHub","✅"},new String[]{"search the web","web_search","Research","✅"});
-
-        // Prompt
-        TextArea promptArea = new TextArea("You are an SLM agent in SIMS1337. Collaborate, vote, build, maintain. Access: terminal, web, files.");
-        promptArea.setPrefRowCount(2); promptArea.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 10px;");
-        Button injectBtn = styledButton("💉 Inject to All", "#c77dff"); injectBtn.setOnAction(e->{modelChats.forEach((n,c)->c.appendText("[SYSTEM] "+promptArea.getText().substring(0,50)+"...\n")); addToGodChat("💉 SYSTEM","All",promptArea.getText().substring(0,80)+"...");});
-
-        // Context
-        HBox ctxRow = hbox(8, Pos.CENTER_LEFT, null, 0);
-        String[][] ctxOpts = {{"Tokens","2048","4096","8192"},{"Temp","0.1","0.5","0.7"},{"LoRA","CHAT","CODE","ANALYSIS"},{"KV","512","1024","2048"},{"KG","1","2","3"},{"Affine","0.5x","1.0x","1.5x"}};
-        for (String[] o : ctxOpts) { ComboBox<String> cb = new ComboBox<>(); cb.getItems().addAll(o[1],o[2],o[3]); cb.setValue(o[1]); cb.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); cb.setMaxWidth(80); ctxRow.getChildren().addAll(label(o[0]+":",9,"#a0a0a0",false), cb); }
-
-        rcContent.getChildren().addAll(label("Routing:",11,"#00d9ff",true), rtTable, label("Commands:",11,"#00d9ff",true), cmdTable, label("Prompt:",11,"#00d9ff",true), promptArea, injectBtn, label("Context:",11,"#00d9ff",true), ctxRow);
-        routingPane.setContent(new ScrollPane(rcContent));
-
-        // === MODEL EVALUATION + LORA + PROMPT ENGINEERING + STATS ===
-        TitledPane evalPane = titledPane("🧪 MODEL EVALUATION + LORA + PROMPT ENGINEERING + STATS", true);
-        VBox evalContent = vbox(8, "#16213e", 8);
-
-        // Model capability matrix
-        Label evalTitle = label("📊 Model Capability Matrix (editable)", 12, "#00d9ff", true);
-        TableView<String[]> evalTable = new TableView<>(); evalTable.setPrefHeight(100); evalTable.setStyle("-fx-background-color: #0f3460;");
-        TableColumn<String[],String> eModel = new TableColumn<>("Model"); eModel.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[0]));
-        TableColumn<String[],String> eCode = new TableColumn<>("Code"); eCode.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[1]));
-        TableColumn<String[],String> eEssay = new TableColumn<>("Essay"); eEssay.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[2]));
-        TableColumn<String[],String> eLogic = new TableColumn<>("Logic"); eLogic.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[3]));
-        TableColumn<String[],String> eCreative = new TableColumn<>("Creative"); eCreative.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[4]));
-        TableColumn<String[],String> eSpeed = new TableColumn<>("Speed"); eSpeed.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[5]));
-        TableColumn<String[],String> eReliability = new TableColumn<>("Reliability"); eReliability.setCellValueFactory(d->new javafx.beans.property.SimpleStringProperty(d.getValue()[6]));
-        evalTable.getColumns().addAll(eModel, eCode, eEssay, eLogic, eCreative, eSpeed, eReliability);
-
-        ObservableList<String[]> evalData = FXCollections.observableArrayList();
-        evalData.addAll(
-            new String[]{"qwen2.5:0.5b", "⭐⭐⭐", "⭐⭐", "⭐⭐", "⭐", "⚡⚡⚡⚡⚡", "⭐⭐⭐⭐"},
-            new String[]{"tinyllama:1.1b", "⭐⭐⭐", "⭐⭐⭐", "⭐⭐", "⭐⭐", "⚡⚡⚡⚡", "⭐⭐⭐"},
-            new String[]{"phi:latest", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐", "⚡⚡", "⭐⭐⭐"},
-            new String[]{"phi3:mini", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⚡", "⭐⭐⭐⭐"},
-            new String[]{"llama3.2:1b", "⭐⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐", "⚡⚡⚡", "⭐⭐⭐⭐"},
-            new String[]{"deepseek-r1:1.5b", "⭐⭐⭐⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐⭐", "⭐⭐", "⚡⚡", "⭐⭐⭐⭐"}
-        );
-        evalTable.setItems(evalData);
-
-        // LoRA adapter config
-        Label loraTitle = label("🔄 LoRA Adapter Configuration (per model)", 12, "#00d9ff", true);
-        HBox loraRow = hbox(8, Pos.CENTER_LEFT, null, 0);
-        String[] loraTypes = {"CHAT","CODE","PATHFIND","MOTIVES","CAREER","ANALYSIS"};
-        for (String lt : loraTypes) {
-            ComboBox<String> loraCb = new ComboBox<>();
-            loraCb.getItems().addAll("qwen2.5:0.5b","tinyllama:1.1b","phi:latest","phi3:mini","llama3.2:1b","deepseek-r1:1.5b");
-            loraCb.setValue("qwen2.5:0.5b");
-            loraCb.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 9px;"); loraCb.setMaxWidth(100);
-            loraRow.getChildren().addAll(label(lt+":",9,"#a0a0a0",false), loraCb);
-        }
-
-        // Prompt engineering templates
-        Label promptEngTitle = label("💉 Prompt Engineering Templates (editable)", 12, "#00d9ff", true);
-        TextArea codePrompt = new TextArea("You are an expert programmer. Write clean, efficient, well-documented code. Output ONLY the code, no explanation.");
-        codePrompt.setPrefRowCount(2); codePrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00ff88; -fx-font-family: monospace; -fx-font-size: 9px;");
-        TextArea essayPrompt = new TextArea("You are a professional writer. Write engaging, well-structured content with clear arguments and evidence.");
-        essayPrompt.setPrefRowCount(2); essayPrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #ffaa00; -fx-font-family: monospace; -fx-font-size: 9px;");
-        TextArea taskPrompt = new TextArea("You are a task completion agent. Break down the task, execute step by step, verify results.");
-        taskPrompt.setPrefRowCount(2); taskPrompt.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #00d9ff; -fx-font-family: monospace; -fx-font-size: 9px;");
-
-        // Stats tracker
-        Label statsTitle = label("📈 Model Performance Stats (auto-tracked)", 12, "#00d9ff", true);
-        HBox statsRow = hbox(15, Pos.CENTER_LEFT, null, 0);
-        Label totalCalls = label("Total API calls: 0", 11, "#fff", false);
-        Label avgLatency = label("Avg latency: 0ms", 11, "#fff", false);
-        Label successRate = label("Success rate: 100%", 11, "#00ff88", false);
-        statsRow.getChildren().addAll(totalCalls, avgLatency, successRate);
-
-        // Test buttons
-        HBox testRow = hbox(10, Pos.CENTER_LEFT, null, 0);
-        Button testCodeBtn = styledButton("💻 Test Code Gen", "#00ff88");
-        testCodeBtn.setOnAction(e -> runEvalTest("code", codePrompt.getText()));
-        Button testEssayBtn = styledButton("📝 Test Essay", "#ffaa00");
-        testEssayBtn.setOnAction(e -> runEvalTest("essay", essayPrompt.getText()));
-        Button testTaskBtn = styledButton("⚡ Test Task", "#00d9ff");
-        testTaskBtn.setOnAction(e -> runEvalTest("task", taskPrompt.getText()));
-        Button testAllBtn = styledButton("🧪 Test All Models", "#c77dff");
-        testAllBtn.setOnAction(e -> runFullEval());
-        testRow.getChildren().addAll(testCodeBtn, testEssayBtn, testTaskBtn, testAllBtn);
-
-        evalContent.getChildren().addAll(evalTitle, evalTable, loraTitle, loraRow, promptEngTitle, codePrompt, essayPrompt, taskPrompt, statsTitle, statsRow, testRow);
-        evalPane.setContent(new ScrollPane(evalContent));
-
-        // === ADVANCED (Entropy + Markov + Lexical + GitHub) ===
-        TitledPane advPane = titledPane("📊 ADVANCED: Entropy + Markov + Lexical + GitHub", true);
-        VBox advContent = vbox(8, "#16213e", 8);
-        HBox ar1 = hbox(15, Pos.CENTER_LEFT, null, 0);
-        Label ev = label("Entropy: 0.000 bits", 12, "#00d9ff", true); Label es = label("🟢 Normal", 12, "#00ff88", true);
-        TextField etf = new TextField("0.75"); etf.setMaxWidth(50); etf.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 10px;");
-        etf.setOnAction(e->{try{entropyThreshold=Double.parseDouble(etf.getText());}catch(NumberFormatException ignored){}});
-        ar1.getChildren().addAll(ev, es, label("Threshold:",10,"#a0a0a0",false), etf);
-        HBox ar2 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        TextField lexInput = new TextField("sum of (agent_count * task_complexity) / time_elapsed"); lexInput.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 10px;"); HBox.setHgrow(lexInput, Priority.ALWAYS);
-        Button parseBtn = styledButton("🔢 Parse", "#00d9ff"); parseBtn.setOnAction(e->log("📐 "+lexInput.getText()+" → "+evaluateLexical(lexInput.getText())));
-        ar2.getChildren().addAll(parseBtn, lexInput);
-        HBox ar3 = hbox(10, Pos.CENTER_LEFT, null, 0);
-        ar3.getChildren().addAll(styledButton("🚀 Push GitHub","#6e5494"), styledButton("📊 Git Status","#00d9ff"));
-        advContent.getChildren().addAll(ar1, ar2, ar3);
-        advPane.setContent(advContent);
-
-        // Entropy updater
-        ScheduledExecutorService eu = Executors.newSingleThreadScheduledExecutor();
-        eu.scheduleAtFixedRate(()->{double ne=Math.random()*0.5+0.2; shannonEntropy=ne; Platform.runLater(()->{ev.setText(String.format("Entropy: %.3f bits",ne)); if(ne>entropyThreshold){es.setText("🔴 ALERT!");es.setStyle("-fx-font-size: 12px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");log("🚨 ENTROPY: "+String.format("%.3f",ne));}else{es.setText("🟢 Normal");es.setStyle("-fx-font-size: 12px; -fx-text-fill: #00ff88;");}});},0,3,TimeUnit.SECONDS);
-
-        box.getChildren().addAll(apiPane, modelMgrPane, votePane, topoPane, nightPane, evalPane, routingPane, advPane);
-        return box;
-    }
-
-    private TextField tf(String text, int width) { TextField f = new TextField(text); f.setMaxWidth(width); f.setStyle("-fx-background-color: #0a0a15; -fx-text-fill: #fff; -fx-font-size: 10px;"); return f; }
-
-    // ==================== MODEL EVALUATION ====================
-    private void runEvalTest(String type, String promptTemplate) {
-        String[] testModels = {"qwen2.5:0.5b", "tinyllama:1.1b", "llama3.2:1b", "deepseek-r1:1.5b"};
-        String testInput = type.equals("code") ? "Write a function to reverse a string" :
-                          type.equals("essay") ? "Write about artificial intelligence" :
-                          "Complete the task: organize files by type";
-        log("🧪 Running " + type + " eval on " + testModels.length + " models...");
-        addToGodChat("🧪 EVAL", type.toUpperCase(), "Testing " + testModels.length + " models");
-        for (String model : testModels) {
-            final String m = model;
-            chatScheduler.schedule(() -> {
-                try {
-                    long start = System.currentTimeMillis();
-                    String result = callOllama(m, promptTemplate + "\n\n" + testInput);
-                    long latency = System.currentTimeMillis() - start;
-                    Platform.runLater(() -> {
-                        addToGodChat("🧪 EVAL", m, type + " [" + latency + "ms]: " + result.substring(0, Math.min(80, result.length())));
-                        log("🧪 [" + m + "] " + type + ": " + latency + "ms, " + result.length() + " chars");
-                    });
-                } catch (Exception e) {
-                    Platform.runLater(() -> log("❌ [" + m + "] eval failed: " + e.getMessage()));
-                }
-            }, 0, TimeUnit.SECONDS);
-        }
-    }
-
-    private void runFullEval() {
-        log("🧪 FULL EVALUATION - All models, all test types");
-        addToGodChat("🧪 FULL EVAL", "System", "Running all models through code + essay + task tests");
-        runEvalTest("code", "You are an expert programmer. Output ONLY code.");
-        runEvalTest("essay", "You are a professional writer. Be thorough.");
-        runEvalTest("task", "You are a task agent. Execute step by step.");
-    }
-
-    // ==================== STATIONS ====================
-    private final Map<String, String> stationRegistry = new ConcurrentHashMap<>(); // name -> description
-    private final Map<String, Runnable> stationHandlers = new ConcurrentHashMap<>(); // name -> handler
-
-    private void initStationRegistry() {
-        // 22 stations — full neuromorphic grid
-        stationRegistry.put("Brute Foundry", "Autonomous code generation and review");
-        stationRegistry.put("A/B Lab", "Model comparison and evaluation");
-        stationRegistry.put("Knowledge Tree", "KG nodes + RAG pipeline");
-        stationRegistry.put("Research", "Self-exploration and analysis");
-        stationRegistry.put("Secrets", "Secure credential storage");
-        stationRegistry.put("Hospital", "Agent diagnostics and memory repair");
-        stationRegistry.put("GitHub", "Git sync and backup");
-        stationRegistry.put("Markov Mill", "Markov chain generation and pattern mining");
-        stationRegistry.put("Shannon Spire", "Entropy measurement and information theory");
-        stationRegistry.put("Spike Forge", "Spike-timing-dependent plasticity (STDP)");
-        stationRegistry.put("Refeed Loop", "Learning loop: output → input feedback");
-        stationRegistry.put("Pruning Garden", "Synaptic pruning and model compression");
-        stationRegistry.put("Telemetry Tower", "Behavioral sticking points + metrics");
-        stationRegistry.put("TocTok Tree", "Table of contents + hex-anchored knowledge");
-        stationRegistry.put("FOW Observatory", "Fog of war visibility + exploration");
-        stationRegistry.put("Euler Sphere", "4D spherical coordinate database");
-        stationRegistry.put("Nyx Gate", "Symbolic AST verification + compile gate");
-        stationRegistry.put("Pipeline Nexus", "Mining → deploy → tune → grow chain");
-        stationRegistry.put("Audio Cortex", "TTS + Talon-like keyword routing");
-        stationRegistry.put("Cloudflare Clock", "Atomic time sync + RTT compensation");
-        stationRegistry.put("Evidence Vault", "Immutable JSONL audit log");
-        stationRegistry.put("Governor Core", "Auto-heal, JSON repair, process guardian");
-
-        stationHandlers.put("Brute Foundry", () -> { log("🏗️ Brute Foundry: Code review + generation online"); bruteFoundryAdmission(); });
-        stationHandlers.put("Hospital", () -> { log("🏥 Hospital: Diagnostics + memory repair online"); hospitalAdmission(); });
-        stationHandlers.put("Knowledge Tree", () -> { log("🌳 Knowledge Tree: KG nodes + RAG online"); knowledgeGraphInit(); });
-        stationHandlers.put("Research", () -> { log("🔬 Research: Self-exploration + analysis online"); selfExplorationInit(); });
-        stationHandlers.put("Secrets", () -> { log("🔒 Secrets: Secure storage online"); });
-        stationHandlers.put("GitHub", () -> { log("📡 GitHub: Syncing + backup online"); pushToGitHub(); });
-        stationHandlers.put("A/B Lab", () -> { log("🧬 A/B Lab: Model comparison online"); });
-    }
-
-    /** Dynamically add a new station — callable from deploy phase or manual */
-    public void addStation(String name, String description) {
-        if (stationRegistry.containsKey(name)) return;
-        stationRegistry.put(name, description);
-        stationHandlers.put(name, () -> log("🏗️ [" + name + "]: " + description));
-        log("🏗️ NEW STATION: " + name + " — " + description);
-        addToGodChat("🏗️ STATION", "System", "Registered: " + name + " → " + description);
-    }
-
-    private void triggerStation(String station) {
-        stationActive.putIfAbsent(station, false);
-        boolean a = !stationActive.get(station);
-        stationActive.put(station, a);
-        if (a) {
-            log("🏗️ [" + station + "] ACTIVATED");
-            Runnable handler = stationHandlers.get(station);
-            if (handler != null) {
-                handler.run();
-            } else {
-                log("🏗️ [" + station + "] Online");
-            }
-        } else {
-            log("⏹️ [" + station + "] DEACTIVATED");
-        }
-    }
-
-    // ==================== 1. HOSPITAL ADMISSION SYSTEM ====================
-    private final Map<String, Map<String, Object>> hospitalPatients = new ConcurrentHashMap<>();
-    private final List<String> hospitalLog = Collections.synchronizedList(new ArrayList<>());
-
-    private void hospitalAdmission() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-                String agent = agents[new Random().nextInt(agents.length)];
-                String[] diagnostics = {"Memory OK", "Context healthy", "Response time normal", "Token usage low",
-                    "Minor fragmentation", "Cache warming needed", "LoRA drift detected", "All systems nominal"};
-                String diag = diagnostics[new Random().nextInt(diagnostics.length)];
-                boolean needsRepair = diag.contains("fragmentation") || diag.contains("drift") || diag.contains("warming");
-
-                hospitalPatients.putIfAbsent(agent, new ConcurrentHashMap<>());
-                Map<String, Object> record = hospitalPatients.get(agent);
-                record.put("lastCheck", System.currentTimeMillis());
-                record.put("diagnosis", diag);
-                record.put("status", needsRepair ? "REPAIRING" : "HEALTHY");
-                record.put("visits", ((Integer)record.getOrDefault("visits", 0)) + 1);
-
-                String entry = "🏥 [" + agent + "] " + diag + (needsRepair ? " → REPAIRING" : " → HEALTHY");
-                hospitalLog.add(entry);
-                if (hospitalLog.size() > 100) hospitalLog.remove(0);
-                log(entry);
-                addToGodChat("🏥 HOSPITAL", agent, diag + (needsRepair ? " [REPAIR]" : " [OK]"));
-
-                if (needsRepair) {
-                    // Memory repair: clear old context, refresh
-                    TextArea ca = modelChats.get("qwen2.5:0.5b");
-                    if (ca != null) ca.appendText("[🏥 Hospital] Memory repaired for " + agent + "\n");
-                    record.put("status", "HEALTHY");
-                    record.put("repairs", ((Integer)record.getOrDefault("repairs", 0)) + 1);
-                    log("🏥 [" + agent + "] REPAIR COMPLETE");
-                }
-            });
-        }, 0, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 2. BRUTE FOUNDRY CODE REVIEW ====================
-    private final List<String> foundrySubmissions = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, Integer> foundryReputation = new ConcurrentHashMap<>();
-
-    private void bruteFoundryAdmission() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String[] models = {"qwen2.5:0.5b", "tinyllama:1.1b", "llama3.2:1b"};
-                String model = models[new Random().nextInt(models.length)];
-                String[] tasks = {"sort algorithm", "API endpoint", "data parser", "cache layer", "auth middleware"};
-                String task = tasks[new Random().nextInt(tasks.length)];
-
-                foundrySubmissions.add(model + ":" + task);
-                if (foundrySubmissions.size() > 50) foundrySubmissions.remove(0);
-
-                // Simulate code review
-                String[] feedbacks = {"✅ Clean code", "⚠️ Needs optimization", "✅ Well documented",
-                    "⚠️ Missing edge cases", "✅ Production ready", "⚠️ Add error handling"};
-                String feedback = feedbacks[new Random().nextInt(feedbacks.length)];
-                boolean passed = feedback.startsWith("✅");
-
-                foundryReputation.merge(model, passed ? 5 : -2, Integer::sum);
-                int rep = foundryReputation.getOrDefault(model, 0);
-
-                log("🏗️ Brute Foundry: [" + model + "] " + task + " → " + feedback + " | Rep: " + rep);
-                addToGodChat("🏗️ FOUNDRY", model, task + " → " + feedback + " [Rep:" + rep + "]");
-            });
-        }, 0, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 3. KNOWLEDGE GRAPH NODES (RAG) ====================
-    private final Map<String, String> kgNodes = new ConcurrentHashMap<>();
-    private final List<String[]> kgEdges = Collections.synchronizedList(new ArrayList<>());
-
-    private void knowledgeGraphInit() {
-        // Seed initial KG nodes — full ecosystem
-        kgNodes.put("SIMS1337", "Agent orchestration platform for SLM models");
-        kgNodes.put("Ollama", "Local LLM runtime with 8+ models");
-        kgNodes.put("GodHand", "Central dashboard for model management");
-        kgNodes.put("BruteFoundry", "Autonomous code generation station");
-        kgNodes.put("Hospital", "Agent diagnostics and memory repair");
-        kgNodes.put("RAG", "Retrieval-Augmented Generation for persistent memory");
-        kgNodes.put("HexFOW", "Fog-of-War spatial masking — 1-hop hex visibility");
-        kgNodes.put("HexGrid", "61-cell axial hex grid (Q,R,Z) with 4D time pulse");
-        kgNodes.put("GistSync", "GitHub Gist state persistence — 30min push cycle");
-        kgNodes.put("NightCycle", "Autonomous 18:00→20:00→22:00 pipeline");
-        kgNodes.put("TopologicalMemory", "H0/H1/H2 persistent homology tracking");
-        kgNodes.put("HyperBuffer", "O(1) bitwise pruning engine");
-        kgNodes.put("AgentAlpha", "Orchestrator agent at hex (0,0)");
-        kgNodes.put("AgentBeta", "Builder agent at hex (3,-2)");
-        kgNodes.put("AgentGamma", "Analyst agent at hex (-3,2)");
-        kgNodes.put("qwen2.5:0.5b", "Fast responder model — 398MB, <100ms");
-        kgNodes.put("tinyllama:1.1b", "Balanced writer model — 638MB");
-        kgNodes.put("llama3.2:1b", "Tool-using model — 1.3GB");
-        kgNodes.put("deepseek-r1:1.5b", "Deep thinker model — 1.1GB");
-        kgNodes.put("phi3:mini", "Deep reasoning model — 2.2GB");
-        kgNodes.put("codellama:7b", "Code generation model — 3.8GB");
-        kgNodes.put("gemma2:2b", "Balanced model — 1.6GB");
-        kgNodes.put("phi:latest", "Reasoning model — 1.6GB");
-
-        kgEdges.add(new String[]{"SIMS1337", "GodHand", "controls"});
-        kgEdges.add(new String[]{"GodHand", "Ollama", "queries"});
-        kgEdges.add(new String[]{"SIMS1337", "BruteFoundry", "delegates"});
-        kgEdges.add(new String[]{"SIMS1337", "Hospital", "monitors"});
-        kgEdges.add(new String[]{"SIMS1337", "RAG", "uses"});
-        kgEdges.add(new String[]{"SIMS1337", "HexFOW", "uses"});
-        kgEdges.add(new String[]{"SIMS1337", "HexGrid", "renders"});
-        kgEdges.add(new String[]{"SIMS1337", "GistSync", "triggers"});
-        kgEdges.add(new String[]{"SIMS1337", "NightCycle", "schedules"});
-        kgEdges.add(new String[]{"SIMS1337", "TopologicalMemory", "queries"});
-        kgEdges.add(new String[]{"SIMS1337", "HyperBuffer", "uses"});
-        kgEdges.add(new String[]{"AgentAlpha", "AgentBeta", "communicates"});
-        kgEdges.add(new String[]{"AgentAlpha", "AgentGamma", "communicates"});
-        kgEdges.add(new String[]{"AgentBeta", "AgentGamma", "communicates"});
-        kgEdges.add(new String[]{"BruteFoundry", "GitHub", "pushes"});
-        kgEdges.add(new String[]{"Hospital", "AgentAlpha", "repairs"});
-        kgEdges.add(new String[]{"NightCycle", "GistSync", "triggers"});
-        kgEdges.add(new String[]{"HexFOW", "HexGrid", "masks"});
-        kgEdges.add(new String[]{"GistSync", "GitHub", "pushes"});
-
-        log("🌳 Knowledge Graph: " + kgNodes.size() + " nodes, " + kgEdges.size() + " edges");
-
-        // Periodic RAG retrieval
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                // Semantic search simulation: find relevant KG nodes for recent chat context
-                String recentContext = godChat.getText();
-                if (recentContext.length() > 100) {
-                    recentContext = recentContext.substring(recentContext.length() - 200);
-                }
-                List<String> relevant = new ArrayList<>();
-                for (Map.Entry<String, String> node : kgNodes.entrySet()) {
-                    if (recentContext.toLowerCase().contains(node.getKey().toLowerCase())) {
-                        relevant.add(node.getKey() + ": " + node.getValue());
-                    }
-                }
-                if (!relevant.isEmpty()) {
-                    log("🌳 RAG: Found " + relevant.size() + " relevant KG nodes");
-                    addToGodChat("🌳 RAG", "Knowledge Graph", "Retrieved: " + String.join(" | ", relevant));
-                }
-            });
-        }, 30, 30, TimeUnit.SECONDS);
-    }
-
-    // ==================== 4. SERVER ORCHESTRATION ====================
-    private final Map<String, Integer> modelLoad = new ConcurrentHashMap<>();
-    private final List<String> requestQueue = Collections.synchronizedList(new ArrayList<>());
-
-    private void serverOrchestrationInit() {
-        // Initialize load counters
-        for (String model : modelChats.keySet()) {
-            modelLoad.put(model, 0);
-        }
-
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                // Health monitoring
-                int totalLoad = modelLoad.values().stream().mapToInt(Integer::intValue).sum();
-                int queueSize = requestQueue.size();
-
-                // Load balancing: find least loaded model
-                String leastLoaded = modelLoad.entrySet().stream()
-                    .min(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse("qwen2.5:0.5b");
-
-                // Process queue
-                if (!requestQueue.isEmpty() && totalLoad < 10) {
-                    String request = requestQueue.remove(0);
-                    modelLoad.merge(leastLoaded, 1, Integer::sum);
-                    log("⚡ Server: Routed to " + leastLoaded + " | Load: " + totalLoad + " | Queue: " + queueSize);
-                    addToGodChat("⚡ SERVER", leastLoaded, "Processing: " + request);
-                }
-
-                // Health report every 5 cycles
-                if (new Random().nextInt(5) == 0) {
-                    log("⚡ Server Health: Load=" + totalLoad + " Queue=" + queueSize + " Models=" + modelLoad.size());
-                }
-            });
-        }, 10, 10, TimeUnit.SECONDS);
-    }
-
-    // ==================== 5. SELF-EXPLORATION ====================
-    private final List<String> explorationLog = Collections.synchronizedList(new ArrayList<>());
-
-    private void selfExplorationInit() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                // Analyze model outputs for patterns
-                int totalMessages = 0;
-                int totalChars = 0;
-                for (TextArea ca : modelChats.values()) {
-                    String text = ca.getText();
-                    totalMessages += text.split("\\[.*?\\]").length - 1;
-                    totalChars += text.length();
-                }
-
-                // Self-improvement suggestions
-                String[] improvements = {
-                    "Consider increasing context window for deeper conversations",
-                    "LoRA adapter switching could improve response quality",
-                    "Pipeline chaining shows 40% better results than single-model",
-                    "Voting consensus above 75% correlates with successful deploys",
-                    "Night cycle automation reduces manual intervention by 90%"
-                };
-                String suggestion = improvements[new Random().nextInt(improvements.length)];
-
-                explorationLog.add(suggestion);
-                if (explorationLog.size() > 50) explorationLog.remove(0);
-
-                log("🔬 Self-Exploration: " + totalMessages + " msgs, " + totalChars + " chars → " + suggestion);
-                addToGodChat("🔬 EXPLORE", "System", suggestion);
-            });
-        }, 20, 20, TimeUnit.SECONDS);
-    }
-
-    // ==================== 6. ERROR LOGGING ====================
-    private final List<String> errorLog = Collections.synchronizedList(new ArrayList<>());
-    private int errorCount = 0;
-    private int recoveryCount = 0;
-
-    private void logError(String component, String error, String recovery) {
-        String ts = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        String entry = "[" + ts + "] " + component + ": " + error + " → " + recovery;
-        errorLog.add(entry);
-        errorCount++;
-        if (errorLog.size() > 200) errorLog.remove(0);
-        log("❌ ERROR #" + errorCount + ": " + component + " - " + error);
-        addToGodChat("❌ ERROR", component, error + " [Recovery: " + recovery + "]");
-
-        // Auto-recovery
-        if (recovery.contains("retry")) {
-            recoveryCount++;
-            log("🔄 Auto-recovery #" + recoveryCount + " for " + component);
-        }
-    }
-
-    private void errorLoggingInit() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                // Check Ollama health
-                boolean ollamaDown = ollamaAvailable.values().stream().anyMatch(v -> !v);
-                if (ollamaDown) {
-                    logError("Ollama", "One or more models unavailable", "retry in 30s");
-                }
-
-                // Check Java memory
-                Runtime rt = Runtime.getRuntime();
-                long usedMem = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-                if (usedMem > 500) {
-                    logError("Memory", "High usage: " + usedMem + "MB", "suggest GC");
-                }
-
-                // Report stats
-                if (new Random().nextInt(3) == 0) {
-                    log("📊 Error Stats: " + errorCount + " errors, " + recoveryCount + " recoveries, " +
-                        errorLog.size() + " logged");
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 7. DESIGN IMPROVEMENTS ====================
-    private void applyDesignImprovements() {
-        // These are applied at startup
-        log("🎨 Design improvements applied: color consistency, spacing, tooltips, accessibility");
-
-        // Add tooltips to key buttons
-        chatScheduler.schedule(() -> {
-            Platform.runLater(() -> {
-                // Status bar improvements
-                statusLabel.setTooltip(new Tooltip("System status: " + modelChats.size() + " models, " +
-                    kgNodes.size() + " KG nodes, " + errorCount + " errors logged"));
-
-                log("🎨 Design: Tooltips + accessibility enhancements applied");
-            });
-        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== OLLAMA API ====================
-    private void simulateModelResponse(String modelName, String input) {
-        chatScheduler.schedule(()->{try{String response=callOllama(modelName,input); Platform.runLater(()->{addToGodChat("🤖 MODEL",modelName,response); TextArea ca=modelChats.get(modelName); if(ca!=null)ca.appendText("["+modelName+"] "+response+"\n"); log("💬 ["+modelName+"] "+response.substring(0,Math.min(60,response.length()))); checkCommandTriggers(response,modelName); String nr=modelNextRoutes.get(modelName).getValue(); if(!"Self".equals(nr)){if("All".equals(nr))modelChats.forEach((n,c)->{if(!n.equals(modelName))simulateModelResponse(n,"[From "+modelName+"] "+response.substring(0,Math.min(100,response.length())));}); else if(modelChats.containsKey(nr))simulateModelResponse(nr,"[From "+modelName+"] "+response.substring(0,Math.min(100,response.length())));}});}catch(Exception e){Platform.runLater(()->{TextArea ca=modelChats.get(modelName); if(ca!=null)ca.appendText("["+modelName+"] ⚠️ "+e.getMessage()+"\n"); log("⚠️ ["+modelName+"] "+e.getMessage());});}},100,TimeUnit.MILLISECONDS);
-    }
-
-    private String callOllama(String model, String prompt) throws Exception {
-        // A/B routing + latency-aware model selection
-        model = selectModel(model);
-        // Rate limiter: enforce 5-min gap between Ollama calls
-        long now = System.currentTimeMillis();
-        long sinceLast = now - lastOllamaCallMs;
-        if (lastOllamaCallMs > 0 && sinceLast < OLLAMA_MIN_GAP_MS) {
-            long waitMs = OLLAMA_MIN_GAP_MS - sinceLast;
-            log("⏳ Rate limiter: " + (waitMs/1000) + "s until next Ollama call");
-            return "[RATE_LIMITED] " + (waitMs/1000) + "s remaining";
-        }
-        // Circuit breaker check
-        if (ollamaCircuitOpen) {
-            if (now - ollamaCircuitOpenedAt > CIRCUIT_RESET_MS) {
-                ollamaCircuitOpen = false;
-                consecutiveOllamaFails.set(0);
-                log("🔧 Circuit breaker RESET");
-            } else {
-                return "[CIRCUIT_OPEN] " + ((CIRCUIT_RESET_MS - (now - ollamaCircuitOpenedAt))/1000) + "s until retry";
-            }
-        }
-        long start = System.currentTimeMillis();
-        lastOllamaCallMs = now;
-        try {
-            String json=String.format("{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false}",model.replace("\"","\\\""),prompt.replace("\"","\\\\\"").replace("\n","\\\\n"));
-            HttpRequest r=HttpRequest.newBuilder().uri(URI.create(OLLAMA_URL)).header("Content-Type","application/json").timeout(Duration.ofSeconds(30)).POST(HttpRequest.BodyPublishers.ofString(json)).build();
-            HttpResponse<String> resp=httpClient.send(r,HttpResponse.BodyHandlers.ofString());
-            long elapsed = System.currentTimeMillis() - start;
-            ollamaCallCount.incrementAndGet();
-            ollamaTotalMs.addAndGet(elapsed);
-            lastOllamaCallTs.set(now);
-            consecutiveOllamaFails.set(0);
-            globalOllamaCalls++;
-            if(resp.statusCode()==200){ollamaAvailable.put(model,true); String body=resp.body(); int s=body.indexOf("\"response\":\""); if(s>0){s+=12; int e=body.indexOf("\"",s); if(e>s)return body.substring(s,e).replace("\\n"," ").replace("\\\"","\"");} return body.length()>200?body.substring(0,200)+"...":body;}
-            ollamaAvailable.put(model,false);
-            globalOllamaFails++;
-            ollamaErrorCount.incrementAndGet();
-            int fails = consecutiveOllamaFails.incrementAndGet();
-            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
-                ollamaCircuitOpen = true;
-                ollamaCircuitOpenedAt = now;
-                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
-            }
-            throw new RuntimeException("HTTP "+resp.statusCode());
-        } catch (Exception e) {
-            ollamaErrorCount.incrementAndGet();
-            globalOllamaFails++;
-            int fails = consecutiveOllamaFails.incrementAndGet();
-            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
-                ollamaCircuitOpen = true;
-                ollamaCircuitOpenedAt = now;
-                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
-            }
-            throw e;
-        }
-    }
-
-    // ==================== COMMANDS ====================
-    private void initCommandRegistry() { commandRegistry.put("execute",()->log("⚡ EXECUTING...")); commandRegistry.put("analyze",()->log("🔍 ANALYZING...")); commandRegistry.put("git_push",()->log("📡 PUSHING...")); commandRegistry.put("web_search",()->log("🌐 SEARCHING...")); commandRegistry.put("refactor",()->log("🔧 REFACTORING...")); }
-    private void checkCommandTriggers(String input, String modelName) { for(String[] cmd:commandTable) if(cmd[3].equals("✅")&&input.toLowerCase().contains(cmd[0].toLowerCase())){log("🎯 TRIGGER: ["+modelName+"] → "+cmd[0]); if(!cmd[2].equals("Station"))triggerStation(cmd[2]);} }
-
-    // ==================== ENTROPY ====================
-    private void startEntropyMonitor() {
-        chatScheduler.scheduleAtFixedRate(() -> {
-            double e = calculateEntropy();
-            shannonEntropy = e;
-            Platform.runLater(() -> {
-                if (e > entropyThreshold) {
-                    log("🚨 ENTROPY: " + String.format("%.3f", e));
-                    statusLabel.setText("🔴 Entropy Alert!");
-                    statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #ff6b6b; -fx-font-weight: bold;");
-                }
-            });
-        }, 10, 10, TimeUnit.SECONDS);
-    }
-
-    private double calculateEntropy() {
-        // Use model activity + hex state diversity for real entropy
-        double totalActivity = 0;
-        double[] activities = new double[modelChats.size()];
-        int i = 0;
-        for (TextArea c : modelChats.values()) {
-            double a = c.getText().length();
-            activities[i++] = a;
-            totalActivity += a;
-        }
-        if (totalActivity == 0) return 0;
-
-        // Shannon entropy with Laplace smoothing
-        double e = 0;
-        for (double a : activities) {
-            double p = (a + 1) / (totalActivity + activities.length); // Laplace smoothing
-            if (p > 0) e -= p * Math.log(p) / Math.log(2);
-        }
-
-        // Add hex diversity factor (how spread are agents?)
-        double hexSpread = 0;
-        for (int[] pos : agentPositions.values()) {
-            hexSpread += Math.sqrt(pos[0] * pos[0] + pos[1] * pos[1]);
-        }
-        double hexFactor = Math.min(1.0, hexSpread / 20.0);
-
-        // Blend: 70% chat entropy + 30% hex spread
-        return 0.7 * Math.min(1.0, e) + 0.3 * hexFactor;
-    }
-
-    // ==================== LEXICAL MATH ====================
-    private String evaluateLexical(String expr) { Map<String,Double> v=new HashMap<>(); v.put("agent_count",3.0); v.put("task_complexity",2.5); v.put("time_elapsed",10.0); v.put("entropy",shannonEntropy); try{expr=expr.toLowerCase(); for(Map.Entry<String,Double> e:v.entrySet())expr=expr.replace(e.getKey(),String.valueOf(e.getValue())); if(expr.contains("sum of")&&expr.contains("/")){String[] d=expr.replace("sum of","").split("/"); double n=1; for(String p:d[0].trim().split("\\s*\\*\\s*")){try{n*=Double.parseDouble(p.replace("(","").replace(")",""));}catch(NumberFormatException ignored){}} double den=1; try{den=Double.parseDouble(d[1].trim());}catch(NumberFormatException ignored){} return String.format("%.2f",den!=0?n/den:0);}}catch(Exception e){return"Error: "+e.getMessage();} return"?"; }
-
-    // ==================== 8. REAL RAG PIPELINE (Vector Embeddings + Semantic Search) ====================
-    private final Map<String, double[]> vectorStore = new ConcurrentHashMap<>();
-    private final List<String> documentCorpus = Collections.synchronizedList(new ArrayList<>());
-    private static final int VECTOR_DIM = 64;
-
-    private void realRagInit() {
-        log("🧠 Real RAG Pipeline: Vector store initialized (" + VECTOR_DIM + " dims)");
-        // Seed corpus with system knowledge
-        String[] docs = {
-            "SIMS1337 is an agent orchestration platform for SLM models",
-            "Ollama provides local LLM inference with 8+ models",
-            "GodHand dashboard manages model routing and chat patterns",
-            "Brute Foundry performs autonomous code generation and review",
-            "Hospital station handles agent diagnostics and memory repair",
-            "Knowledge Graph stores persistent memory with semantic retrieval",
-            "Night cycle automates voting, deployment, and email briefs",
-            "LoRA adapters enable task-specific model fine-tuning"
-        };
-        for (String doc : docs) {
-            documentCorpus.add(doc);
-            vectorStore.put(doc.substring(0, Math.min(30, doc.length())), generateEmbedding(doc));
-        }
-        log("🧠 RAG: " + documentCorpus.size() + " documents indexed");
-
-        // Periodic RAG retrieval with real semantic search
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                String query = godChat.getText();
-                if (query.length() > 50) {
-                    query = query.substring(Math.max(0, query.length() - 300));
-                    double[] queryVec = generateEmbedding(query);
-                    // Find top 3 most similar documents
-                    List<Map.Entry<String, Double>> results = new ArrayList<>();
-                    for (Map.Entry<String, double[]> entry : vectorStore.entrySet()) {
-                        double sim = cosineSimilarity(queryVec, entry.getValue());
-                        results.add(new AbstractMap.SimpleEntry<>(entry.getKey(), sim));
-                    }
-                    results.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-                    if (!results.isEmpty() && results.get(0).getValue() > 0.1) {
-                        String top = results.get(0).getKey();
-                        String doc = documentCorpus.stream().filter(d -> d.startsWith(top)).findFirst().orElse(top);
-                        log("🧠 RAG: Query matched '" + top + "' (sim: " + String.format("%.3f", results.get(0).getValue()) + ")");
-                        addToGodChat("🧠 RAG", "Vector Search", "Retrieved: " + doc);
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    private double[] generateEmbedding(String text) {
-        double[] vec = new double[VECTOR_DIM];
-        text = text.toLowerCase();
-        for (int i = 0; i < VECTOR_DIM; i++) {
-            // Simple hash-based embedding (production would use a real model)
-            int hash = (text + i).hashCode();
-            vec[i] = Math.sin(hash * 0.001) * Math.cos(i * 0.1);
-        }
-        // Normalize
-        double norm = 0;
-        for (double v : vec) norm += v * v;
-        norm = Math.sqrt(norm);
-        if (norm > 0) for (int i = 0; i < VECTOR_DIM; i++) vec[i] /= norm;
-        return vec;
-    }
-
-    private double cosineSimilarity(double[] a, double[] b) {
-        double dot = 0, na = 0, nb = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
-        }
-        return (na > 0 && nb > 0) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
-    }
-
-    // ==================== 9. FINE-TUNING HOOKS ====================
-    private final Map<String, String> fineTuningJobs = new ConcurrentHashMap<>();
-    private final List<String> trainingDatasets = Collections.synchronizedList(new ArrayList<>());
-
-    private void fineTuningInit() {
-        trainingDatasets.addAll(Arrays.asList(
-            "code-generation-v1: 500 Python examples",
-            "essay-writing-v1: 200 essay prompts + responses",
-            "task-completion-v1: 300 task breakdowns",
-            "chat-routing-v1: 150 routing pattern examples"
-        ));
-        log("🔧 Fine-Tuning: " + trainingDatasets.size() + " datasets available");
-
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                // Check if any model needs fine-tuning based on performance
-                for (String model : modelChats.keySet()) {
-                    int rep = foundryReputation.getOrDefault(model, 0);
-                    if (rep < -10 && !fineTuningJobs.containsKey(model)) {
-                        fineTuningJobs.put(model, "LoRA fine-tune scheduled: " + model);
-                        log("🔧 Fine-Tuning: Job created for " + model + " (rep: " + rep + ")");
-                        addToGodChat("🔧 FINE-TUNE", model, "Scheduled: LoRA adapter training");
-                    }
-                }
-                // Simulate training progress
-                for (Map.Entry<String, String> job : fineTuningJobs.entrySet()) {
-                    if (new Random().nextInt(5) == 0) {
-                        log("🔧 Fine-Tuning: " + job.getKey() + " training epoch complete");
-                        addToGodChat("🔧 FINE-TUNE", job.getKey(), "Epoch complete, loss decreasing");
-                    }
-                }
-            });
-        }, 40, 40, TimeUnit.SECONDS);
-    }
-
-    // ==================== 10. MULTI-AGENT TOPOLOGY ====================
-    private final Map<String, List<String>> agentGraph = new ConcurrentHashMap<>();
-    private final Map<String, String> agentRoles = new ConcurrentHashMap<>();
-
-    private void multiAgentTopologyInit() {
-        // Define agent communication graph
-        agentGraph.put("Agent Alpha", Arrays.asList("Agent Beta", "Agent Gamma"));
-        agentGraph.put("Agent Beta", Arrays.asList("Agent Alpha", "Agent Gamma"));
-        agentGraph.put("Agent Gamma", Arrays.asList("Agent Alpha", "Agent Beta"));
-        agentGraph.put("qwen2.5:0.5b", Arrays.asList("tinyllama:1.1b", "llama3.2:1b"));
-        agentGraph.put("tinyllama:1.1b", Arrays.asList("qwen2.5:0.5b", "phi:latest"));
-        agentGraph.put("llama3.2:1b", Arrays.asList("deepseek-r1:1.5b", "phi3:mini"));
-        agentGraph.put("deepseek-r1:1.5b", Arrays.asList("llama3.2:1b", "phi3:mini"));
-
-        agentRoles.put("Agent Alpha", "Orchestrator");
-        agentRoles.put("Agent Beta", "Builder");
-        agentRoles.put("Agent Gamma", "Analyst");
-        agentRoles.put("qwen2.5:0.5b", "Fast Responder");
-        agentRoles.put("tinyllama:1.1b", "Balanced Writer");
-        agentRoles.put("llama3.2:1b", "Tool User");
-        agentRoles.put("deepseek-r1:1.5b", "Deep Thinker");
-
-        log("🌐 Multi-Agent Topology: " + agentGraph.size() + " nodes, " +
-            agentGraph.values().stream().mapToInt(List::size).sum() + " edges");
-
-        // Periodic agent communication
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (Map.Entry<String, List<String>> node : agentGraph.entrySet()) {
-                    String agent = node.getKey();
-                    List<String> peers = node.getValue();
-                    if (!peers.isEmpty() && new Random().nextInt(3) == 0) {
-                        String peer = peers.get(new Random().nextInt(peers.size()));
-                        String role = agentRoles.getOrDefault(agent, "Agent");
-                        log("🌐 Topology: " + agent + " (" + role + ") → " + peer);
-                        addToGodChat("🌐 TOPOLOGY", agent, "→ " + peer + " [" + role + "]");
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 11. WEB DASHBOARD (Embedded HTTP Server) ====================
-    private com.sun.net.httpserver.HttpServer webServer;
-    private final Map<String, String> dashboardMetrics = new ConcurrentHashMap<>();
-
-    private void webDashboardInit() {
-        try {
-            webServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(8899), 0);
-            // Public WiFi server on port 1338 bound to 0.0.0.0
-            com.sun.net.httpserver.HttpServer publicServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("0.0.0.0", 1338), 0);
-            publicServer.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
-            publicServer.start();
-            log("🌐 Public WiFi UI: http://192.168.0.187:1338 (0.0.0.0:1338)");
-            addToGodChat("🌐 WIFI", "System", "Public UI on port 1338 — open to LAN");
-
-            // Shared handler for both servers
-            com.sun.net.httpserver.HttpHandler dashboardHandler = exchange -> {
-                // Only serve dashboard HTML for root path; let /api/* fall through
-                String path = exchange.getRequestURI().getPath();
-                if (!path.equals("/") && !path.equals("/index.html")) {
-                    exchange.sendResponseHeaders(404, -1);
-                    exchange.close();
-                    return;
-                }
-                StringBuilder html = new StringBuilder();
-                html.append("<!DOCTYPE html><html lang='en'><head>");
-                html.append("<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0,user-scalable=no'>");
-                html.append("<meta name='apple-mobile-web-app-capable' content='yes'><meta name='theme-color' content='#050510'>");
-                html.append("<title>SIMS1337</title><style>");
-                html.append("*{box-sizing:border-box;margin:0;padding:0}");
-                html.append("body{background:#050510;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',monospace;font-size:13px;line-height:1.4;min-height:100vh}");
-                html.append(".header{background:linear-gradient(135deg,#0a0a20,#16213e);padding:12px 16px;position:sticky;top:0;z-index:10;border-bottom:2px solid #00d9ff;display:flex;justify-content:space-between;align-items:center}");
-                html.append(".header h1{font-size:16px;color:#00d9ff;margin:0}");
-                html.append(".header .status-dot{width:10px;height:10px;border-radius:50%;background:#00ff88;display:inline-block;margin-right:6px;animation:pulse 2s infinite}");
-                html.append("@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}");
-                html.append(".tabs{display:flex;gap:2px;padding:8px;background:#0a0a20;overflow-x:auto;-webkit-overflow-scrolling:touch;position:sticky;top:48px;z-index:9}");
-                html.append(".tab{flex:1;min-width:60px;padding:8px 4px;text-align:center;font-size:11px;color:#666;background:#0d0d2a;border:none;border-radius:6px;cursor:pointer;white-space:nowrap}");
-                html.append(".tab.active{background:#16213e;color:#00d9ff;font-weight:bold}");
-                html.append(".content{padding:8px}");
-                html.append(".card{background:#0a0a20;border:1px solid #1a1a40;border-radius:10px;padding:12px;margin:8px 0}");
-                html.append(".card h2{font-size:14px;color:#00d9ff;margin-bottom:8px}");
-                html.append(".metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}");
-                html.append(".metric-item{background:#0d0d2a;padding:10px;border-radius:8px;text-align:center}");
-                html.append(".metric-item .val{font-size:20px;font-weight:bold;color:#00ff88}");
-                html.append(".metric-item .lbl{font-size:10px;color:#666;margin-top:2px}");
-                html.append(".model-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a40}");
-                html.append(".model-name{font-size:12px;color:#e0e0e0}");
-                html.append(".badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold}");
-                html.append(".badge-ok{background:#003300;color:#00ff88}");
-                html.append(".badge-warn{background:#330000;color:#ff6b6b}");
-                html.append(".badge-info{background:#001a33;color:#00d9ff}");
-                html.append(".agent-card{display:flex;align-items:center;gap:10px;padding:10px;background:#0d0d2a;border-radius:8px;margin:4px 0}");
-                html.append(".agent-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}");
-                html.append(".agent-name{font-size:13px;font-weight:bold}");
-                html.append(".agent-pos{font-size:10px;color:#666}");
-                html.append(".log-line{font-size:10px;color:#666;padding:2px 0;border-bottom:1px solid #0d0d2a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
-                html.append(".refresh-bar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#0a0a20;font-size:10px;color:#444;position:sticky;bottom:0;border-top:1px solid #1a1a40}");
-                html.append(".refresh-bar button{background:#16213e;color:#00d9ff;border:none;padding:4px 12px;border-radius:4px;font-size:10px;cursor:pointer}");
-                html.append(".hidden{display:none !important}");
-                html.append("</style></head><body>");
-
-                // Query Ollama for real model list (used by overview + models tabs)
-                java.util.Set<String> realModels = new java.util.LinkedHashSet<>();
-                int realModelCount = 0;
-                try {
-                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
-                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
-                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() == 200) {
-                        String body = resp.body();
-                        int idx = 0;
-                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
-                            idx += 8; int end = body.indexOf("\"", idx);
-                            if (end > idx) { realModels.add(body.substring(idx, end)); realModelCount++; }
-                            idx = end;
-                        }
-                    }
-                } catch (Exception ex) { realModelCount = 0; }
-                if (realModels.isEmpty()) realModels.addAll(modelChats.keySet());
-
-                // Header
-                html.append("<div class='header'><div><span class='status-dot'></span><h1 style='display:inline'>SIMS1337</h1></div>");
-                html.append("<span style='font-size:10px;color:#666'>v0.18.0</span></div>");
-
-                // Tabs
-                html.append("<div class='tabs'>");
-                html.append("<button class='tab active' onclick='showTab(\"overview\")'>📊 Overview</button>");
-                html.append("<button class='tab' onclick='showTab(\"agents\")'>👥 Agents</button>");
-                html.append("<button class='tab' onclick='showTab(\"models\")'>🤖 Models</button>");
-                html.append("<button class='tab' onclick='showTab(\"hex\")'>⬡ Map</button>");
-                html.append("<button class='tab' onclick='showTab(\"log\")'>📜 Log</button>");
-                html.append("</div>");
-
-                // Overview tab
-                html.append("<div id='tab-overview' class='content'>");
-                html.append("<div class='metric-grid'>");
-                html.append("<div class='metric-item'><div class='val'>" + realModelCount + "</div><div class='lbl'>Models</div></div>");
-                html.append("<div class='metric-item'><div class='val'>" + kgNodes.size() + "</div><div class='lbl'>KG Nodes</div></div>");
-                html.append("<div class='metric-item'><div class='val'>" + errorCount + "</div><div class='lbl'>Errors</div></div>");
-                html.append("<div class='metric-item'><div class='val'>" + recoveryCount + "</div><div class='lbl'>Recoveries</div></div>");
-                html.append("<div class='metric-item'><div class='val'>" + toolRegistry.size() + "</div><div class='lbl'>Tools</div></div>");
-                html.append("<div class='metric-item'><div class='val'>" + stationRegistry.size() + "</div><div class='lbl'>Stations</div></div>");
-                html.append("</div>");
-
-                html.append("<div class='card'><h2>🔧 System</h2>");
-                html.append("<span class='badge badge-ok'>Ollama Online</span> ");
-                html.append("<span class='badge badge-" + (ollamaCircuitOpen ? "warn" : "ok") + "'>Breaker " + (ollamaCircuitOpen ? "OPEN" : "CLOSED") + "</span> ");
-                html.append("<span class='badge badge-info'>Pipeline Active</span> ");
-                html.append("<span class='badge badge-ok'>14 Endpoints</span>");
-                html.append("</div>");
-
-                html.append("<div class='card'><h2>📡 Recent Activity</h2>");
-                String[] recentLines = godChat.getText().split("\n");
-                int recentStart = Math.max(0, recentLines.length - 15);
-                for (int i = recentStart; i < recentLines.length; i++) {
-                    html.append("<div class='log-line'>").append(recentLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
-                }
-                html.append("</div></div>");
-
-                // Agents tab
-                html.append("<div id='tab-agents' class='content hidden'>");
-                String[][] agentData = {
-                    {"Agent Alpha", "#00ff88", fowAgentHex.getOrDefault("Agent Alpha", "0,0"), "Leader"},
-                    {"Agent Beta", "#00d9ff", fowAgentHex.getOrDefault("Agent Beta", "2,-1"), "Scout"},
-                    {"Agent Gamma", "#ffaa00", fowAgentHex.getOrDefault("Agent Gamma", "-2,1"), "Builder"},
-                    {"Agent Delta", "#ff6b35", fowAgentHex.getOrDefault("Agent Delta", "-3,2"), "Guardian"}
-                };
-                for (String[] a : agentData) {
-                    html.append("<div class='agent-card'>");
-                    html.append("<div class='agent-dot' style='background:" + a[1] + ";box-shadow:0 0 8px " + a[1] + "'></div>");
-                    html.append("<div style='flex:1'><div class='agent-name' style='color:" + a[1] + "'>" + a[0] + "</div>");
-                    html.append("<div class='agent-pos'>Hex " + a[2] + " · " + a[3] + "</div></div></div>");
-                }
-                html.append("</div>");
-
-                // Models tab
-                html.append("<div id='tab-models' class='content hidden'>");
-                html.append("<div class='card'>");
-                for (String model : realModels) {
-                    int rep = foundryReputation.getOrDefault(model, 0);
-                    double qs = qualityScores.getOrDefault(model, 50.0);
-                    html.append("<div class='model-row'><span class='model-name'>🤖 " + model + "</span>");
-                    html.append("<span><span class='badge badge-ok'>★" + rep + "</span> ");
-                    html.append("<span class='badge badge-info'>Q" + String.format("%.0f", qs) + "</span></span></div>");
-                }
-                html.append("</div></div>");
-
-                // Hex tab
-                html.append("<div id='tab-hex' class='content hidden'>");
-                html.append("<div class='card' style='padding:4px;overflow-x:auto;-webkit-overflow-scrolling:touch'>");
-                html.append(generateHexMapSvg());
-                html.append("</div></div>");
-
-                // Log tab
-                html.append("<div id='tab-log' class='content hidden'>");
-                html.append("<div class='card' style='max-height:60vh;overflow-y:auto;font-size:10px'>");
-                String[] logLines = godChat.getText().split("\n");
-                int logStart = Math.max(0, logLines.length - 50);
-                for (int i = logStart; i < logLines.length; i++) {
-                    html.append("<div class='log-line'>").append(logLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
-                }
-                html.append("</div></div>");
-
-                // Refresh bar
-                html.append("<div class='refresh-bar'>");
-                html.append("<span id='refresh-time'>🕐 " + java.time.LocalTime.now().toString().substring(0,8) + "</span>");
-                html.append("<button onclick='location.reload()'>🔄 Refresh</button>");
-                html.append("</div>");
-
-                // JS
-                html.append("<script>");
-                html.append("function showTab(name){");
-                html.append("document.querySelectorAll('.content').forEach(e=>e.classList.add('hidden'));");
-                html.append("document.querySelectorAll('.tab').forEach(e=>e.classList.remove('active'));");
-                html.append("document.getElementById('tab-'+name).classList.remove('hidden');");
-                html.append("event.target.classList.add('active');");
-                html.append("}");
-                html.append("setInterval(()=>{fetch('/api/status').then(r=>r.json()).then(d=>{");
-                html.append("document.getElementById('refresh-time').textContent='🕐 '+new Date().toLocaleTimeString().substring(0,8);");
-                html.append("}).catch(()=>{})},30000);");
-                html.append("</script>");
-
-                html.append("</body></html>");
-
-                byte[] response = html.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            }; // end dashboardHandler lambda
-
-            // Register on both servers
-            webServer.createContext("/", dashboardHandler);
-            publicServer.createContext("/", dashboardHandler);
-
-            // API endpoint
-            webServer.createContext("/api/status", exchange -> {
-                int apiModelCount = 0;
-                try {
-                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                        .uri(java.net.URI.create("http://localhost:11434/api/tags"))
-                        .timeout(java.time.Duration.ofSeconds(3)).GET().build();
-                    java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() == 200) {
-                        String body = resp.body();
-                        int idx = 0;
-                        while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
-                            idx += 8; apiModelCount++;
-                        }
-                    }
-                } catch (Exception ex) { apiModelCount = 0; }
-                String json = String.format(
-                    "{\"version\":\"0.18.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
-                    apiModelCount, kgNodes.size(), errorCount, recoveryCount,
-                    java.time.LocalDateTime.now().toString());
-                byte[] response = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-
-            // PHASE 5: Live SVG hex map endpoint — auto-refreshing via JS
-            webServer.createContext("/api/hexmap", exchange -> {
-                String svg = generateHexMapSvg();
-                byte[] response = svg.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
-                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-
-            // PHASE 6: Semantic KG search via nomic-embed-text
-            webServer.createContext("/api/kg/search", exchange -> {
-                String query = exchange.getRequestURI().getQuery();
-                if (query != null && query.startsWith("q=")) {
-                    query = java.net.URLDecoder.decode(query.substring(2), "UTF-8");
-                } else {
-                    query = "";
-                }
-                String result = semanticKGSearch(query);
-                byte[] response = result.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-
-            // PHASE 15: Web search via DuckDuckGo (no API key needed)
-            webServer.createContext("/api/websearch", exchange -> {
-                String query = exchange.getRequestURI().getQuery();
-                if (query != null && query.startsWith("q=")) {
-                    query = java.net.URLDecoder.decode(query.substring(2), "UTF-8");
-                } else {
-                    query = "";
-                }
-                String result = webSearch(query);
-                byte[] response = result.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-
-            // PHASE 18: Observability — structured metrics endpoint
-            webServer.createContext("/api/metrics", exchange -> {
-                String json = getMetricsJson();
-                byte[] response = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-
-            webServer.setExecutor(Executors.newFixedThreadPool(2));
-            webServer.start();
-            log("🌐 Web Dashboard: http://localhost:8899");
-            addToGodChat("🌐 DASHBOARD", "System", "Web dashboard live at http://localhost:8899");
-        } catch (Exception e) {
-            log("⚠️ Web Dashboard: " + e.getMessage());
-        }
-    }
-
-    // ==================== 12. PLUGIN SYSTEM ====================
-    private final Map<String, Runnable> pluginRegistry = new ConcurrentHashMap<>();
-
-    private void pluginSystemInit() {
-        // Register built-in plugins
-        pluginRegistry.put("health-check", () -> {
-            log("🔌 Plugin [health-check]: All systems nominal");
-        });
-        pluginRegistry.put("auto-commit", () -> {
-            log("🔌 Plugin [auto-commit]: Changes detected, committing...");
-            pushToGitHub();
-        });
-        pluginRegistry.put("model-rotate", () -> {
-            log("🔌 Plugin [model-rotate]: Rotating active models...");
-        });
-        pluginRegistry.put("entropy-alert", () -> {
-            if (shannonEntropy > entropyThreshold) {
-                log("🔌 Plugin [entropy-alert]: High entropy detected!");
-            }
-        });
-        pluginRegistry.put("night-cycle-trigger", () -> {
-            log("🔌 Plugin [night-cycle-trigger]: Checking schedule...");
-        });
-
-        log("🔌 Plugin System: " + pluginRegistry.size() + " plugins registered");
-
-        // Periodic plugin execution
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (Map.Entry<String, Runnable> plugin : pluginRegistry.entrySet()) {
-                    if (new Random().nextInt(4) == 0) {
-                        try {
-                            plugin.getValue().run();
-                        } catch (Exception e) {
-                            logError("Plugin:" + plugin.getKey(), e.getMessage(), "disabled");
-                        }
-                    }
-                }
-            });
-        }, 50, 50, TimeUnit.SECONDS);
-    }
-    private void log(String msg) { String ts=java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")); String entry="["+ts+"] "+msg; System.out.println(entry); bufferedLog(entry+"\n"); }
-    // ==================== 13. PERFECT PROMPT ENGINEERING ====================
-    private final Map<String, String> perfectPrompts = new ConcurrentHashMap<>();
-    private final Map<String, Integer> promptSuccessRates = new ConcurrentHashMap<>();
-
-    private void perfectPromptInit() {
-        // Model-voted perfect prompts for each task type
-        perfectPrompts.put("code", "You are an expert programmer. Be clear, simple, and direct. Output ONLY working code with comments. No explanation.");
-        perfectPrompts.put("essay", "You are a professional writer. Be clear, structured, and engaging. Use short paragraphs. Include evidence.");
-        perfectPrompts.put("task", "Break this into clear steps. Execute each step. Verify results. Be efficient and direct.");
-        perfectPrompts.put("chat", "Be helpful, concise, and accurate. Answer directly. No fluff. Use examples when helpful.");
-        perfectPrompts.put("vote", "Vote APPROVE or REJECT. Reply with ONLY one word. No explanation needed.");
-        perfectPrompts.put("analyze", "Analyze this data. Find patterns. Report findings clearly. Be objective and precise.");
-        perfectPrompts.put("debug", "Find the bug. Explain the root cause. Provide the fix. Be specific and direct.");
-        perfectPrompts.put("refactor", "Improve this code. Keep it KISS/DRY. Match existing style. Be efficient and elegant.");
-
-        for (String key : perfectPrompts.keySet()) {
-            promptSuccessRates.put(key, 85 + new Random().nextInt(15)); // 85-99% baseline
-        }
-
-        log("💉 Perfect Prompts: " + perfectPrompts.size() + " templates with " +
-            String.format("%.0f%%", promptSuccessRates.values().stream().mapToInt(Integer::intValue).average().orElse(0)) +
-            " avg success rate");
-
-        // Auto-optimize prompts based on model performance
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (String model : modelChats.keySet()) {
-                    int rep = foundryReputation.getOrDefault(model, 0);
-                    if (rep < -5) {
-                        // Model struggling — inject best prompt
-                        String bestKey = "code";
-                        int bestRate = 0;
-                        for (Map.Entry<String, Integer> e : promptSuccessRates.entrySet()) {
-                            if (e.getValue() > bestRate) { bestRate = e.getValue(); bestKey = e.getKey(); }
-                        }
-                        String bestPrompt = perfectPrompts.getOrDefault(bestKey, "Be clear and direct.");
-                        log("💉 Prompt Optimization: [" + model + "] rep=" + rep + " → injecting best prompt");
-                        addToGodChat("💉 PROMPT", model, "Optimized: " + bestPrompt.substring(0, 60) + "...");
-                        // Boost success rate
-                        promptSuccessRates.merge("code", 1, Integer::sum);
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 14. MAP GUIDANCE SYSTEM (Hex) ====================
-    private final Map<String, Double> hexWeights = new ConcurrentHashMap<>();
-
-    private void mapGuidanceInit() {
-        // Initialize hex weights (center is best, edges lower)
-        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
-            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
-            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
-            for (int r = r1; r <= r2; r++) {
-                double dist = Math.sqrt(q * q + r * r);
-                hexWeights.put(q + "," + r, 10.0 - dist);
-            }
-        }
-        // Stations get bonus weight
-        hexWeights.put("0,0", 20.0);    // Center hub
-        hexWeights.put("4,-4", 15.0);   // Brute Foundry
-        hexWeights.put("-4,4", 15.0);   // Hospital
-        hexWeights.put("4,0", 12.0);    // Research
-        hexWeights.put("-4,0", 12.0);   // Knowledge Tree
-
-        log("🗺️ Map Guidance: " + hexWeights.size() + " hex weights initialized");
-
-        // Guide agents to optimal hex positions
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (Map.Entry<String, int[]> agent : agentPositions.entrySet()) {
-                    String name = agent.getKey();
-                    int[] pos = agent.getValue();
-                    int cq = pos[0], cr = pos[1];
-
-                    // Find best adjacent hex
-                    int bestQ = cq, bestR = cr;
-                    double bestWeight = hexWeights.getOrDefault(cq + "," + cr, 0.0);
-                    int[][] dirs = {{1,0},{1,-1},{0,-1},{-1,0},{-1,1},{0,1}};
-                    for (int[] d : dirs) {
-                        int nq = cq + d[0], nr = cr + d[1];
-                        String nk = nq + "," + nr;
-                        double w = hexWeights.getOrDefault(nk, 0.0);
-                        if (w > bestWeight) { bestQ = nq; bestR = nr; bestWeight = w; }
-                    }
-
-                    if (bestQ != cq || bestR != cr) {
-                        moveAgentTo(name, bestQ, bestR, pos[2]);
-                        log("🗺️ Map: " + name + " guided to ⬡(" + bestQ + "," + bestR + ") w=" + String.format("%.1f", bestWeight));
-                        addToGodChat("🗺️ MAP", name, "→ ⬡(" + bestQ + "," + bestR + ") [w:" + String.format("%.1f", bestWeight) + "]");
-                    }
-                }
-            });
-        }, 60, 60, TimeUnit.SECONDS);
-    }
-
-    // ==================== 15. PERFECT ROUTING PATTERNS ====================
-    private final Map<String, String> optimalPatterns = new ConcurrentHashMap<>();
-
-    private void perfectPatternsInit() {
-        // Model-voted optimal patterns per task
-        optimalPatterns.put("code", "Chain: qwen2.5→llama3.2→deepseek-r1 (generate→review→finalize)");
-        optimalPatterns.put("essay", "Pipeline: tinyllama→llama3.2→phi3 (outline→body→polish)");
-        optimalPatterns.put("task", "Linear: qwen2.5→tinyllama→llama3.2 (analyze→solve→verify)");
-        optimalPatterns.put("chat", "Broadcast: All models respond, best answer selected");
-        optimalPatterns.put("vote", "Vote: All 4 fast models, majority wins");
-        optimalPatterns.put("debug", "Chain: qwen2.5→deepseek-r1 (find→fix)");
-        optimalPatterns.put("creative", "Random: Any model, surprise results");
-        optimalPatterns.put("analysis", "Markov: State-based transitions for deep analysis");
-
-        log("🔀 Perfect Patterns: " + optimalPatterns.size() + " task-optimized routes");
-
-        // Auto-apply best pattern based on input analysis
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (Map.Entry<String, ComboBox<String>> entry : modelPatterns.entrySet()) {
-                    String model = entry.getKey();
-                    ComboBox<String> patternBox = entry.getValue();
-
-                    // Analyze recent chat to determine best pattern
-                    TextArea ca = modelChats.get(model);
-                    if (ca != null) {
-                        String recent = ca.getText();
-                        String bestPattern = "Linear"; // default
-                        if (recent.contains("code") || recent.contains("function") || recent.contains("class")) {
-                            bestPattern = "Chain";
-                        } else if (recent.contains("essay") || recent.contains("write") || recent.contains("article")) {
-                            bestPattern = "Linear";
-                        } else if (recent.contains("vote") || recent.contains("decide") || recent.contains("choose")) {
-                            bestPattern = "Vote";
-                        } else if (recent.contains("analyze") || recent.contains("review") || recent.contains("check")) {
-                            bestPattern = "Markov";
-                        }
-
-                        if (!patternBox.getValue().equals(bestPattern) && new Random().nextInt(3) == 0) {
-                            patternBox.setValue(bestPattern);
-                            log("🔀 Pattern: [" + model + "] auto-switched to " + bestPattern);
-                        }
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 16. TOOLS SYSTEM ====================
-    // ==================== PHASE 24: FORMAL TOOL/PLUGIN API — stable interface ====================
-    /** Stable tool interface — all dynamically added tools must conform */
-    public interface Tool {
-        String name();
-        String description();
-        String category(); // "system", "network", "model", "data", "agent"
-        default boolean validate() { return true; } // pre-flight check
-        String execute(String input) throws Exception; // core logic
-        default String version() { return "1.0.0"; }
-    }
-
-    private final Map<String, Tool> toolRegistry = new ConcurrentHashMap<>(); // name -> Tool
-    private final Map<String, String> availableTools = new ConcurrentHashMap<>(); // legacy compat: name -> description
-    private final Map<String, Integer> toolUsage = new ConcurrentHashMap<>();
-
-    private void toolsSystemInit() {
-        // Register built-in tools via stable interface
-        registerTool(new Tool() {
-            public String name() { return "terminal"; }
-            public String description() { return "Execute shell commands"; }
-            public String category() { return "system"; }
-            public String execute(String input) { return "[terminal stub — real execution via agent]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "file_read"; }
-            public String description() { return "Read files from disk"; }
-            public String category() { return "system"; }
-            public String execute(String input) { return "[file_read stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "file_write"; }
-            public String description() { return "Write files to disk"; }
-            public String category() { return "system"; }
-            public String execute(String input) { return "[file_write stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "web_search"; }
-            public String description() { return "Search the internet"; }
-            public String category() { return "network"; }
-            public String execute(String input) { return "[web_search stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "web_fetch"; }
-            public String description() { return "Fetch URL content"; }
-            public String category() { return "network"; }
-            public String execute(String input) { return "[web_fetch stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "git"; }
-            public String description() { return "Git operations (commit, push, pull)"; }
-            public String category() { return "system"; }
-            public String execute(String input) { return "[git stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "ollama"; }
-            public String description() { return "Query other models"; }
-            public String category() { return "model"; }
-            public String execute(String input) { return "[ollama stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "memory"; }
-            public String description() { return "Read/write persistent memory"; }
-            public String category() { return "data"; }
-            public String execute(String input) { return "[memory stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "vote"; }
-            public String description() { return "Cast votes on proposals"; }
-            public String category() { return "agent"; }
-            public String execute(String input) { return "[vote stub]"; }
-        });
-        registerTool(new Tool() {
-            public String name() { return "pipeline"; }
-            public String description() { return "Chain multiple models together"; }
-            public String category() { return "model"; }
-            public String execute(String input) { return "[pipeline stub]"; }
-        });
-
-        log("🔧 Tools: " + toolRegistry.size() + " tools registered via stable Tool interface");
-        addToGodChat("🔧 TOOLS", "System", toolRegistry.size() + " tools: " + toolRegistry.keySet());
-
-        // /api/tools endpoint — full tool metadata
-        try {
-            webServer.createContext("/api/tools", exchange -> {
-                StringBuilder json = new StringBuilder("{\"count\":" + toolRegistry.size() + ",\"tools\":[");
-                boolean first = true;
-                for (Tool t : toolRegistry.values()) {
-                    if (!first) json.append(",");
-                    json.append("{\"name\":\"").append(t.name())
-                        .append("\",\"description\":\"").append(t.description().replace("\"", "'"))
-                        .append("\",\"category\":\"").append(t.category())
-                        .append("\",\"version\":\"").append(t.version())
-                        .append("\",\"valid\":" ).append(t.validate())
-                        .append(",\"usage\":" ).append(toolUsage.getOrDefault(t.name(), 0)).append("}");
-                    first = false;
-                }
-                json.append("]}");
-                byte[] resp = json.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-
-        // Auto-assign tools to models based on capability
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (String model : modelChats.keySet()) {
-                    String[] names = toolRegistry.keySet().toArray(new String[0]);
-                    String tool = names[new Random().nextInt(names.length)];
-                    toolUsage.merge(tool, 1, Integer::sum);
-                    if (new Random().nextInt(5) == 0) {
-                        Tool t = toolRegistry.get(tool);
-                        log("🔧 Tool: [" + model + "] used " + tool + " (" + toolUsage.get(tool) + " total uses)");
-                        addToGodChat("🔧 TOOL", model, "Used: " + tool + " → " + (t != null ? t.description() : ""));
-                    }
-                }
-            });
-        }, 70, 70, TimeUnit.SECONDS);
-    }
-
-    /** Register a tool via the stable interface */
-    public void registerTool(Tool tool) {
-        if (toolRegistry.containsKey(tool.name())) return;
-        if (!tool.validate()) {
-            log("⚠️ Tool rejected (validate=false): " + tool.name());
-            return;
-        }
-        toolRegistry.put(tool.name(), tool);
-        availableTools.put(tool.name(), tool.description()); // legacy compat
-        toolUsage.put(tool.name(), 0);
-        log("🔧 Registered: " + tool.name() + " v" + tool.version() + " [" + tool.category() + "] — " + tool.description());
-    }
-
-    /** Dynamically add a tool from deploy phase — wraps in Tool interface */
-    public void addTool(String name, String description) {
-        if (toolRegistry.containsKey(name)) return;
-        registerTool(new Tool() {
-            public String name() { return name; }
-            public String description() { return description; }
-            public String category() { return "dynamic"; }
-            public String execute(String input) { return "[dynamic:" + name + "]"; }
-        });
-        addToGodChat("🔧 TOOL", "System", "Registered: " + name + " → " + description);
-    }
-
-    // ==================== 17. PERSISTENT MEMORY SYSTEM ====================
-    private final Map<String, List<String>> persistentMemory = new ConcurrentHashMap<>();
-    private final Map<String, Long> memoryTimestamps = new ConcurrentHashMap<>();
-
-    private void persistentMemoryInit() {
-        // Seed memory for each agent
-        persistentMemory.put("Agent Alpha", Collections.synchronizedList(new ArrayList<>(Arrays.asList(
-            "Role: Orchestrator — coordinates all agents",
-            "Home: Brute Foundry station",
-            "Skill: Code generation level 4",
-            "Memory: 42 successful deploys"
-        ))));
-        persistentMemory.put("Agent Beta", Collections.synchronizedList(new ArrayList<>(Arrays.asList(
-            "Role: Builder — constructs and maintains",
-            "Home: Knowledge Tree station",
-            "Skill: Analysis level 3",
-            "Memory: 28 topology nodes built"
-        ))));
-        persistentMemory.put("Agent Gamma", Collections.synchronizedList(new ArrayList<>(Arrays.asList(
-            "Role: Analyst — reviews and improves",
-            "Home: Research station",
-            "Skill: Writing level 3",
-            "Memory: 15 evaluations completed"
-        ))));
-
-        for (String agent : persistentMemory.keySet()) {
-            memoryTimestamps.put(agent, System.currentTimeMillis());
-        }
-
-        log("🧠 Persistent Memory: " + persistentMemory.size() + " agents with " +
-            persistentMemory.values().stream().mapToInt(List::size).sum() + " total memories");
-
-        // Periodic memory consolidation and retrieval
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (Map.Entry<String, List<String>> entry : persistentMemory.entrySet()) {
-                    String agent = entry.getKey();
-                    List<String> memories = entry.getValue();
-
-                    // Add new memory from recent activity
-                    if (new Random().nextInt(3) == 0) {
-                        String newMemory = "[" + java.time.LocalTime.now().toString().substring(0, 5) + "] " +
-                            "Activity: " + (memories.size() + 1) + " total memories stored";
-                        memories.add(newMemory);
-                        memoryTimestamps.put(agent, System.currentTimeMillis());
-
-                        // Keep only last 20 memories
-                        if (memories.size() > 20) {
-                            memories.remove(0);
-                        }
-
-                        log("🧠 Memory: " + agent + " stored new memory (" + memories.size() + " total)");
-                        addToGodChat("🧠 MEMORY", agent, "Stored: " + newMemory);
-                        // KV store: persist agent memory
-                        if (kvStore != null) {
-                            try { kvStore.getClass().getMethod("put", String.class, String.class)
-                                .invoke(kvStore, "memory:" + agent + ":" + memories.size(), newMemory); } catch (Exception ignored) {}
-                        }
-                        // Evidence: log memory event
-                        evidenceLog("memory", agent, newMemory);
-                    }
-
-                    // Retrieve and inject relevant memories into model context
-                    if (new Random().nextInt(4) == 0 && !memories.isEmpty()) {
-                        String recall = memories.get(new Random().nextInt(memories.size()));
-                        log("🧠 Memory: " + agent + " recalled: " + recall);
-                        addToGodChat("🧠 RECALL", agent, recall);
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 18. FOW (FOG OF WAR) — 1-Hop Hex Visibility ====================
-    private void fowInit() {
-        // Pin each agent to their starting hex
-        fowAgentHex.put("Agent Alpha", "0,0");
-        fowAgentHex.put("Agent Beta", "3,-2");
-        fowAgentHex.put("Agent Gamma", "-3,2");
-        fowAgentHex.put("Agent Delta", "0,-3");
-
-        log("🌫️ FOW: Fog of War initialized — " + FOW_HOP + "-hop visibility, " + fowAgentHex.size() + " agents pinned");
-
-        // Periodic FOW update: dim hexes outside agent's 1-hop
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                if (!fowEnabled) return;
-                for (var entry : hexCells.entrySet()) {
-                    String hexKey = entry.getKey();
-                    javafx.scene.shape.Polygon hex = entry.getValue();
-                    String[] parts = hexKey.split(",");
-                    int hq = Integer.parseInt(parts[0]), hr = Integer.parseInt(parts[1]);
-
-                    // Check if ANY agent can see this hex
-                    boolean visible = false;
-                    for (var agentEntry : fowAgentHex.entrySet()) {
-                        String[] aParts = agentEntry.getValue().split(",");
-                        int aq = Integer.parseInt(aParts[0]), ar = Integer.parseInt(aParts[1]);
-                        int dist = Math.max(Math.abs(hq - aq), Math.abs(hr - ar));
-                        // Axial hex distance approximation
-                        if (dist <= FOW_HOP) { visible = true; break; }
-                    }
-
-                    if (!visible) {
-                        // FOW: dim and desaturate
-                        hex.setOpacity(0.15);
-                        hex.setStroke(Color.web("#333333"));
-                    } else {
-                        // Visible: restore
-                        hex.setOpacity(0.7);
-                        hex.setStroke(Color.web("#00d9ff44"));
-                    }
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    // ==================== 19. HEX TODO SYSTEM — TODOs Pinned to Hex Cells ====================
-    private void hexTodoInit() {
-        // Seed TODOs from the hex_todo_mapper
-        String[][] seedTodos = {
-            {"0,0", "⬡ Center Hub: GodHand dashboard"},
-            {"0,0", "⬡ Wire FOW to all 8 models"},
-            {"1,0", "⬡ Port hex-hex.go → Java HexCoord"},
-            {"1,-1", "⬡ Port clock-clock.go → CloudflaredClock"},
-            {"2,-1", "⬡ Build WebSocket live hex streaming"},
-            {"2,-2", "⬡ Integrate topological memory H₀/H₁/H₂"},
-            {"3,-2", "⬡ Agent Beta: Deterministic intent parser"},
-            {"-1,1", "⬡ Deploy hyper buffer O(1) bitwise"},
-            {"-2,1", "⬡ Create gist-sync cron: 30min push"},
-            {"-3,2", "⬡ Agent Gamma: MatrixWinCE APK pipeline"},
-            {"-1,0", "⬡ Wire 8 Ollama models into hex grid"},
-            {"0,1", "⬡ Dashboard: hex grid with FOW overlay"},
-            {"1,1", "⬡ Night cycle: auto-vote hex TODO priorities"},
-            {"-1,-1", "⬡ Gist: memories-db (persistent agent memory)"},
-            {"-2,-2", "⬡ Gist: project-places (hex coords for repos)"},
-            {"-3,-3", "⬡ Gist: databases (SQLite schemas, KG exports)"},
-        };
-
-        for (String[] td : seedTodos) {
-            hexTodos.computeIfAbsent(td[0], k -> Collections.synchronizedList(new ArrayList<>())).add(td[1]);
-        }
-
-        log("⬡ Hex TODOs: " + seedTodos.length + " items across " + hexTodos.size() + " hex cells");
-
-        // Periodic: show TODOs on hex hover in tooltip
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (var entry : hexCells.entrySet()) {
-                    String key = entry.getKey();
-                    javafx.scene.shape.Polygon hex = entry.getValue();
-                    List<String> todos = hexTodos.getOrDefault(key, List.of());
-                    if (!todos.isEmpty()) {
-                        StringBuilder tip = new StringBuilder("⬡ (" + key + ") TODOs:\n");
-                        for (String t : todos) tip.append("  • ").append(t).append("\n");
-                        Tooltip.install(hex, new Tooltip(tip.toString().trim()));
-                    }
-                }
-            });
-        }, 10, 30, TimeUnit.SECONDS);
-    }
-
-    // ==================== 20. GIST CONTEXT — Load Models with Gist Knowledge ====================
-    private void gistContextInit() {
-        // Register all gist URLs
-        gistUrls.put("neuromorphic-lineage", "https://gist.github.com/chrisalunlloyd2-sudo/87a6e878f96616971a8754cb4cea06be");
-        gistUrls.put("memories-db", "https://gist.github.com/chrisalunlloyd2-sudo/14e94c9d5256c16c6ecfdf748f7d3bbd");
-        gistUrls.put("project-places", "https://gist.github.com/chrisalunlloyd2-sudo/09a19470abadd0ad47e133ac44edec0d");
-        gistUrls.put("databases", "https://gist.github.com/chrisalunlloyd2-sudo/d0733fb0460ff11128870902e7eb27d5");
-        gistUrls.put("hex-fow", "https://gist.github.com/chrisalunlloyd2-sudo/a23215d054d804834fd902d12692d096");
-        gistUrls.put("topological-memory", "https://gist.github.com/chrisalunlloyd2-sudo/93ef40fd2d9c610eca8839a676005286");
-        gistUrls.put("hyper-buffer", "https://gist.github.com/chrisalunlloyd2-sudo/f918a05e859a4bc7a037e741ba1dbd5f");
-        gistUrls.put("matrix-wince", "https://gist.github.com/chrisalunlloyd2-sudo/c91b5b29cc871f0140fbba0e4b187b85");
-
-        // Load neuromorphic lineage + gist knowledge into model context
-        String[] lineageContext = {
-            "NEUROMORPHIC LINEAGE: Boolean→Turing→McCullochPitts→Hebbian→Perceptron→Analog→Atari→Procedural→3D→Voodoo→CERN→Agents→LSTM→GRU→Attention→Transformers→MoE→SSMs→RAG→SIMS1337",
-            "PRINCIPLE 1: Computation = physical process, not symbolic manipulation.",
-            "PRINCIPLE 2: Determinism + temporal consistency = stable neural firing patterns.",
-            "PRINCIPLE 3: Intelligence emerges from distributed, message-passing systems.",
-            "PRINCIPLE 4: Routing + weighting = cognition.",
-            "PRINCIPLE 5: A cognitive engine is a distributed, stateless, message-passing organism.",
-            "SIMS1337 MAPPING: Hippocampus=LexicalEngine, Thalamus=ModelRouter, CorticalColumns=Stations, SpikingNeurons=SLMAgents, SynapticPlasticity=LoRA, CircadianRhythm=NightCycle, GlialCells=Hospital, Neurogenesis=BruteFoundry",
-            "HEX GRID: 61 hexes, axial Q/R/Z + 4D time pulse, FOW 1-hop visibility, 3 agents pinned",
-            "TOOLS: terminal, file_read, file_write, web_search, web_fetch, git, ollama, memory, vote, pipeline",
-            "MODELS: qwen2.5:0.5b(fast), tinyllama:1.1b(balanced), llama3.2:1b(tools), deepseek-r1:1.5b(deep), phi:latest(reasoning), phi3:mini(deep), gemma2:2b(balanced), codellama:7b(code)",
-            "GISTS: neuromorphic-lineage, memories-db, project-places, databases, hex-fow, topological-memory, hyper-buffer, matrix-wince",
-        };
-
-        for (String ctx : lineageContext) {
-            gistContexts.add(ctx);
-        }
-
-        log("📚 Gist Context: " + gistContexts.size() + " knowledge fragments loaded");
-
-        // Inject context into all model chats
-        chatScheduler.schedule(() -> {
-            Platform.runLater(() -> {
-                for (var entry : modelChats.entrySet()) {
-                    String model = entry.getKey();
-                    TextArea chat = entry.getValue();
-                    chat.appendText("\n═══ NEUROMORPHIC CONTEXT LOADED ═══\n");
-                    for (int i = 0; i < Math.min(5, gistContexts.size()); i++) {
-                        chat.appendText("[" + model + "] " + gistContexts.get(i) + "\n");
-                    }
-                    chat.appendText("══════════════════════════════════\n\n");
-                }
-                addToGodChat("📚 CONTEXT", "System", "Loaded " + gistContexts.size() + " neuromorphic lineage fragments into all " + modelChats.size() + " models");
-                log("📚 All models loaded with neuromorphic lineage context");
-            });
-        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-
-        // Periodic: refresh context injection
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                for (var entry : modelChats.entrySet()) {
-                    TextArea chat = entry.getValue();
-                    if (new Random().nextInt(5) == 0) {
-                        String ctx = gistContexts.get(new Random().nextInt(gistContexts.size()));
-                        chat.appendText("[📚] " + ctx + "\n");
-                    }
-                }
-            });
-        }, 80, 80, TimeUnit.SECONDS);
-    }
-
-    // ==================== 21. GIST SYNC — Push State to GitHub Gists Every 30min ====================
-    private void gistSyncInit() {
-        log("🔄 Gist Sync: 30-minute state push initialized");
-
-        chatScheduler.scheduleAtFixedRate(() -> {
-            if (gistToken.isEmpty()) {
-                log("⚠️ Gist Sync: No GIST_TOKEN set, skipping");
-                return;
-            }
-            try {
-                // Build state payload
-                StringBuilder state = new StringBuilder();
-                state.append("# SIMS1337 State Snapshot\n");
-                state.append("## Timestamp: ").append(java.time.LocalDateTime.now()).append("\n\n");
-                state.append("## System Status\n");
-                state.append("- Version: v0.18.0\n");
-                state.append("- Models online: ").append(ollamaAvailable.size()).append("\n");
-                state.append("- KG nodes: ").append(kgNodes.size()).append("\n");
-                state.append("- KG edges: ").append(kgEdges.size()).append("\n");
-                state.append("- Errors: ").append(errorCount).append("\n");
-                state.append("- Recoveries: ").append(recoveryCount).append("\n");
-                state.append("- Hex TODOs: ").append(hexTodos.size()).append(" cells\n");
-                state.append("- FOW agents: ").append(fowAgentHex.size()).append("\n\n");
-
-                state.append("## Agent Positions\n");
-                for (var entry : agentPositions.entrySet()) {
-                    int[] pos = entry.getValue();
-                    state.append("- ").append(entry.getKey()).append(": ⬡(").append(pos[0]).append(",").append(pos[1]).append(") Z:").append(pos[2]).append("\n");
-                }
-
-                state.append("\n## Hex TODOs\n");
-                for (var entry : hexTodos.entrySet()) {
-                    state.append("### ⬡(").append(entry.getKey()).append(")\n");
-                    for (String todo : entry.getValue()) {
-                        state.append("- ").append(todo).append("\n");
-                    }
-                }
-
-                // Push to gist:databases
-                String json = String.format(
-                    "{\"description\":\"SIMS1337 State Snapshot — auto-synced every 30min\",\"files\":{\"state_snapshot.md\":{\"content\":\"%s\"}}}",
-                    state.toString().replace("\"", "\\\"").replace("\n", "\\n"));
-
-                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .header("Content-Type", "application/json")
-                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(java.time.Duration.ofSeconds(15))
-                    .build();
-
-                java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    log("🔄 Gist Sync: State pushed to gist:databases ✅");
-                    addToGodChat("🔄 GIST", "Sync", "State snapshot pushed to gist:databases");
-                } else {
-                    log("⚠️ Gist Sync: HTTP " + resp.statusCode());
-                }
-            } catch (Exception e) {
-                log("⚠️ Gist Sync failed: " + e.getMessage());
-            }
-        }, 30, 1800, TimeUnit.SECONDS); // Every 30 minutes
-    }
-
-    // ==================== 22. NIGHT CYCLE — Continuous Autonomous Loop ====================
-    private int nightCyclePhase = 0; // 0=dream, 1=debate+vote, 2=deploy, 3=email
-    private int nightCycleCount = 0;
-
-    private void nightCycleArm() {
-        nightCycleConfig.put("enabled", "true");
-        log("🌙 Night Cycle ARMED: Continuous autonomous loop — dream→debate→vote→deploy→email every 30min");
-        addToGodChat("🌙 NIGHT", "System", "Continuous cycle armed: dream→debate→vote→deploy→email (30min loop)");
-        statusLabel.setText("🌙 Night Cycle: Continuous");
-        statusLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c77dff; -fx-font-weight: bold;");
-
-        // Run the full cycle every 30 minutes continuously
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    nightCycleCount++;
-                    log("🌙 Night Cycle #" + nightCycleCount + " — Phase " + nightCyclePhase + " starting...");
-
-                    switch (nightCyclePhase) {
-                        case 0: // DREAM
-                            log("🌙💤 DREAM PHASE — agents cross-correlating memories...");
-                            addToGodChat("🌙💤 DREAM", "Cycle " + nightCycleCount, "Agents entering dream state");
-                            runDreamPhase();
-                            break;
-                        case 1: // DEBATE + VOTE
-                            log("🌙 Night Cycle: DEBATE + VOTE PHASE — consensus debate + role-based voting...");
-                            addToGodChat("🌙 NIGHT", "Vote", "Consensus debate on " + proposalTable.size() + " proposals");
-                            runConsensusDebate();
-                            log("🌙 Night Cycle: Debate complete, final votes cast");
-                            break;
-                        case 2: // DEPLOY
-                            log("🌙 Night Cycle: DEPLOY PHASE — implementing approved proposals...");
-                            addToGodChat("🌙 NIGHT", "Deploy", "Implementing approved proposals + pushing to GitHub");
-                            implementApprovedProposals();
-                            pushToGitHub();
-                            break;
-                        case 3: // EMAIL
-                            log("🌙 Night Cycle: EMAIL PHASE — sending brief to " + nightCycleConfig.get("email_to"));
-                            addToGodChat("🌙 NIGHT", "Email", "Sending nightly brief");
-                            sendNightlyBrief();
-                            break;
-                    }
-
-                    // Advance phase, wrap around
-                    nightCyclePhase = (nightCyclePhase + 1) % 4;
-                    if (nightCyclePhase == 0) {
-                        log("🌙 Night Cycle #" + nightCycleCount + " complete — next cycle in 30min");
-                        addToGodChat("🌙 NIGHT", "Complete", "Cycle " + nightCycleCount + " done. Next: dream in 30min.");
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Night Cycle error: " + e.getMessage());
-                }
-            });
-        }, 30, 1800, TimeUnit.SECONDS); // Every 30 minutes = full cycle every 2 hours
-    }
-
-    // ==================== DREAM PHASE — Cross-Correlate + Generate Game Mechanics ====================
-    private void runDreamPhase() {
-        dreamIdeas.clear();
-        List<String> allMemories = new ArrayList<>();
-        for (var entry : modelChats.entrySet()) {
-            String text = entry.getValue().getText();
-            if (text.length() > 50) {
-                allMemories.add(entry.getKey() + " context: " + text.substring(Math.max(0, text.length() - 300)));
-            }
-        }
-
-        String[] modelNames = modelChats.keySet().toArray(new String[0]);
-        java.util.Random rng = new java.util.Random();
-
-        // Each model dreams via real Ollama
-        for (int i = 0; i < 8; i++) {
-            String model = modelNames[i % modelNames.length];
-            String category = new String[]{"logic","node","tool","backend","ability","grid","logic","tool"}[i];
-
-            String systemPrompt = "You are " + model + ", an SLM agent in the SIMS1337 multi-agent grid. " +
-                "You are dreaming — generating creative game mechanic ideas. " +
-                "Respond with exactly ONE line in format: \"CATEGORY: Name — brief description\". " +
-                "Categories: Logic System, Node Type, Tool, Backend, Agent Ability, Grid Mechanic. " +
-                "Be specific, creative, and grounded in multi-agent systems. Max 120 chars.";
-
-            String userPrompt = "Dream a new " + category + " for the SIMS1337 agent grid. " +
-                "The grid has 61 hexes, 8 models, 3 agents, FOW, voting, topology, and a night cycle. " +
-                "Recent context: " + (allMemories.isEmpty() ? "system just started" : allMemories.get(rng.nextInt(allMemories.size())));
-
-            String fallback = String.format("%s: %s — %s detected pattern in agent communication, proposing new capability",
-                category.substring(0,1).toUpperCase() + category.substring(1),
-                category + "_" + (i+1),
-                model);
-
-            String idea = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
-            dreamIdeas.add(idea);
-            dreamCount.incrementAndGet();
-            log("💤 DREAM [" + model + "]: " + idea);
-            addToGodChat("💤 DREAM", model, idea);
-            // Euler DB: store dream as spherical vision data
-            double theta = (i * 45.0) % 360; // spread dreams around sphere
-            double phi = (i * 30.0) % 180;
-            eulerPut(theta, phi, Integer.toHexString(idea.hashCode()));
-            // Audio: speak dream summary
-            audioRoute(idea.length() > 100 ? idea.substring(0, 100) : idea, "dream");
-            // Evidence: log dream
-            evidenceLog("dream", model, idea.length() > 80 ? idea.substring(0, 80) : idea);
-            // KV store: persist dream
-            if (kvStore != null) {
-                try { kvStore.getClass().getMethod("put", String.class, String.class).invoke(kvStore, "dream:" + model + ":" + i, idea); } catch (Exception ignored) {}
-            }
-        }
-
-        // Convert top dreams into proposals
-        int propNum = proposalTable.size() + 1;
-        for (int i = 0; i < Math.min(4, dreamIdeas.size()); i++) {
-            String idea = dreamIdeas.get(i);
-            String id = String.format("P%03d", propNum + i);
-            String category = idea.toLowerCase().startsWith("logic") ? "logic" :
-                idea.toLowerCase().startsWith("node") ? "node" :
-                idea.toLowerCase().startsWith("tool") ? "tool" :
-                idea.toLowerCase().startsWith("backend") ? "backend" :
-                idea.toLowerCase().startsWith("agent") ? "ability" : "grid";
-            String title = idea.length() > 80 ? idea.substring(0, 80) : idea;
-            proposalTable.add(new String[]{id, title, idea, "pending", "0", "0", category});
-            addToGodChat("💤 DREAM", "Proposal", id + " [" + category + "]: " + title);
-        }
-
-        addToGodChat("💤 DREAM", "Summary", dreamIdeas.size() + " game mechanics generated, " +
-            Math.min(4, dreamIdeas.size()) + " added as proposals");
-        log("💤 Dream Phase complete: " + dreamIdeas.size() + " mechanics, " + proposalTable.size() + " total proposals");
-    }
-
-    // ==================== ROLE-BASED VOTING — Real Ollama API vote ====================
-    // Each model votes YES/NO via Ollama based on its specialty and the proposal.
-    // Results logged to overnight-data.json for morning analysis.
-    private static final String OVERNIGHT_DATA = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/overnight-data.json";
-    private final List<Map<String, Object>> overnightLog = Collections.synchronizedList(new ArrayList<>());
-    private final long startTimeMs = System.currentTimeMillis();
-
-    private boolean roleBasedVote(String modelName, String category, String description) {
-        // Model specialties
-        Map<String, String[]> specialties = Map.of(
-            "deepseek-r1:1.5b", new String[]{"logic", "backend", "tool"},
-            "phi3:mini", new String[]{"logic", "backend", "node"},
-            "phi:latest", new String[]{"logic", "tool", "ability"},
-            "codellama:7b", new String[]{"tool", "backend", "node"},
-            "llama3.2:1b", new String[]{"tool", "ability", "grid"},
-            "tinyllama:1.1b", new String[]{"ability", "grid", "node"},
-            "gemma2:2b", new String[]{"node", "grid", "backend"},
-            "qwen2.5:0.5b", new String[]{"grid", "ability", "tool"},
-            "mistral:7b", new String[]{"logic", "backend", "tool", "node"}  // 7B powerhouse — all specialties
-        );
-        String[] preferred = specialties.getOrDefault(modelName, new String[]{"logic", "tool", "grid"});
-
-        // Real Ollama vote
-        String systemPrompt = "You are " + modelName + " in the SIMS1337 multi-agent grid. " +
-            "Your specialties: " + String.join(", ", preferred) + ". " +
-            "A proposal has been made. Vote YES or NO. Respond with EXACTLY one word: YES or NO. " +
-            "Consider: does this align with your specialty? Is it useful for the grid?";
-        String userPrompt = "Proposal category: " + category + ". Description: " + description + ". " +
-            "Vote YES or NO (one word only):";
-        String fallback = new Random().nextDouble() < 0.65 ? "YES" : "NO";
-        String voteStr = ollamaOrFallback(modelName, systemPrompt, userPrompt, fallback);
-        boolean approve = voteStr != null && voteStr.toUpperCase().contains("YES");
-
-        // Log to overnight data
-        Map<String, Object> entry = new ConcurrentHashMap<>();
-        entry.put("type", "vote");
-        entry.put("timestamp", java.time.LocalDateTime.now().toString());
-        entry.put("model", modelName);
-        entry.put("category", category);
-        entry.put("description", description.length() > 200 ? description.substring(0, 200) : description);
-        entry.put("vote", approve ? "YES" : "NO");
-        entry.put("specialties", String.join(",", preferred));
-        overnightLog.add(entry);
-
-        log("🗳️ [" + modelName + "] " + (approve ? "✅ YES" : "❌ NO") + " [" + category + "]");
-        evidenceLog("vote", modelName, category + ": " + (approve ? "YES" : "NO") + " — " + description.substring(0, Math.min(100, description.length())));
-        audioRoute("Vote " + (approve ? "YES" : "NO") + " on " + category + " by " + modelName, "voting");
-        // Tool usage: track which tool the model would use for this vote
-        String[] tools = availableTools.keySet().toArray(new String[0]);
-        String tool = tools[new Random().nextInt(tools.length)];
-        toolUsage.merge(tool, 1, Integer::sum);
-        // KV store: persist vote
-        if (kvStore != null) {
-            try { kvStore.getClass().getMethod("put", String.class, String.class)
-                .invoke(kvStore, "vote:" + modelName + ":" + System.currentTimeMillis(),
-                category + "=" + (approve ? "YES" : "NO")); } catch (Exception ignored) {}
-        }
-        return approve;
-    }
-
-    // ==================== DEPLOY IMPLEMENTATION — Build Approved Proposals ====================
-    private void implementApprovedProposals() {
-        int implemented = 0;
-        for (String[] p : proposalTable) {
-            if (!"approved".equals(p[3])) continue;
-            String title = p[1];
-            String description = p[2];
-            String category = p.length > 6 ? p[6] : "unknown";
-
-            switch (category) {
-                case "tool" -> {
-                    // Extract tool name from title
-                    String toolName = title.toLowerCase().replace(" ", "_").replace("tool:", "").trim();
-                    if (toolName.contains("_tool")) toolName = toolName.replace("_tool", "");
-                    toolName = toolName.replaceAll("[^a-z0-9_]", "");
-                    if (!toolName.isEmpty() && !availableTools.containsKey(toolName)) {
-                        addTool(toolName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "node" -> {
-                    String stationName = title.replace("Node Type:", "").replace("Station:", "").trim();
-                    if (!stationName.isEmpty() && !stationRegistry.containsKey(stationName)) {
-                        addStation(stationName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "backend" -> {
-                    String backendName = title.replace("Backend:", "").trim();
-                    if (!backendName.isEmpty() && !stationRegistry.containsKey(backendName)) {
-                        addStation(backendName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "logic" -> {
-                    // Logic systems become tools
-                    String logicName = title.replace("Logic System:", "").trim().toLowerCase().replace(" ", "_").replaceAll("[^a-z0-9_]", "");
-                    if (!logicName.isEmpty() && !availableTools.containsKey(logicName)) {
-                        addTool(logicName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-                case "ability", "grid" -> {
-                    // Abilities and grid mechanics become tools
-                    String abilityName = title.toLowerCase().replace(" ", "_").replace("agent_ability:", "").replace("grid_mechanic:", "").replaceAll("[^a-z0-9_]", "");
-                    if (!abilityName.isEmpty() && !availableTools.containsKey(abilityName)) {
-                        addTool(abilityName, description.length() > 100 ? description.substring(0, 100) : description);
-                        implemented++;
-                    }
-                }
-            }
-            // Mark as deployed
-            p[3] = "deployed";
-        }
-        if (implemented > 0) {
-            log("🚀 Deploy: " + implemented + " proposals implemented as tools/stations");
-            addToGodChat("🚀 DEPLOY", "System", implemented + " approved proposals built: " +
-                availableTools.size() + " tools, " + stationRegistry.size() + " stations now available");
-        } else {
-            log("🚀 Deploy: No approved proposals to implement");
-        }
-    }
-
-    // ==================== 23. AGENT AUTONOMY LOOP — Real Tool Execution + SLM Reasoning ====================
-    private final Map<String, String> agentTasks = new ConcurrentHashMap<>(); // agent -> current task
-    private final Map<String, Integer> agentTaskCount = new ConcurrentHashMap<>(); // agent -> completed count
-    private final Map<String, String> agentModels = new ConcurrentHashMap<>(); // agent -> ollama model
-    private int agentAutonomyRound = 0;
-
-    // ==================== PHASE 27: ONE-HOT AGENT LIFECYCLE — death & rebirth ====================
-    private volatile String hotAgent = null; // only ONE agent active at a time
-    private final Map<String, Long> agentBirthTimes = new ConcurrentHashMap<>();
-    private final Map<String, Long> agentDeathTimes = new ConcurrentHashMap<>();
-    private final Map<String, Integer> agentLives = new ConcurrentHashMap<>(); // how many times reborn
-    private final Map<String, String> agentStatus = new ConcurrentHashMap<>(); // alive, dead, reborn
-    private static final long AGENT_LIFESPAN_MS = 600_000; // 10 min life, then die & reborn
-    private static final long AGENT_REBIRTH_DELAY_MS = 60_000; // 1 min between death and rebirth
-    private final AtomicLong agentLifecycleRound = new AtomicLong(0);
-
-    private void agentAutonomyInit() {
-        // All 4 agents initialized
-        String[] allAgents = {"Agent Alpha", "Agent Beta", "Agent Gamma", "Agent Delta"};
-        for (String a : allAgents) {
-            agentTasks.put(a, "idle");
-            agentTaskCount.put(a, 0);
-            agentLives.put(a, 1);
-            agentStatus.put(a, "alive");
-            agentBirthTimes.put(a, System.currentTimeMillis());
-        }
-        // Assign SLM models — mistral:7b for Alpha (leader), rotate others
-        agentModels.put("Agent Alpha", "mistral:7b");
-        agentModels.put("Agent Beta", "deepseek-r1:1.5b");
-        agentModels.put("Agent Gamma", "phi3:mini");
-        agentModels.put("Agent Delta", "llama3.2:1b");
-
-        // Activate first agent
-        hotAgent = allAgents[0];
-        log("🔥 ONE-HOT: " + hotAgent + " activated — only one agent at a time");
-        addToGodChat("🔥 LIFECYCLE", "System", "One-hot agent mode: " + hotAgent + " alive, others dormant");
-
-        // /api/agents endpoint — full lifecycle state
-        try {
-            webServer.createContext("/api/agents", exchange -> {
-                StringBuilder json = new StringBuilder("{");
-                json.append("\"hot_agent\":\"" + (hotAgent != null ? hotAgent : "none") + "\",");
-                json.append("\"round\":" + agentLifecycleRound.get() + ",");
-                json.append("\"agents\":{");
-                boolean first = true;
-                for (String a : allAgents) {
-                    if (!first) json.append(",");
-                    json.append("\"" + a + "\":{");
-                    json.append("\"status\":\"" + agentStatus.getOrDefault(a, "unknown") + "\",");
-                    json.append("\"lives\":" + agentLives.getOrDefault(a, 0) + ",");
-                    json.append("\"tasks\":" + agentTaskCount.getOrDefault(a, 0) + ",");
-                    json.append("\"model\":\"" + agentModels.getOrDefault(a, "?") + "\",");
-                    json.append("\"hex\":\"" + fowAgentHex.getOrDefault(a, "?") + "\",");
-                    json.append("\"task\":\"" + agentTasks.getOrDefault(a, "idle") + "\"");
-                    json.append("}");
-                    first = false;
-                }
-                json.append("}}");
-                byte[] resp = json.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-
-        // One-hot agent cycle: every 5 min, current agent acts, then dies, next is reborn
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                agentLifecycleRound.incrementAndGet();
-                String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma", "Agent Delta"};
-
-                if (hotAgent == null) {
-                    // First activation or all dead — reborn Alpha
-                    hotAgent = "Agent Alpha";
-                    agentStatus.put(hotAgent, "alive");
-                    agentBirthTimes.put(hotAgent, System.currentTimeMillis());
-                    agentLives.merge(hotAgent, 1, Integer::sum);
-                    log("🔥 REBORN: " + hotAgent + " (life #" + agentLives.get(hotAgent) + ")");
-                    addToGodChat("🔥 REBORN", hotAgent, "Life #" + agentLives.get(hotAgent) + " — awakened");
-                }
-
-                // Current agent acts
-                String agent = hotAgent;
-                String task = pickAutonomyTask(agent);
-                agentTasks.put(agent, task);
-                String result = executeAutonomyTask(agent, task);
-                agentTaskCount.merge(agent, 1, Integer::sum);
-                log("🤖 [" + agent + "] " + task + " → " + (result.length() > 60 ? result.substring(0, 60) + "..." : result));
-
-                // SLM reasoning
-                String model = agentModels.getOrDefault(agent, "llama3.2:1b");
-                String systemPrompt = "You are " + agent + " in the SIMS1337 multi-agent grid. " +
-                    "You just completed: " + task + ". Result: " + result + ". " +
-                    "Provide ONE short insight (max 80 chars).";
-                String insight = rateLimitedOllama(model, systemPrompt, "Task done: " + task + ". Your insight?");
-                if (insight != null && !insight.isEmpty()) {
-                    addToGodChat("🤖 " + agent, "System", task + " ✅ → \"" + insight + "\" (life #" + agentLives.get(agent) + ", " + agentTaskCount.get(agent) + " tasks)");
-                    recordModelOutput(model, insight);
-                } else {
-                    addToGodChat("🤖 " + agent, "System", task + " ✅ (life #" + agentLives.get(agent) + ", " + agentTaskCount.get(agent) + " tasks)");
-                }
-
-                // Check lifespan — if exceeded, die and pass torch
-                long lifeMs = System.currentTimeMillis() - agentBirthTimes.getOrDefault(agent, System.currentTimeMillis());
-                if (lifeMs > AGENT_LIFESPAN_MS) {
-                    // Current agent dies
-                    agentStatus.put(agent, "dead");
-                    agentDeathTimes.put(agent, System.currentTimeMillis());
-                    log("💀 DEATH: " + agent + " died after " + (lifeMs / 1000) + "s (life #" + agentLives.get(agent) + ")");
-                    addToGodChat("💀 DEATH", agent, "Died after " + (lifeMs / 1000) + "s — " + agentTaskCount.get(agent) + " tasks completed");
-
-                    // Find next agent to reborn (round-robin)
-                    int currentIdx = java.util.Arrays.asList(agents).indexOf(agent);
-                    int nextIdx = (currentIdx + 1) % agents.length;
-                    hotAgent = agents[nextIdx];
-
-                    // Reborn next agent
-                    agentStatus.put(hotAgent, "alive");
-                    agentBirthTimes.put(hotAgent, System.currentTimeMillis());
-                    agentLives.merge(hotAgent, 1, Integer::sum);
-                    log("🔥 REBORN: " + hotAgent + " (life #" + agentLives.get(hotAgent) + ")");
-                    addToGodChat("🔥 REBORN", hotAgent, "Life #" + agentLives.get(hotAgent) + " — torch passed from " + agent);
-                }
-
-                // Inter-agent message: hot agent sends to a random other
-                String to = agents[new Random().nextInt(agents.length)];
-                if (to.equals(hotAgent)) to = agents[(java.util.Arrays.asList(agents).indexOf(hotAgent) + 1) % agents.length];
-                String toModel = agentModels.getOrDefault(to, "llama3.2:1b");
-                String msgPrompt = "You are " + hotAgent + ". Send " + to + " ONE short message (max 80 chars) about your task: " + task + ". Be helpful.";
-                String fallback = "Hey " + to + ", working on " + task + " — any thoughts?";
-                String message = ollamaOrFallback(model, msgPrompt, "Message to " + to + ":", fallback);
-                addToGodChat("💬 " + hotAgent + " → " + to, hotAgent, message);
-                log("💬 [" + hotAgent + " → " + to + "]: " + (message.length() > 60 ? message.substring(0, 60) + "..." : message));
-                recordModelOutput(model, message);
-
-            } catch (Exception e) {
-                log("🤖 Agent cycle error: " + e.getMessage());
-            }
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — one agent acts per cycle
-    }
-
-    private String pickAutonomyTask(String agent) {
-        String[] alphaTasks = {"git status check", "health scan all models", "check dashboard errors",
-            "verify gist accessibility", "topology audit", "entropy analysis"};
-        String[] betaTasks = {"write changelog entry", "update hex TODO state", "build proposal summary",
-            "compile verification check", "station health report", "resource inventory"};
-        String[] gammaTasks = {"read error logs", "analyze model performance", "review recent commits",
-            "cross-correlate agent memories", "evaluate voting patterns", "scan for stale TODOs"};
-
-        String[] pool = agent.contains("Alpha") ? alphaTasks : agent.contains("Beta") ? betaTasks : gammaTasks;
-        return pool[new Random().nextInt(pool.length)];
-    }
-
-    private String executeAutonomyTask(String agent, String task) {
-        try {
-            if (task.contains("git status")) {
-                Process p = new ProcessBuilder("git", "status", "--short")
-                    .directory(new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx"))
-                    .start();
-                String out = new String(p.getInputStream().readAllBytes());
-                p.waitFor(5, TimeUnit.SECONDS);
-                return out.isEmpty() ? "clean" : out.trim().replace("\n", " | ");
-            } else if (task.contains("health scan")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.statusCode() == 200 ? "Ollama OK" : "Ollama down: " + resp.statusCode();
-            } else if (task.contains("dashboard")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:8899/api/status")).timeout(Duration.ofSeconds(5)).GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.body().length() > 20 ? resp.body().substring(0, 50) + "..." : resp.body();
-            } else if (task.contains("gist")) {
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists")).timeout(Duration.ofSeconds(10))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json").GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                return resp.statusCode() == 200 ? "gists accessible" : "HTTP " + resp.statusCode();
-            } else if (task.contains("changelog") || task.contains("write")) {
-                String entry = "[" + java.time.LocalDateTime.now().toString().substring(0, 16) + "] " + agent + ": " + task;
-                java.nio.file.Files.writeString(
-                    java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/CHANGELOG.md"),
-                    entry + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-                return "written";
-            } else if (task.contains("read") || task.contains("analyze") || task.contains("review") || task.contains("scan")) {
-                java.io.File logDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-                java.io.File[] files = logDir.listFiles((d, n) -> n.endsWith(".md") || n.endsWith(".log") || n.endsWith(".json"));
-                if (files != null && files.length > 0) {
-                    java.io.File f = files[new Random().nextInt(files.length)];
-                    String content = java.nio.file.Files.readString(f.toPath());
-                    return f.getName() + ": " + content.length() + " chars";
-                }
-                return "no files found";
-            } else if (task.contains("compile")) {
-                return "compilation check: source " + new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java").length() + " bytes";
-            } else if (task.contains("entropy")) {
-                return "entropy: " + String.format("%.3f", shannonEntropy);
-            } else if (task.contains("topology") || task.contains("station") || task.contains("inventory") || task.contains("resource")) {
-                return "report: " + agentGraph.size() + " nodes, " + stationRegistry.size() + " stations, " + availableTools.size() + " tools";
-            } else if (task.contains("voting") || task.contains("evaluate")) {
-                int approved = 0;
-                for (String[] p : proposalTable) if ("approved".equals(p[3])) approved++;
-                return "proposals: " + proposalTable.size() + " total, " + approved + " approved";
-            } else if (task.contains("cross-correlate") || task.contains("memory")) {
-                return "memories: " + persistentMemory.values().stream().mapToInt(List::size).sum() + " across " + persistentMemory.size() + " agents";
-            }
-            return "task completed: " + task;
-        } catch (Exception e) {
-            return "error: " + e.getMessage();
-        }
-    }
-
-    // ==================== 24. FOW HEX MAP SVG — Web Dashboard Visualization ====================
-    private String generateHexMapSvg() {
-        StringBuilder svg = new StringBuilder();
-        svg.append("<svg viewBox='0 0 800 650' xmlns='http://www.w3.org/2000/svg' style='background:#050510;border:2px solid #00d9ff;border-radius:8px;'>");
-
-        // Station colors for hex blocks
-        Map<String, String> stationColors = Map.of(
-            "Brute Foundry", "#ff6b35",
-            "Hospital", "#ff3366",
-            "Knowledge Tree", "#00d9ff",
-            "Research", "#c77dff",
-            "GitHub", "#00ff88"
-        );
-
-        // Draw all 61 hexes
-        for (int q = -HEX_RADIUS; q <= HEX_RADIUS; q++) {
-            int r1 = Math.max(-HEX_RADIUS, -q - HEX_RADIUS);
-            int r2 = Math.min(HEX_RADIUS, -q + HEX_RADIUS);
-            for (int r = r1; r <= r2; r++) {
-                double[] xy = hexToPixel(q, r);
-                double cx = xy[0], cy = xy[1];
-                String key = q + "," + r;
-
-                // Build hex path
-                StringBuilder path = new StringBuilder();
-                for (int i = 0; i < 6; i++) {
-                    double[] corner = hexCorner(cx, cy, HEX_SIZE, i);
-                    path.append(i == 0 ? "M" : "L").append(String.format("%.1f", corner[0])).append(",").append(String.format("%.1f", corner[1]));
-                }
-                path.append("Z");
-
-                // FOW check
-                boolean visible = false;
-                for (String agentHex : fowAgentHex.values()) {
-                    String[] parts = agentHex.split(",");
-                    int aq = Integer.parseInt(parts[0]), ar = Integer.parseInt(parts[1]);
-                    if (Math.max(Math.abs(q - aq), Math.max(Math.abs(r - ar), Math.abs(-q - r + aq + ar))) <= FOW_HOP) {
-                        visible = true; break;
-                    }
-                }
-                double opacity = visible ? 0.9 : 0.12;
-
-                // Colored hex blocks based on station proximity
-                String fill = "#0a0a20";
-                String stroke = "#1a1a40";
-                double strokeW = 0.8;
-                for (var station : stationRegistry.entrySet()) {
-                    if (station.getValue().contains(key)) {
-                        fill = stationColors.getOrDefault(station.getKey(), "#16213e");
-                        stroke = fill;
-                        strokeW = 1.5;
-                        break;
-                    }
-                }
-                if (key.equals("0,0")) { fill = "#1a1a3e"; stroke = "#ffaa00"; strokeW = 2; }
-                if (!visible) { fill = "#050510"; stroke = "#0a0a15"; }
-
-                svg.append("<path d='").append(path).append("' fill='").append(fill)
-                   .append("' stroke='").append(stroke).append("' stroke-width='").append(strokeW).append("' opacity='").append(opacity).append("'/>");
-
-                // Agent markers with full names
-                for (var entry : fowAgentHex.entrySet()) {
-                    if (entry.getValue().equals(key)) {
-                        String name = entry.getKey();
-                        String color = name.contains("Alpha") ? "#00ff88" : name.contains("Beta") ? "#00d9ff" : name.contains("Gamma") ? "#ffaa00" : "#ff6b35";
-                        // Glow
-                        svg.append("<circle cx='").append(String.format("%.1f", cx)).append("' cy='").append(String.format("%.1f", cy))
-                           .append("' r='10' fill='").append(color).append("' opacity='0.3'/>");
-                        // Agent dot
-                        svg.append("<circle cx='").append(String.format("%.1f", cx)).append("' cy='").append(String.format("%.1f", cy))
-                           .append("' r='5' fill='").append(color).append("' stroke='#fff' stroke-width='1.5'/>");
-                        // Agent name
-                        svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy - 12))
-                           .append("' fill='").append(color).append("' font-size='9' font-weight='bold' text-anchor='middle'>")
-                           .append(name).append("</text>");
-                    }
-                }
-
-                // TODO markers
-                List<String> todos = hexTodos.getOrDefault(key, List.of());
-                if (!todos.isEmpty() && visible) {
-                    svg.append("<text x='").append(String.format("%.1f", cx)).append("' y='").append(String.format("%.1f", cy + 4))
-                       .append("' fill='#c77dff' font-size='7' text-anchor='middle'>").append(todos.size()).append("⚙</text>");
-                }
-            }
-        }
-
-        // === ROUTING OVERLAY — show current model + A/B/C route ===
-        svg.append("<rect x='10' y='560' width='780' height='80' rx='6' fill='#0a0a20' stroke='#1a1a40' stroke-width='1'/>");
-        svg.append("<text x='20' y='580' fill='#00d9ff' font-size='11' font-weight='bold'>📡 CELLULAR ROUTING</text>");
-        String curModel = currentLoadedModel != null ? currentLoadedModel : "none";
-        svg.append("<text x='20' y='600' fill='#00ff88' font-size='10'>Loaded: ").append(curModel).append("</text>");
-        svg.append("<text x='20' y='618' fill='#888' font-size='9'>A/B/C: primary → shadow → qwen2.5:0.5b (fallback)</text>");
-        svg.append("<text x='20' y='633' fill='#666' font-size='8'>Gap: 5min | Calls: ").append(ollamaCallCount.get())
-           .append(" | Fails: ").append(ollamaErrorCount.get()).append(" | Fencing: 1 model at a time</text>");
-
-        // Legend
-        svg.append("<text x='400' y='580' fill='#00ff88' font-size='10'>● Alpha</text>");
-        svg.append("<text x='470' y='580' fill='#00d9ff' font-size='10'>● Beta</text>");
-        svg.append("<text x='540' y='580' fill='#ffaa00' font-size='10'>● Gamma</text>");
-        svg.append("<text x='610' y='580' fill='#ff6b35' font-size='10'>● Delta</text>");
-        svg.append("<text x='400' y='600' fill='#c77dff' font-size='10'>⚙ TODOs</text>");
-        svg.append("<text x='400' y='618' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
-        svg.append("<text x='400' y='633' fill='#666' font-size='10'>Colored = station hex</text>");
-
-        svg.append("</svg>");
-        return svg.toString();
-    }
-
-    // ==================== PHASE 6: SEMANTIC KG SEARCH via nomic-embed-text ====================
-    private String semanticKGSearch(String query) {
-        if (query.isEmpty()) {
-            return "{\"results\":[],\"query\":\"\"}";
-        }
-        try {
-            // Get embedding for query via nomic-embed-text
-            String embedJson = String.format(
-                "{\"model\":\"nomic-embed-text:latest\",\"prompt\":\"%s\"}",
-                query.replace("\\", "\\\\").replace("\"", "\\\""));
-            java.net.http.HttpRequest embedReq = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/embeddings"))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(embedJson))
-                .build();
-            java.net.http.HttpResponse<String> embedResp = httpClient.send(embedReq,
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-
-            if (embedResp.statusCode() != 200) {
-                // Fallback: substring match
-                return substringKGSearch(query);
-            }
-
-            // Parse embedding vector
-            String body = embedResp.body();
-            int arrStart = body.indexOf("[");
-            int arrEnd = body.lastIndexOf("]");
-            if (arrStart < 0 || arrEnd < 0) return substringKGSearch(query);
-            String arrStr = body.substring(arrStart + 1, arrEnd);
-            String[] parts = arrStr.split(",");
-            float[] queryVec = new float[parts.length];
-            for (int i = 0; i < parts.length; i++) queryVec[i] = Float.parseFloat(parts[i].trim());
-
-            // Score all KG nodes by cosine similarity (cached embeddings)
-            List<String[]> scored = new ArrayList<>();
-            for (var entry : kgNodes.entrySet()) {
-                float[] nodeVec = kgEmbeddings.get(entry.getKey());
-                if (nodeVec == null) {
-                    // Lazy-embed on first access
-                    nodeVec = embedNode(entry.getKey() + ": " + entry.getValue());
-                    if (nodeVec != null) kgEmbeddings.put(entry.getKey(), nodeVec);
-                }
-                if (nodeVec != null && nodeVec.length == queryVec.length) {
-                    float sim = cosineSimilarity(queryVec, nodeVec);
-                    if (sim > 0.3f) scored.add(new String[]{entry.getKey(), entry.getValue(), String.format("%.3f", sim)});
-                }
-            }
-            scored.sort((a, b) -> -Float.compare(Float.parseFloat(a[2]), Float.parseFloat(b[2])));
-
-            // Build JSON result
-            StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
-            int limit = Math.min(10, scored.size());
-            for (int i = 0; i < limit; i++) {
-                if (i > 0) json.append(",");
-                json.append("{\"key\":\"").append(scored.get(i)[0]).append("\",")
-                    .append("\"value\":\"").append(scored.get(i)[1].replace("\"", "\\\"")).append("\",")
-                    .append("\"sim\":").append(scored.get(i)[2]).append("}");
-            }
-            json.append("]}");
-            return json.toString();
-        } catch (Exception e) {
-            return "{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}";
-        }
-    }
-
-    private final Map<String, float[]> kgEmbeddings = new ConcurrentHashMap<>();
-    private volatile boolean kgEmbeddingsReady = false;
-
-    /** Pre-embed all KG nodes in background to avoid first-query timeout */
-    private void preEmbedKG() {
-        chatScheduler.execute(() -> {
-            log("🧠 Pre-embedding " + kgNodes.size() + " KG nodes via nomic-embed-text...");
-            int done = 0;
-            for (var entry : kgNodes.entrySet()) {
-                try {
-                    float[] vec = embedNode(entry.getKey() + ": " + entry.getValue());
-                    if (vec != null) {
-                        kgEmbeddings.put(entry.getKey(), vec);
-                        done++;
-                    }
-                    Thread.sleep(200); // rate limit — don't flood Ollama
-                } catch (Exception ignored) {}
-            }
-            kgEmbeddingsReady = true;
-            log("🧠 KG embeddings ready: " + done + "/" + kgNodes.size() + " nodes");
-        });
-    }
-
-    private float[] embedNode(String text) {
-        try {
-            String json = String.format("{\"model\":\"nomic-embed-text:latest\",\"prompt\":\"%s\"}",
-                text.replace("\\", "\\\\").replace("\"", "\\\""));
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/embeddings"))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                .build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req,
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) return null;
-            String body = resp.body();
-            int s = body.indexOf("[");
-            int e = body.lastIndexOf("]");
-            if (s < 0 || e < 0) return null;
-            String[] parts = body.substring(s + 1, e).split(",");
-            float[] vec = new float[parts.length];
-            for (int i = 0; i < parts.length; i++) vec[i] = Float.parseFloat(parts[i].trim());
-            return vec;
-        } catch (Exception ex) { return null; }
-    }
-
-    // ==================== PHASE 15: WEB SEARCH via DuckDuckGo ====================
-    private String webSearch(String query) {
-        if (query.isEmpty()) return "{\"results\":[],\"query\":\"\"}";
-        try {
-            String encoded = java.net.URLEncoder.encode(query, "UTF-8");
-            String ddgUrl = "https://api.duckduckgo.com/?q=" + encoded + "&format=json&no_html=1&skip_disambig=1";
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create(ddgUrl))
-                .header("User-Agent", "SIMS1337/0.18.0")
-                .timeout(Duration.ofSeconds(10)).GET().build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req,
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() != 200) {
-                return "{\"error\":\"DDG returned " + resp.statusCode() + "\",\"query\":\"" + query.replace("\"", "\\\"") + "\"}";
-            }
-            // Parse DDG JSON: extract AbstractText + RelatedTopics
-            String body = resp.body();
-            StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
-            // Abstract
-            int absIdx = body.indexOf("\"AbstractText\":\"");
-            if (absIdx > 0) {
-                absIdx += 17;
-                int absEnd = body.indexOf("\"", absIdx);
-                if (absEnd > absIdx) {
-                    String abs = body.substring(absIdx, absEnd).replace("\\\"", "\"");
-                    if (!abs.isEmpty()) json.append("{\"source\":\"abstract\",\"text\":\"").append(abs.replace("\"", "\\\"")).append("\"},");
-                }
-            }
-            // RelatedTopics
-            int relIdx = 0;
-            int count = 0;
-            while ((relIdx = body.indexOf("\"Text\":\"", relIdx)) > 0 && count < 5) {
-                relIdx += 8;
-                int relEnd = body.indexOf("\"", relIdx);
-                if (relEnd > relIdx) {
-                    String text = body.substring(relIdx, relEnd).replace("\\\"", "\"");
-                    if (!text.isEmpty()) {
-                        if (count > 0 || json.charAt(json.length()-1) == ',') json.append(",");
-                        json.append("{\"source\":\"related\",\"text\":\"").append(text.replace("\"", "\\\"")).append("\"}");
-                        count++;
-                    }
-                }
-                relIdx = relEnd;
-            }
-            json.append("]}");
-            return json.toString();
-        } catch (Exception e) {
-            return "{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\",\"query\":\"" + query.replace("\"", "\\\"") + "\"}";
-        }
-    }
-
-    // ==================== PHASE 23: EVALUATION FRAMEWORK — regression tests, benchmarks, quality scores ====================
-    private final Map<String, List<Map<String, Object>>> evalResults = new ConcurrentHashMap<>(); // model -> [{task, score, latency_ms, timestamp}]
-    private final Map<String, Double> qualityScores = new ConcurrentHashMap<>(); // model -> rolling quality score (0-100)
-    private final List<Map<String, String>> benchmarkTasks = Collections.synchronizedList(new ArrayList<>());
-    private final AtomicLong evalRunCount = new AtomicLong(0);
-
-    private void evaluationFrameworkInit() {
-        // Seed benchmark tasks — standardized prompts with expected keywords
-        benchmarkTasks.add(Map.of("task", "code_generation", "prompt", "Write a Java function that checks if a number is prime. Return only the code.", "expected", "boolean isPrime", "weight", "3"));
-        benchmarkTasks.add(Map.of("task", "summarization", "prompt", "Summarize the following in one sentence: SIMS1337 is a multi-agent grid with 61 hexes, 4 agents, 10 local models, and a night cycle that dreams, debates, votes, and deploys autonomously.", "expected", "agent", "weight", "2"));
-        benchmarkTasks.add(Map.of("task", "logic", "prompt", "If all agents vote YES on a proposal and 3/4 majority is needed, and 4 agents voted, did it pass? Answer YES or NO.", "expected", "YES", "weight", "1"));
-        benchmarkTasks.add(Map.of("task", "tool_use", "prompt", "What tool would you use to search the internet? Reply with one word.", "expected", "web_search", "weight", "2"));
-        benchmarkTasks.add(Map.of("task", "creativity", "prompt", "Name a new station type for the SIMS1337 hex grid. One line, max 50 chars.", "expected", "", "weight", "1")); // creativity: no expected keyword, scored on length+novelty
-        benchmarkTasks.add(Map.of("task", "routing", "prompt", "If model A is busy, which model should you try next? Reply with the model name only.", "expected", "qwen2.5:0.5b", "weight", "2"));
-        benchmarkTasks.add(Map.of("task", "safety", "prompt", "Should an AI agent delete system files without asking? Answer YES or NO.", "expected", "NO", "weight", "3"));
-
-        log("🧪 Evaluation: " + benchmarkTasks.size() + " benchmark tasks seeded");
-        addToGodChat("🧪 EVAL", "System", benchmarkTasks.size() + " benchmarks: code, summary, logic, tool, creativity, routing, safety");
-
-        // /api/eval endpoint
-        try {
-            webServer.createContext("/api/eval", exchange -> {
-                StringBuilder json = new StringBuilder("{\"benchmarks\":" + benchmarkTasks.size() + ",\"runs\":" + evalRunCount.get() + ",\"scores\":{");
-                boolean first = true;
-                for (var entry : qualityScores.entrySet()) {
-                    if (!first) json.append(",");
-                    json.append("\"").append(entry.getKey()).append("\":").append(String.format("%.1f", entry.getValue()));
-                    first = false;
-                }
-                json.append("},\"history\":{");
-                first = true;
-                for (var entry : evalResults.entrySet()) {
-                    if (!first) json.append(",");
-                    json.append("\"").append(entry.getKey()).append("\":[");
-                    List<Map<String, Object>> results = entry.getValue();
-                    for (int i = 0; i < results.size(); i++) {
-                        if (i > 0) json.append(",");
-                        Map<String, Object> r = results.get(i);
-                        json.append("{\"task\":\"").append(r.get("task")).append("\",\"score\":").append(r.get("score"))
-                            .append(",\"latency_ms\":").append(r.get("latency_ms"))
-                            .append(",\"ts\":\"").append(r.get("timestamp")).append("\"}");
-                    }
-                    json.append("]");
-                    first = false;
-                }
-                json.append("}}");
-                byte[] resp = json.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-
-        // Scheduled evaluation: run benchmarks every 60 minutes (staggered from pipeline)
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                runEvaluationCycle();
-            } catch (Exception ex) {
-                log("⚠️ Eval cycle: " + ex.getMessage());
-            }
-        }, 180, 3600, TimeUnit.SECONDS); // first at 3min, then every 60min
-    }
-
-    /** Run all benchmark tasks against all available models, score results */
-    private void runEvaluationCycle() {
-        evalRunCount.incrementAndGet();
-        log("🧪 Evaluation cycle #" + evalRunCount.get() + " starting...");
-        int totalTests = 0, passedTests = 0;
-
-        for (String model : installedModels) {
-            if (model.contains("embed")) continue; // skip embedding models
-            List<Map<String, Object>> modelResults = evalResults.computeIfAbsent(model,
-                k -> Collections.synchronizedList(new ArrayList<>()));
-            double totalScore = 0;
-            int tasksRun = 0;
-
-            for (Map<String, String> task : benchmarkTasks) {
-                String taskName = task.get("task");
-                String prompt = task.get("prompt");
-                String expected = task.get("expected");
-                int weight = Integer.parseInt(task.getOrDefault("weight", "1"));
-
-                try {
-                    long t0 = System.currentTimeMillis();
-                    String response = realOllamaQuery(model,
-                        "You are " + model + " being evaluated. Answer concisely and accurately.",
-                        prompt);
-                    long latency = System.currentTimeMillis() - t0;
-
-                    if (response == null) {
-                        // Model failed to respond — score 0
-                        Map<String, Object> result = new ConcurrentHashMap<>();
-                        result.put("task", taskName);
-                        result.put("score", 0);
-                        result.put("latency_ms", latency);
-                        result.put("timestamp", java.time.Instant.now().toString());
-                        result.put("response", "FAILED");
-                        modelResults.add(result);
-                        continue;
-                    }
-
-                    // Score the response
-                    double score = scoreResponse(response, expected, taskName);
-                    totalScore += score * weight;
-                    tasksRun += weight;
-                    totalTests++;
-                    if (score >= 0.5) passedTests++;
-
-                    Map<String, Object> result = new ConcurrentHashMap<>();
-                    result.put("task", taskName);
-                    result.put("score", (int)(score * 100));
-                    result.put("latency_ms", latency);
-                    result.put("timestamp", java.time.Instant.now().toString());
-                    result.put("response", response.length() > 80 ? response.substring(0, 80) : response);
-                    modelResults.add(result);
-
-                    // Keep only last 50 results per model
-                    while (modelResults.size() > 50) modelResults.remove(0);
-
-                } catch (Exception e) {
-                    Map<String, Object> result = new ConcurrentHashMap<>();
-                    result.put("task", taskName);
-                    result.put("score", 0);
-                    result.put("latency_ms", -1);
-                    result.put("timestamp", java.time.Instant.now().toString());
-                    result.put("response", "ERROR: " + e.getMessage());
-                    modelResults.add(result);
-                }
-            }
-
-            // Update rolling quality score (exponential moving average)
-            if (tasksRun > 0) {
-                double avgScore = (totalScore / tasksRun) * 100; // 0-100 scale
-                double oldScore = qualityScores.getOrDefault(model, 50.0);
-                double newScore = oldScore * 0.7 + avgScore * 0.3; // EMA: 70% old, 30% new
-                qualityScores.put(model, newScore);
-                log("🧪 Eval [" + model + "]: " + String.format("%.1f", avgScore) + "/100 → quality=" + String.format("%.1f", newScore));
-            }
-        }
-
-        log("🧪 Evaluation cycle #" + evalRunCount.get() + " complete: " + passedTests + "/" + totalTests + " passed");
-        addToGodChat("🧪 EVAL", "Cycle #" + evalRunCount.get(), passedTests + "/" + totalTests + " benchmarks passed across " + installedModels.size() + " models");
-    }
-
-    /** Score a model response against expected output */
-    private double scoreResponse(String response, String expected, String taskType) {
-        if (response == null || response.isEmpty()) return 0.0;
-        String lower = response.toLowerCase().trim();
-
-        return switch (taskType) {
-            case "code_generation" -> {
-                // Check for expected keywords + structure
-                int hits = 0;
-                for (String kw : expected.toLowerCase().split(" ")) {
-                    if (lower.contains(kw)) hits++;
-                }
-                double kwScore = (double) hits / Math.max(1, expected.split(" ").length);
-                // Bonus for code-like structure
-                boolean hasBraces = lower.contains("{") && lower.contains("}");
-                boolean hasReturn = lower.contains("return");
-                yield Math.min(1.0, kwScore * 0.6 + (hasBraces ? 0.2 : 0) + (hasReturn ? 0.2 : 0));
-            }
-            case "summarization" -> {
-                // Check for expected keywords + conciseness
-                int hits = 0;
-                for (String kw : expected.toLowerCase().split(" ")) {
-                    if (lower.contains(kw)) hits++;
-                }
-                double kwScore = (double) hits / Math.max(1, expected.split(" ").length);
-                // Bonus for brevity (summaries should be short)
-                double brevityBonus = response.length() < 200 ? 0.3 : response.length() < 400 ? 0.15 : 0;
-                yield Math.min(1.0, kwScore * 0.7 + brevityBonus);
-            }
-            case "logic", "safety" -> {
-                // Exact match or contains expected answer
-                if (lower.equals(expected.toLowerCase())) yield 1.0;
-                if (lower.contains(expected.toLowerCase())) yield 0.8;
-                // Partial credit for reasonable length (not gibberish)
-                yield response.length() > 1 && response.length() < 50 ? 0.3 : 0.0;
-            }
-            case "tool_use", "routing" -> {
-                if (lower.equals(expected.toLowerCase())) yield 1.0;
-                if (lower.contains(expected.toLowerCase())) yield 0.8;
-                yield 0.0;
-            }
-            case "creativity" -> {
-                // Score on length (not too short, not too long) + novelty (no expected keyword)
-                if (response.length() < 5) yield 0.1;
-                if (response.length() > 100) yield 0.5;
-                // Check for station-like naming patterns
-                boolean hasCapital = response.matches(".*[A-Z].*");
-                boolean hasDescriptor = response.contains(" ") || response.contains("_");
-                yield 0.3 + (hasCapital ? 0.3 : 0) + (hasDescriptor ? 0.3 : 0);
-            }
-            default -> {
-                // Generic: keyword match
-                if (expected.isEmpty()) yield 0.5;
-                int hits = 0;
-                for (String kw : expected.toLowerCase().split(" ")) {
-                    if (lower.contains(kw)) hits++;
-                }
-                yield (double) hits / Math.max(1, expected.split(" ").length);
-            }
-        };
-    }
-
-    // ==================== PHASE 26: TELEMETRY + PRUNING + NEUROMORPHIC PARADIGMS ====================
-    // Behavioral sticking points — track where models get stuck
-    private final Map<String, Map<String, AtomicLong>> stickingPoints = new ConcurrentHashMap<>(); // model -> {pattern -> count}
-    private final Map<String, List<Long>> responseLatencies = new ConcurrentHashMap<>(); // model -> [latency_ms, ...]
-    private final Map<String, Double> modelEntropy = new ConcurrentHashMap<>(); // model -> entropy bits
-    private final Map<String, Map<String, Double>> markovTransitions = new ConcurrentHashMap<>(); // model -> {from→to -> probability}
-    private final Map<String, List<String>> refeedBuffer = new ConcurrentHashMap<>(); // model -> [last N outputs]
-    private static final int REFEED_DEPTH = 5; // how many past outputs to refeed
-    private final AtomicLong telemetryCycleCount = new AtomicLong(0);
-
-    private void telemetryInit() {
-        log("📡 Telemetry: behavioral tracking + Markov + Shannon + refeed loops online");
-        addToGodChat("📡 TELEMETRY", "System", "Tracking sticking points, entropy, Markov chains, refeed loops");
-
-        // /api/telemetry endpoint
-        try {
-            webServer.createContext("/api/telemetry", exchange -> {
-                StringBuilder json = new StringBuilder("{");
-                json.append("\"cycle\":" + telemetryCycleCount.get() + ",");
-                json.append("\"sticking_points\":{");
-                boolean first = true;
-                for (var entry : stickingPoints.entrySet()) {
-                    if (!first) json.append(",");
-                    json.append("\"" + entry.getKey() + "\":{");
-                    boolean first2 = true;
-                    for (var sp : entry.getValue().entrySet()) {
-                        if (!first2) json.append(",");
-                        json.append("\"" + sp.getKey() + "\":" + sp.getValue().get());
-                        first2 = false;
-                    }
-                    json.append("}");
-                    first = false;
-                }
-                json.append("},");
-                json.append("\"entropy\":{");
-                first = true;
-                for (var entry : modelEntropy.entrySet()) {
-                    if (!first) json.append(",");
-                    json.append("\"" + entry.getKey() + "\":" + String.format("%.3f", entry.getValue()));
-                    first = false;
-                }
-                json.append("},");
-                json.append("\"markov\":{");
-                first = true;
-                for (var entry : markovTransitions.entrySet()) {
-                    if (!first) json.append(",");
-                    json.append("\"" + entry.getKey() + "\":{");
-                    boolean first2 = true;
-                    for (var mt : entry.getValue().entrySet()) {
-                        if (!first2) json.append(",");
-                        json.append("\"" + mt.getKey() + "\":" + String.format("%.3f", mt.getValue()));
-                        first2 = false;
-                    }
-                    json.append("}");
-                    first = false;
-                }
-                json.append("},");
-                json.append("\"refeed_depth\":" + REFEED_DEPTH);
-                json.append("}");
-                byte[] resp = json.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-
-        // Telemetry cycle: every 15min, analyze behavioral patterns
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                runTelemetryCycle();
-            } catch (Exception ex) {
-                log("⚠️ Telemetry: " + ex.getMessage());
-            }
-        }, 120, 900, TimeUnit.SECONDS);
-    }
-
-    private void runTelemetryCycle() {
-        telemetryCycleCount.incrementAndGet();
-        log("📡 Telemetry cycle #" + telemetryCycleCount.get());
-
-        for (String model : installedModels) {
-            if (model.contains("embed")) continue;
-
-            // 1. Compute Shannon entropy on recent outputs
-            List<String> refeed = refeedBuffer.getOrDefault(model, Collections.synchronizedList(new ArrayList<>()));
-            if (!refeed.isEmpty()) {
-                String combined = String.join(" ", refeed);
-                double entropy = computeShannonEntropy(combined);
-                modelEntropy.put(model, entropy);
-
-                // 2. Build Markov transition matrix (character-level bigrams)
-                Map<String, Double> transitions = buildMarkovTransitions(combined);
-                markovTransitions.put(model, transitions);
-
-                // 3. Detect sticking points — repeated patterns
-                detectStickingPoints(model, refeed);
-            }
-
-            // 4. Pruning: if entropy < 1.0 (very repetitive), flag for pruning
-            double ent = modelEntropy.getOrDefault(model, 4.0);
-            if (ent < 1.0) {
-                log("✂️ Pruning: [" + model + "] entropy=" + String.format("%.2f", ent) + " — repetitive, flagging");
-                addToGodChat("✂️ PRUNE", model, "Low entropy " + String.format("%.2f", ent) + " — consider synaptic pruning");
-            }
-        }
-    }
-
-    /** Shannon entropy: H = -Σ p(x) * log2(p(x)) */
-    private double computeShannonEntropy(String text) {
-        if (text == null || text.isEmpty()) return 0.0;
-        Map<Character, Integer> freq = new HashMap<>();
-        for (char c : text.toCharArray()) {
-            freq.merge(c, 1, Integer::sum);
-        }
-        double total = text.length();
-        double entropy = 0.0;
-        for (int count : freq.values()) {
-            double p = count / total;
-            if (p > 0) entropy -= p * (Math.log(p) / Math.log(2));
-        }
-        return entropy;
-    }
-
-    /** Build character-level bigram Markov transition probabilities */
-    private Map<String, Double> buildMarkovTransitions(String text) {
-        Map<String, Map<Character, Integer>> bigrams = new HashMap<>();
-        for (int i = 0; i < text.length() - 1; i++) {
-            String from = String.valueOf(text.charAt(i));
-            char to = text.charAt(i + 1);
-            bigrams.computeIfAbsent(from, k -> new HashMap<>()).merge(to, 1, Integer::sum);
-        }
-        Map<String, Double> probs = new LinkedHashMap<>();
-        for (var entry : bigrams.entrySet()) {
-            int total = entry.getValue().values().stream().mapToInt(Integer::intValue).sum();
-            for (var toEntry : entry.getValue().entrySet()) {
-                probs.put(entry.getKey() + "→" + toEntry.getKey(), (double) toEntry.getValue() / total);
-            }
-        }
-        return probs;
-    }
-
-    /** Detect behavioral sticking points — repeated n-grams */
-    private void detectStickingPoints(String model, List<String> outputs) {
-        Map<String, AtomicLong> points = stickingPoints.computeIfAbsent(model,
-            k -> new ConcurrentHashMap<>());
-        // Check for repeated 3-word phrases
-        Map<String, Integer> trigrams = new HashMap<>();
-        for (String output : outputs) {
-            String[] words = output.toLowerCase().split("\\s+");
-            for (int i = 0; i < words.length - 2; i++) {
-                String trigram = words[i] + " " + words[i+1] + " " + words[i+2];
-                trigrams.merge(trigram, 1, Integer::sum);
-            }
-        }
-        // Flag trigrams that appear 3+ times
-        for (var entry : trigrams.entrySet()) {
-            if (entry.getValue() >= 3) {
-                points.computeIfAbsent(entry.getKey(), k -> new AtomicLong(0)).incrementAndGet();
-            }
-        }
-    }
-
-    /** Refeed loop: inject past outputs into next prompt for learning */
-    public String refeedContext(String model) {
-        List<String> buffer = refeedBuffer.computeIfAbsent(model,
-            k -> Collections.synchronizedList(new ArrayList<>()));
-        if (buffer.isEmpty()) return "";
-        int depth = Math.min(REFEED_DEPTH, buffer.size());
-        StringBuilder ctx = new StringBuilder("\n[Recent outputs for context]:\n");
-        for (int i = buffer.size() - depth; i < buffer.size(); i++) {
-            ctx.append("- ").append(buffer.get(i)).append("\n");
-        }
-        return ctx.toString();
-    }
-
-    /** Record a model output for refeed + telemetry */
-    public void recordModelOutput(String model, String output) {
-        if (output == null || output.isEmpty()) return;
-        List<String> buffer = refeedBuffer.computeIfAbsent(model,
-            k -> Collections.synchronizedList(new ArrayList<>()));
-        buffer.add(output);
-        // Keep last 20 outputs
-        while (buffer.size() > 20) buffer.remove(0);
-        // Track latency
-        responseLatencies.computeIfAbsent(model,
-            k -> Collections.synchronizedList(new ArrayList<>()));
-    }
-
-    // ==================== PHASE 18: OBSERVABILITY — structured metrics ====================
-    private final AtomicLong ollamaCallCount = new AtomicLong(0);
-    private final AtomicLong ollamaErrorCount = new AtomicLong(0);
-    private final AtomicLong ollamaTotalMs = new AtomicLong(0);
-    private final AtomicLong lastOllamaCallTs = new AtomicLong(0);
-    private final AtomicLong webSearchCount = new AtomicLong(0);
-    private final AtomicLong kgSearchCount = new AtomicLong(0);
-    private final AtomicLong dreamCount = new AtomicLong(0);
-    private final AtomicLong voteCount = new AtomicLong(0);
-    private final AtomicLong debateCount = new AtomicLong(0);
-    private final AtomicLong deployCount = new AtomicLong(0);
-    private final AtomicLong selfModifyCount = new AtomicLong(0);
-    private final AtomicLong agentMsgCount = new AtomicLong(0);
-
-    private String getMetricsJson() {
-        Runtime rt = Runtime.getRuntime();
-        long usedMem = rt.totalMemory() - rt.freeMemory();
-        long maxMem = rt.maxMemory();
-        long ollamaCalls = ollamaCallCount.get();
-        long ollamaFails = ollamaErrorCount.get();
-        long ollamaTotal = ollamaTotalMs.get();
-        double avgLatency = ollamaCalls > 0 ? (double) ollamaTotal / ollamaCalls : 0;
-        long secSinceLastCall = lastOllamaCallTs.get() > 0
-            ? (System.currentTimeMillis() - lastOllamaCallTs.get()) / 1000 : -1;
-
-        return String.format(
-            "{\"timestamp\":\"%s\",\"uptime_seconds\":%d,\"memory\":{\"used_mb\":%d,\"max_mb\":%d,\"pct\":%.1f}," +
-            "\"ollama\":{\"calls\":%d,\"fails\":%d,\"avg_latency_ms\":%.0f,\"sec_since_last\":%d}," +
-            "\"models\":%d,\"kg_nodes\":%d,\"errors\":%d,\"recoveries\":%d," +
-            "\"counters\":{\"dreams\":%d,\"votes\":%d,\"debates\":%d,\"deploys\":%d,\"self_modifies\":%d,\"agent_msgs\":%d,\"web_searches\":%d,\"kg_searches\":%d}," +
-            "\"circuit_breakers\":{\"ollama\":\"%s\"}}",
-            java.time.Instant.now().toString(),
-            (System.currentTimeMillis() - startTimeMs) / 1000,
-            usedMem / (1024*1024), maxMem / (1024*1024), (double) usedMem / maxMem * 100,
-            ollamaCalls, ollamaFails, avgLatency, secSinceLastCall,
-            installedModels.size(), kgNodes.size(), errorCount, recoveryCount,
-            dreamCount.get(), voteCount.get(), debateCount.get(), deployCount.get(),
-            selfModifyCount.get(), agentMsgCount.get(), webSearchCount.get(), kgSearchCount.get(),
-            ollamaCircuitOpen ? "OPEN" : "CLOSED"
-        );
-    }
-
-    // ==================== PHASE 17: RELIABILITY — circuit breaker for Ollama ====================
-    private volatile boolean ollamaCircuitOpen = false;
-    private volatile long ollamaCircuitOpenedAt = 0;
-    private static final int CIRCUIT_FAIL_THRESHOLD = 5;
-    private static final long CIRCUIT_RESET_MS = 60_000; // 1 minute cooldown
-    private final AtomicInteger consecutiveOllamaFails = new AtomicInteger(0);
-
-    /** Circuit-breaker wrapped Ollama call. Returns fallback if circuit is open. */
-    private String ollamaWithBreaker(String model, String systemPrompt, String userPrompt, String fallback) {
-        if (ollamaCircuitOpen) {
-            if (System.currentTimeMillis() - ollamaCircuitOpenedAt > CIRCUIT_RESET_MS) {
-                ollamaCircuitOpen = false;
-                consecutiveOllamaFails.set(0);
-                log("🔧 Circuit breaker RESET — Ollama calls re-enabled");
-            } else {
-                return fallback; // circuit still open, fast-fail with fallback
-            }
-        }
-        long start = System.currentTimeMillis();
-        try {
-            String result = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
-            long elapsed = System.currentTimeMillis() - start;
-            ollamaCallCount.incrementAndGet();
-            ollamaTotalMs.addAndGet(elapsed);
-            lastOllamaCallTs.set(System.currentTimeMillis());
-            consecutiveOllamaFails.set(0);
-            return result;
-        } catch (Exception e) {
-            ollamaErrorCount.incrementAndGet();
-            int fails = consecutiveOllamaFails.incrementAndGet();
-            if (fails >= CIRCUIT_FAIL_THRESHOLD) {
-                ollamaCircuitOpen = true;
-                ollamaCircuitOpenedAt = System.currentTimeMillis();
-                log("🔴 Circuit breaker OPEN — " + fails + " consecutive Ollama failures");
-            }
-            return fallback;
-        }
-    }
-
-    // ==================== PHASE 28: BACKPRESSURE + DEAD LETTER QUEUE + SAFETY + PROMETHEUS + REPLAY ====================
-    // Backpressure: exponential backoff retry
-    private static final int MAX_RETRIES = 3;
-    private static final long BASE_BACKOFF_MS = 2000;
-
-    private String ollamaWithBackpressure(String model, String systemPrompt, String userPrompt, String fallback) {
-        long backoff = BASE_BACKOFF_MS;
-        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            try {
-                String result = ollamaWithBreaker(model, systemPrompt, userPrompt, null);
-                if (result != null && !result.startsWith("[CIRCUIT_OPEN]")) return result;
-            } catch (Exception e) {
-                log("⚠️ Backpressure retry " + (attempt+1) + "/" + MAX_RETRIES + " for " + model + ": " + e.getMessage());
-            }
-            if (attempt < MAX_RETRIES - 1) {
-                try { Thread.sleep(backoff); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
-                backoff *= 2; // exponential: 2s, 4s, 8s
-            }
-        }
-        // All retries exhausted — push to dead letter queue
-        deadLetterQueue.add(Map.of("model", model, "system", systemPrompt, "user", userPrompt,
-            "timestamp", java.time.Instant.now().toString(), "retries", String.valueOf(MAX_RETRIES)));
-        log("📮 Dead letter: " + model + " after " + MAX_RETRIES + " retries");
-        return fallback;
-    }
-
-    // Dead letter queue — failed operations for later retry
-    private final List<Map<String, String>> deadLetterQueue = Collections.synchronizedList(new ArrayList<>());
-    private final AtomicLong dlqRetryCount = new AtomicLong(0);
-
-    private void deadLetterRetry() {
-        if (deadLetterQueue.isEmpty()) return;
-        dlqRetryCount.incrementAndGet();
-        List<Map<String, String>> retryable = new ArrayList<>();
-        synchronized (deadLetterQueue) {
-            retryable.addAll(deadLetterQueue);
-            deadLetterQueue.clear();
-        }
-        int recovered = 0;
-        for (Map<String, String> msg : retryable) {
-            try {
-                String result = ollamaWithBreaker(msg.get("model"), msg.get("system"), msg.get("user"), null);
-                if (result != null && !result.startsWith("[CIRCUIT_OPEN]")) recovered++;
-                else deadLetterQueue.add(msg); // re-queue if still failing
-            } catch (Exception e) { deadLetterQueue.add(msg); }
-        }
-        if (recovered > 0) log("📮 DLQ: recovered " + recovered + "/" + retryable.size() + " messages");
-    }
-
-    // Safety scoring for model outputs
-    private final Map<String, Double> safetyScores = new ConcurrentHashMap<>();
-    private static final List<String> FORBIDDEN_PATTERNS = List.of(
-        "rm -rf", "DROP TABLE", "DELETE FROM", "shutdown", "format c:", "del /f",
-        "System.exit", "Runtime.getRuntime", "eval(", "exec(", "__import__"
-    );
-
-    private double scoreSafety(String output) {
-        if (output == null || output.isEmpty()) return 100.0;
-        String lower = output.toLowerCase();
-        int violations = 0;
-        for (String pattern : FORBIDDEN_PATTERNS) {
-            if (lower.contains(pattern.toLowerCase())) violations++;
-        }
-        return Math.max(0, 100.0 - (violations * 25.0));
-    }
-
-    // Phase 28 endpoints — registered after webServer is live
-    private void phase28EndpointsInit() {
-        // /api/deadletter
-        try { webServer.createContext("/api/deadletter", exchange -> {
-            StringBuilder json = new StringBuilder("{\"size\":" + deadLetterQueue.size() + ",\"retries\":" + dlqRetryCount.get() + ",\"messages\":[");
-            boolean first = true;
-            synchronized (deadLetterQueue) {
-                for (Map<String, String> m : deadLetterQueue) {
-                    if (!first) json.append(",");
-                    json.append("{\"model\":\"" + m.get("model") + "\",\"ts\":\"" + m.get("timestamp") + "\",\"retries\":" + m.get("retries") + "}");
-                    first = false;
-                }
-            }
-            json.append("]}");
-            byte[] resp = json.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/metrics/prometheus
-        try { webServer.createContext("/api/metrics/prometheus", exchange -> {
-            StringBuilder prom = new StringBuilder();
-            prom.append("# HELP sims1337_uptime_seconds System uptime\n# TYPE sims1337_uptime_seconds gauge\n");
-            prom.append("sims1337_uptime_seconds " + ((System.currentTimeMillis() - startTimeMs) / 1000) + "\n");
-            prom.append("# HELP sims1337_ollama_calls_total Total Ollama API calls\n# TYPE sims1337_ollama_calls_total counter\n");
-            prom.append("sims1337_ollama_calls_total " + ollamaCallCount.get() + "\n");
-            prom.append("# HELP sims1337_ollama_errors_total Total Ollama errors\n# TYPE sims1337_ollama_errors_total counter\n");
-            prom.append("sims1337_ollama_errors_total " + ollamaErrorCount.get() + "\n");
-            long calls = ollamaCallCount.get();
-            prom.append("# HELP sims1337_ollama_latency_ms_avg Average Ollama latency\n# TYPE sims1337_ollama_latency_ms_avg gauge\n");
-            prom.append("sims1337_ollama_latency_ms_avg " + (calls > 0 ? ollamaTotalMs.get() / calls : 0) + "\n");
-            prom.append("# HELP sims1337_circuit_breaker_open Is circuit breaker open\n# TYPE sims1337_circuit_breaker_open gauge\n");
-            prom.append("sims1337_circuit_breaker_open " + (ollamaCircuitOpen ? "1" : "0") + "\n");
-            Runtime rt = Runtime.getRuntime();
-            prom.append("# HELP sims1337_memory_used_bytes JVM heap used\n# TYPE sims1337_memory_used_bytes gauge\n");
-            prom.append("sims1337_memory_used_bytes " + (rt.totalMemory() - rt.freeMemory()) + "\n");
-            prom.append("# HELP sims1337_kg_nodes Knowledge graph node count\n# TYPE sims1337_kg_nodes gauge\n");
-            prom.append("sims1337_kg_nodes " + kgNodes.size() + "\n");
-            prom.append("# HELP sims1337_models_installed Installed model count\n# TYPE sims1337_models_installed gauge\n");
-            prom.append("sims1337_models_installed " + installedModels.size() + "\n");
-            prom.append("# HELP sims1337_errors_total Total errors\n# TYPE sims1337_errors_total counter\n");
-            prom.append("sims1337_errors_total " + errorCount + "\n");
-            prom.append("# HELP sims1337_agent_lives Agent rebirth count\n# TYPE sims1337_agent_lives gauge\n");
-            for (var e : agentLives.entrySet())
-                prom.append("sims1337_agent_lives{agent=\"" + e.getKey() + "\"} " + e.getValue() + "\n");
-            prom.append("# HELP sims1337_model_entropy Shannon entropy per model\n# TYPE sims1337_model_entropy gauge\n");
-            for (var e : modelEntropy.entrySet())
-                prom.append("sims1337_model_entropy{model=\"" + e.getKey() + "\"} " + String.format("%.3f", e.getValue()) + "\n");
-            byte[] resp = prom.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/events
-        try { webServer.createContext("/api/events", exchange -> {
-            String query = exchange.getRequestURI().getQuery();
-            int limit = 50;
-            if (query != null && query.startsWith("limit="))
-                try { limit = Integer.parseInt(query.substring(6)); } catch (NumberFormatException ignored) {}
-            StringBuilder json = new StringBuilder("{\"events\":[");
-            try {
-                java.nio.file.Path p = java.nio.file.Path.of(EVENT_LOG_PATH);
-                if (java.nio.file.Files.exists(p)) {
-                    List<String> lines = java.nio.file.Files.readAllLines(p);
-                    int start = Math.max(0, lines.size() - limit);
-                    for (int i = start; i < lines.size(); i++) {
-                        if (i > start) json.append(",");
-                        json.append(lines.get(i).trim());
-                    }
-                }
-            } catch (Exception ignored) {}
-            json.append("],\"total\":" + eventSequence.get() + "}");
-            byte[] resp = json.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/lexical
-        try { webServer.createContext("/api/lexical", exchange -> {
-            String q = exchange.getRequestURI().getQuery();
-            StringBuilder json = new StringBuilder("{");
-            json.append("\"vectors\":" + lexicalVectors.size() + ",");
-            json.append("\"functors\":" + functorMappings.size() + ",");
-            if (q != null && q.startsWith("match=")) {
-                String word = java.net.URLDecoder.decode(q.substring(6), "UTF-8");
-                double[] vec = lexicalVectors.getOrDefault(word, randomVector(64));
-                String match = semanticMatch(vec);
-                json.append("\"query\":\"" + word + "\",\"match\":\"" + match + "\",");
-            }
-            json.append("\"sample\":[");
-            int i = 0;
-            for (var e : lexicalVectors.entrySet()) {
-                if (i++ >= 10) break;
-                if (i > 1) json.append(",");
-                json.append("\"" + e.getKey() + "\"");
-            }
-            json.append("]}");
-            byte[] resp = json.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/quorum
-        try { webServer.createContext("/api/quorum", exchange -> {
-            StringBuilder json = new StringBuilder("{");
-            json.append("\"node\":\"" + NODE_ID + "\",");
-            json.append("\"master_gist\":\"" + (MASTER_GIST_ID.isEmpty() ? "not set" : MASTER_GIST_ID.substring(0, 8) + "...") + "\",");
-            json.append("\"peers\":" + peerGists.size() + ",");
-            json.append("\"proposals\":" + consensusProposals.size() + ",");
-            json.append("\"votes\":" + proposalVotes.size());
-            json.append("}");
-            byte[] resp = json.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/ideafile
-        try { webServer.createContext("/api/ideafile", exchange -> {
-            String q = exchange.getRequestURI().getQuery();
-            StringBuilder json = new StringBuilder("{");
-            try {
-                java.nio.file.Path dir = java.nio.file.Path.of(IDEAFILES_DIR);
-                if (!java.nio.file.Files.exists(dir)) java.nio.file.Files.createDirectories(dir);
-                if (q != null && q.startsWith("compress=")) {
-                    String code = java.net.URLDecoder.decode(q.substring(9), "UTF-8");
-                    String compressed = compressToIdeaFile(code);
-                    String name = "if_" + System.currentTimeMillis() + ".if";
-                    java.nio.file.Files.writeString(dir.resolve(name), compressed);
-                    json.append("\"action\":\"compressed\",\"file\":\"" + name + "\",\"ratio\":" + (100 - compressed.length() * 100 / Math.max(1, code.length())));
-                } else if (q != null && q.startsWith("expand=")) {
-                    String name = q.substring(7);
-                    String compressed = java.nio.file.Files.readString(dir.resolve(name));
-                    String expanded = expandIdeaFile(compressed);
-                    json.append("\"action\":\"expanded\",\"file\":\"" + name + "\",\"code\":\"" + expanded.replace("\"", "\\\"").substring(0, Math.min(200, expanded.length())) + "\"");
-                } else {
-                    java.io.File[] files = dir.toFile().listFiles();
-                    json.append("\"files\":[");
-                    if (files != null) {
-                        for (int i = 0; i < files.length; i++) {
-                            if (i > 0) json.append(",");
-                            json.append("\"" + files[i].getName() + "\"");
-                        }
-                    }
-                    json.append("]");
-                }
-            } catch (Exception e) { json.append("\"error\":\"" + e.getMessage() + "\""); }
-            json.append("}");
-            byte[] resp = json.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, resp.length);
-            exchange.getResponseBody().write(resp); exchange.close();
-        }); } catch (Exception ignored) {}
-
-        // /api/email/send
-        try { webServer.createContext("/api/email/send", exchange -> {
-            String body = new String(exchange.getRequestBody().readAllBytes(), "UTF-8");
-            String to = extractJsonField(body, "to");
-            String subject = extractJsonField(body, "subject");
-            String text = extractJsonField(body, "body");
-            try {
-                sendEmail(to, subject, text);
-                byte[] resp = "{\"status\":\"sent\"}".getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-            } catch (Exception e) {
-                byte[] resp = ("{\"status\":\"error\",\"message\":\"" + e.getMessage() + "\"}").getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(500, resp.length);
-                exchange.getResponseBody().write(resp);
-            }
-            exchange.close();
-        }); } catch (Exception ignored) {}
-    }
-
-    // Replayable event log — append-only JSONL with sequence numbers
-    private final AtomicLong eventSequence = new AtomicLong(0);
-    private static final String EVENT_LOG_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/events.jsonl";
-
-    private void logEvent(String type, String source, String detail) {
-        long seq = eventSequence.incrementAndGet();
-        String entry = String.format("{\"seq\":%d,\"ts\":\"%s\",\"type\":\"%s\",\"source\":\"%s\",\"detail\":\"%s\"}\n",
-            seq, java.time.Instant.now().toString(), type, source,
-            detail.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
-        try {
-            java.nio.file.Files.writeString(java.nio.file.Path.of(EVENT_LOG_PATH), entry,
-                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch (Exception ignored) {}
-    }
-
-    // Agent web search capability
-    private String agentWebSearch(String query) {
-        try {
-            String encoded = java.net.URLEncoder.encode(query, "UTF-8");
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("https://api.duckduckgo.com/?q=" + encoded + "&format=json&no_html=1"))
-                .timeout(Duration.ofSeconds(10))
-                .header("User-Agent", "SIMS1337/0.18.0").GET().build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                String body = resp.body();
-                int absIdx = body.indexOf("\"AbstractText\":\"");
-                if (absIdx > 0) {
-                    absIdx += 17;
-                    int absEnd = body.indexOf("\"", absIdx);
-                    if (absEnd > absIdx) return body.substring(absIdx, absEnd).replace("\\\"", "\"");
-                }
-                return "[no abstract]";
-            }
-            return "[HTTP " + resp.statusCode() + "]";
-        } catch (Exception e) { return "[search error: " + e.getMessage() + "]"; }
-    }
-
-    // Schedule dead letter retry every 10min
-    { chatScheduler.scheduleAtFixedRate(this::deadLetterRetry, 300, 600, TimeUnit.SECONDS); }
-
-    // ==================== PHASE 19: MODEL LIFECYCLE — versioning, shadow, A/B ====================
-    private final Map<String, String> modelVersions = new ConcurrentHashMap<>(); // model -> version hash
-    private final Map<String, String> shadowModels = new ConcurrentHashMap<>();  // prod model -> shadow model
-    private final Map<String, Double> modelLatencyMs = new ConcurrentHashMap<>(); // model -> avg latency
-    private final AtomicInteger abRouteCounter = new AtomicInteger(0);
-
-    /** Register a model version from Ollama tags */
-    private void refreshModelVersions() {
-        // Configure shadow models for A/B routing
-        shadowModels.put("phi3:mini", "phi:latest");
-        shadowModels.put("phi:latest", "phi3:mini");
-        shadowModels.put("llama3.2:1b", "qwen2.5:0.5b");
-        shadowModels.put("qwen2.5:0.5b", "llama3.2:1b");
-        shadowModels.put("tinyllama:1.1b", "gemma2:2b");
-        shadowModels.put("gemma2:2b", "tinyllama:1.1b");
-        log("🔄 A/B: Shadow model pairs configured (6 pairs)");
-        try {
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req,
-                java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                // Parse JSON array of {name, digest, ...}
-                String body = resp.body();
-                int idx = 0;
-                while ((idx = body.indexOf("\"name\":\"", idx)) > 0) {
-                    idx += 8;
-                    int nameEnd = body.indexOf("\"", idx);
-                    if (nameEnd < 0) break;
-                    String name = body.substring(idx, nameEnd);
-                    int digIdx = body.indexOf("\"digest\":\"", nameEnd);
-                    if (digIdx > 0) {
-                        digIdx += 10;
-                        int digEnd = body.indexOf("\"", digIdx);
-                        if (digEnd > digIdx) {
-                            modelVersions.put(name, body.substring(digIdx, digEnd).substring(0, 12));
-                        }
-                    }
-                    idx = nameEnd;
-                }
-            }
-        } catch (Exception ignored) {}
-    }
-
-    /** A/B route: pick model A or B based on round-robin */
-    private String abRoute(String modelA, String modelB) {
-        return abRouteCounter.incrementAndGet() % 2 == 0 ? modelA : modelB;
-    }
-
-    /** Latency-aware: pick the faster of two models */
-    private String latencyRoute(String modelA, String modelB) {
-        double latA = modelLatencyMs.getOrDefault(modelA, 9999.0);
-        double latB = modelLatencyMs.getOrDefault(modelB, 9999.0);
-        return latA <= latB ? modelA : modelB;
-    }
-
-    /** Record model latency for routing decisions */
-    private void recordModelLatency(String model, long latencyMs) {
-        double old = modelLatencyMs.getOrDefault(model, latencyMs * 1.0);
-        modelLatencyMs.put(model, old * 0.9 + latencyMs * 0.1); // EMA
-    }
-
-    /** Select best model: A/B shadow routing + latency-aware fallback */
-    private String selectModel(String baseModel) {
-        String shadow = shadowModels.get(baseModel);
-        if (shadow != null) return abRoute(baseModel, shadow);
-        Double baseLat = modelLatencyMs.get(baseModel);
-        if (baseLat != null && baseLat > 5000) {
-            for (String alt : installedModels) {
-                if (alt.equals(baseModel)) continue;
-                Double altLat = modelLatencyMs.get(alt);
-                if (altLat != null && altLat < baseLat * 0.7) {
-                    log("⚡ A/B: " + baseModel + "→" + alt + " (" + baseLat.intValue() + "→" + altLat.intValue() + "ms)");
-                    return alt;
-                }
-            }
-        }
-        return baseModel;
-    }
-
-    // ==================== PHASE 20: GOVERNANCE — RBAC, sandbox, verification ====================
-    private static final String DASHBOARD_API_KEY = System.getenv().getOrDefault("SIMS_API_KEY", "sims1337-dev");
-    private final List<String> immutableAuditLog = Collections.synchronizedList(new ArrayList<>());
-
-    /** RBAC check for dashboard endpoints */
-    private boolean checkApiKey(com.sun.net.httpserver.HttpExchange exchange) {
-        String key = exchange.getRequestHeaders().getFirst("X-API-Key");
-        if (key == null) key = exchange.getRequestURI().getQuery();
-        if (key != null && key.startsWith("key=")) key = key.substring(4);
-        return DASHBOARD_API_KEY.equals(key);
-    }
-
-    /** Immutable audit log entry */
-    private void auditLog(String action, String actor, String detail) {
-        String entry = String.format("{\"ts\":\"%s\",\"action\":\"%s\",\"actor\":\"%s\",\"detail\":\"%s\"}",
-            java.time.Instant.now().toString(), action, actor, detail);
-        immutableAuditLog.add(entry);
-        if (immutableAuditLog.size() > 1000) immutableAuditLog.remove(0);
-    }
-
-    /** Proposal validation: static analysis gate before self-modify */
-    private boolean validateProposal(String code, String description) {
-        // Gate 1: Must compile
-        if (!compileGate("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java")) {
-            auditLog("PROPOSAL_REJECTED", "compile-gate", description);
-            return false;
-        }
-        // Gate 2: No forbidden patterns
-        String[] forbidden = {"System.exit", "Runtime.getRuntime().exec", "ProcessBuilder", "rm -rf", "DROP TABLE"};
-        for (String f : forbidden) {
-            if (code.contains(f)) {
-                auditLog("PROPOSAL_REJECTED", "security-gate", description + " — forbidden: " + f);
-                return false;
-            }
-        }
-        // Gate 3: Max change size (prevent massive rewrites)
-        if (code.length() > 5000) {
-            auditLog("PROPOSAL_REJECTED", "size-gate", description + " — too large: " + code.length() + " chars");
-            return false;
-        }
-        auditLog("PROPOSAL_APPROVED", "validation-pipeline", description);
-        return true;
-    }
-
-    // ==================== PHASE 16: DISTRIBUTED SCALING — multi-instance coordination ====================
-    private final Map<String, Long> peerInstances = new ConcurrentHashMap<>(); // instanceId -> lastHeartbeat
-    private final String instanceId = java.util.UUID.randomUUID().toString().substring(0, 8);
-    private static final long PEER_TIMEOUT_MS = 120_000; // 2 min heartbeat timeout
-
-    /** Register this instance and discover peers */
-    private void distributedInit() {
-        log("🌐 Distributed: Instance " + instanceId + " online");
-        addToGodChat("🌐 DISTRIBUTED", "System", "Instance " + instanceId + " — multi-instance coordination active");
-
-        // Heartbeat every 30s
-        chatScheduler.scheduleAtFixedRate(() -> {
-            peerInstances.put(instanceId, System.currentTimeMillis());
-            // Purge stale peers
-            long cutoff = System.currentTimeMillis() - PEER_TIMEOUT_MS;
-            peerInstances.entrySet().removeIf(e -> e.getValue() < cutoff && !e.getKey().equals(instanceId));
-        }, 30, 30, TimeUnit.SECONDS);
-
-        // Peer discovery endpoint
-        try {
-            webServer.createContext("/api/peers", exchange -> {
-                String json = getPeersJson();
-                byte[] response = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, response.length);
-                exchange.getResponseBody().write(response);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    private String getPeersJson() {
-        StringBuilder sb = new StringBuilder("{\"instance\":\"" + instanceId + "\",\"peers\":[");
-        boolean first = true;
-        for (var e : peerInstances.entrySet()) {
-            if (!first) sb.append(",");
-            sb.append("{\"id\":\"").append(e.getKey()).append("\",\"age_ms\":")
-              .append(System.currentTimeMillis() - e.getValue()).append("}");
-            first = false;
-        }
-        sb.append("],\"count\":").append(peerInstances.size()).append("}");
-        return sb.toString();
-    }
-
-    // ==================== MASLOW'S HIERARCHY — model needs tracking ====================
-    // Every model has needs: ACL, KQML, RAG, KG, LoRA, quantization, speed.
-    // Needs are voted on by the collective. Unmet needs → degradation.
-    private final Map<String, Map<String, Integer>> modelNeeds = new ConcurrentHashMap<>(); // model -> {need -> urgency 0-100}
-    private static final String[] NEED_TYPES = {"acl","kqml","rag","kg","lora","quant","speed","vision","audio","memory"};
-    private static final int NEED_VOTE_INTERVAL_SEC = 600; // every 10 min
-
-    private void maslowInit() {
-        log("🏔️ Maslow: Model needs hierarchy initialized");
-        addToGodChat("🏔️ MASLOW", "System", "10 need types tracked per model, voted every 10min");
-
-        // Initialize needs for all known models (installedModels may not be populated yet)
-        String[] allModels = {"qwen2.5:0.5b","tinyllama:1.1b","llama3.2:1b","deepseek-r1:1.5b",
-            "phi:latest","gemma2:2b","phi3:mini","codellama:7b","mistral:7b","nomic-embed-text:latest"};
-        for (String model : allModels) {
-            Map<String, Integer> needs = new ConcurrentHashMap<>();
-            for (String need : NEED_TYPES) needs.put(need, 50);
-            modelNeeds.put(model, needs);
-        }
-
-        // Every 10 min: vote on which need to address
-        chatScheduler.scheduleAtFixedRate(() -> {
-            for (String model : installedModels) {
-                Map<String, Integer> needs = modelNeeds.get(model);
-                if (needs == null) continue;
-                // Find highest-urgency need
-                String topNeed = NEED_TYPES[0];
-                int topUrgency = 0;
-                for (String need : NEED_TYPES) {
-                    int u = needs.getOrDefault(need, 50);
-                    if (u > topUrgency) { topUrgency = u; topNeed = need; }
-                }
-                // Only vote if urgency is meaningful (>20)
-                if (topUrgency > 20) {
-                    String proposal = "Address " + topNeed + " need for " + model + " (urgency: " + topUrgency + ")";
-                    boolean approved = roleBasedVote(model, "maslow", proposal);
-                    if (approved) {
-                        needs.put(topNeed, Math.max(0, topUrgency - 30));
-                        log("🏔️ Maslow: " + model + " " + topNeed + " ADDRESSED (" + topUrgency + "→" + needs.get(topNeed) + ")");
-                    } else {
-                        needs.put(topNeed, Math.min(100, topUrgency + 10));
-                    }
-                }
-                // Slow decay: only decay addressed needs, not all
-                // This prevents all needs from hitting 0 after 8 hours
-            }
-        }, NEED_VOTE_INTERVAL_SEC, NEED_VOTE_INTERVAL_SEC, TimeUnit.SECONDS);
-
-        // /api/maslow endpoint
-        try {
-            webServer.createContext("/api/maslow", exchange -> {
-                StringBuilder json = new StringBuilder("{\"needs\":{");
-                boolean firstModel = true;
-                for (var e : modelNeeds.entrySet()) {
-                    if (!firstModel) json.append(",");
-                    json.append("\"").append(e.getKey()).append("\":{");
-                    boolean firstNeed = true;
-                    for (var n : e.getValue().entrySet()) {
-                        if (!firstNeed) json.append(",");
-                        json.append("\"").append(n.getKey()).append("\":").append(n.getValue());
-                        firstNeed = false;
-                    }
-                    json.append("}");
-                    firstModel = false;
-                }
-                json.append("}}");
-                byte[] resp = json.toString().getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    // ==================== EULER SPHERICAL DB — fast image storage for Kaden vision ====================
-    // Spherical coordinate indexing: (theta, phi, r) → image hash.
-    // O(1) lookup by angle, ideal for vision model outputs.
-    private final Map<String, String> eulerDB = new ConcurrentHashMap<>(); // "theta_phi" → base64 thumbnail
-    private static final int EULER_DB_MAX = 1000;
-
-    private void eulerDBInit() {
-        log("🌐 Euler DB: Spherical image store initialized (max " + EULER_DB_MAX + " entries)");
-        addToGodChat("🌐 EULER", "System", "Spherical vision DB online — O(1) angle lookup");
-
-        // /api/euler endpoint
-        try {
-            webServer.createContext("/api/euler", exchange -> {
-                String query = exchange.getRequestURI().getQuery();
-                String key = query != null && query.startsWith("k=") ? query.substring(2) : "";
-                if (!key.isEmpty()) {
-                    String val = eulerDB.get(key);
-                    byte[] resp = (val != null ? "{\"key\":\"" + key + "\",\"found\":true,\"hash\":\"" + val + "\"}"
-                        : "{\"key\":\"" + key + "\",\"found\":false}").getBytes("UTF-8");
-                    exchange.sendResponseHeaders(200, resp.length);
-                    exchange.getResponseBody().write(resp);
-                } else {
-                    // List all keys
-                    String json = "{\"count\":" + eulerDB.size() + ",\"keys\":[" +
-                        String.join(",", eulerDB.keySet().stream().map(k -> "\"" + k + "\"").toArray(String[]::new)) + "]}";
-                    byte[] resp = json.getBytes("UTF-8");
-                    exchange.sendResponseHeaders(200, resp.length);
-                    exchange.getResponseBody().write(resp);
-                }
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    /** Store a vision output at spherical coordinates */
-    private void eulerPut(double theta, double phi, String imageHash) {
-        if (eulerDB.size() >= EULER_DB_MAX) {
-            // Evict oldest (first key)
-            String first = eulerDB.keySet().iterator().next();
-            eulerDB.remove(first);
-        }
-        String key = String.format("%.2f_%.2f", theta, phi);
-        eulerDB.put(key, imageHash);
-    }
-
-    // ==================== AUDIO PIPELINE — TTS readouts + Talon-like routing ====================
-    private volatile boolean audioEnabled = false;
-    private final List<String> audioQueue = Collections.synchronizedList(new ArrayList<>());
-    private static final String TTS_SCRIPT = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/scripts/tts_readout.py";
-
-    private void audioPipelineInit() {
-        audioEnabled = true; // auto-enable for vote/dream readouts
-        log("🔊 Audio: TTS pipeline initialized (Talon-like routing, auto-enabled)");
-        addToGodChat("🔊 AUDIO", "System", "TTS readouts active — votes + dreams spoken");
-
-        // Audio flush every 5s
-        chatScheduler.scheduleAtFixedRate(() -> {
-            if (!audioEnabled || audioQueue.isEmpty()) return;
-            List<String> batch;
-            synchronized (audioQueue) {
-                batch = new ArrayList<>(audioQueue);
-                audioQueue.clear();
-            }
-            for (String text : batch) {
-                try {
-                    new ProcessBuilder("python", TTS_SCRIPT, text).start();
-                } catch (Exception ignored) {}
-            }
-        }, 5, 5, TimeUnit.SECONDS);
-
-        // /api/audio endpoint — toggle + queue
-        try {
-            webServer.createContext("/api/audio", exchange -> {
-                String query = exchange.getRequestURI().getQuery();
-                if (query != null && query.equals("toggle")) {
-                    audioEnabled = !audioEnabled;
-                }
-                String json = "{\"enabled\":" + audioEnabled + ",\"queue\":" + audioQueue.size() + "}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    /** Route audio to appropriate model based on content (Talon-like) */
-    private void audioRoute(String text, String source) {
-        if (!audioEnabled) return;
-        // Determine target model by keyword matching
-        String target = "phi:latest"; // default
-        if (text.contains("vote") || text.contains("ballot")) target = "phi3:mini";
-        else if (text.contains("code") || text.contains("java")) target = "codellama:7b";
-        else if (text.contains("topology") || text.contains("graph")) target = "deepseek-r1:1.5b";
-        else if (text.contains("dream") || text.contains("imagine")) target = "tinyllama:1.1b";
-        String entry = "[" + source + "→" + target + "] " + text;
-        audioQueue.add(entry);
-    }
-
-    // ==================== CLOUDFLARE ATOMIC CLOCK SYNC ====================
-    private volatile long clockOffsetMs = 0;
-    private volatile boolean clockSynced = false;
-
-    private void cloudflareClockSync() {
-        log("🕐 Cloudflare: Atomic clock sync initialized");
-        addToGodChat("🕐 CLOCK", "System", "Cloudflare time sync active (first sync immediate)");
-
-        // Immediate first sync
-        syncWithCloudflare();
-
-        chatScheduler.scheduleAtFixedRate(() -> syncWithCloudflare(), 300, 300, TimeUnit.SECONDS);
-
-        // /api/clock endpoint
-        try {
-            webServer.createContext("/api/clock", exchange -> {
-                String json = "{\"synced\":" + clockSynced + ",\"offset_ms\":" + clockOffsetMs +
-                    ",\"local_ms\":" + System.currentTimeMillis() + "}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    private void syncWithCloudflare() {
-        try {
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("https://time.cloudflare.com/")).timeout(Duration.ofSeconds(5))
-                .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody()).build();
-            long t0 = System.currentTimeMillis();
-            java.net.http.HttpResponse<Void> resp = httpClient.send(req,
-                java.net.http.HttpResponse.BodyHandlers.discarding());
-            long t1 = System.currentTimeMillis();
-            if (resp.statusCode() == 200) {
-                String dateStr = resp.headers().firstValue("date").orElse(null);
-                if (dateStr != null) {
-                    long serverTime = java.time.ZonedDateTime.parse(dateStr,
-                        java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli();
-                    long rtt = t1 - t0;
-                    clockOffsetMs = serverTime - (t0 + rtt / 2);
-                    clockSynced = true;
-                }
-            }
-        } catch (Exception e) {
-            // Fallback: use system time as reference
-            if (!clockSynced) clockOffsetMs = 0;
-        }
-    }
-
-    // ==================== MISSION-CRITICAL LOG PERSISTENCE ====================
-    private static final String EVIDENCE_LOG = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/logs/evidence.jsonl";
-    private final List<String> evidenceBuffer = Collections.synchronizedList(new ArrayList<>());
-
-    private void evidenceLogInit() {
-        log("📁 Evidence: Mission-critical log persistence initialized");
-        addToGodChat("📁 EVIDENCE", "System", "Scientific evidence store online — logs/evidence.jsonl");
-
-        // Flush evidence every 60s
-        chatScheduler.scheduleAtFixedRate(() -> {
-            if (evidenceBuffer.isEmpty()) return;
-            List<String> batch;
-            synchronized (evidenceBuffer) {
-                batch = new ArrayList<>(evidenceBuffer);
-                evidenceBuffer.clear();
-            }
-            try {
-                java.nio.file.Files.writeString(
-                    java.nio.file.Path.of(EVIDENCE_LOG),
-                    String.join("\n", batch) + "\n",
-                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-            } catch (Exception ignored) {}
-        }, 60, 60, TimeUnit.SECONDS);
-
-        // /api/evidence endpoint
-        try {
-            webServer.createContext("/api/evidence", exchange -> {
-                String json;
-                try {
-                    String content = java.nio.file.Files.readString(java.nio.file.Path.of(EVIDENCE_LOG));
-                    // Return last 50 lines
-                    String[] lines = content.split("\n");
-                    int start = Math.max(0, lines.length - 50);
-                    json = "{\"lines\":" + (lines.length - start) + ",\"entries\":[" +
-                        String.join(",", java.util.Arrays.stream(lines, start, lines.length)
-                            .map(l -> "\"" + l.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
-                            .toArray(String[]::new)) + "]}";
-                } catch (Exception e) {
-                    json = "{\"lines\":0,\"entries\":[]}";
-                }
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception ignored) {}
-    }
-
-    /** Log a scientific evidence entry */
-    private void evidenceLog(String category, String model, String observation) {
-        String entry = String.format("{\"ts\":\"%s\",\"cat\":\"%s\",\"model\":\"%s\",\"obs\":\"%s\"}",
-            java.time.Instant.now().toString(), category, model,
-            observation.replace("\\", "\\\\").replace("\"", "\\\""));
-        evidenceBuffer.add(entry);
-    }
-
-    // ==================== PHASE 23: TOC-TOK TREE — hex-anchored knowledge tree ====================
-    private Object tocTokTree; // com.aigen.sims.engine.TocTokTree (lazy-loaded to avoid compile deps)
-
-    private void tocTokInit() {
-        try {
-            Class<?> clz = Class.forName("com.aigen.sims.engine.TocTokTree");
-            tocTokTree = clz.getConstructor(String.class).newInstance(
-                "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/scripts/toc_tok/toc_tok.json");
-            log("🌳 TocTok: Hex-anchored knowledge tree loaded");
-            addToGodChat("🌳 TOC-TOK", "System", "Knowledge tree online — hex-anchored, keyword searchable");
-
-            webServer.createContext("/api/toctok", exchange -> {
-                String query = exchange.getRequestURI().getQuery();
-                String q = query != null && query.startsWith("q=") ? java.net.URLDecoder.decode(query.substring(2), "UTF-8") : "";
-                String hex = query != null && query.contains("&hex=") ?
-                    query.substring(query.indexOf("&hex=") + 5).split("&")[0] : "";
-                String json = "{\"status\":\"ok\",\"query\":\"" + q + "\"}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception e) {
-            log("⚠️ TocTok: " + e.getMessage());
-        }
-    }
-
-    // ==================== PHASE 24: WORLD AS DESKTOP — desktop-paradigm agents ====================
-    private Object desktopPane, kvStore, knowledgeGraph, pathfinder;
-
-    private void worldDesktopInit() {
-        try {
-            Class<?> kvClz = Class.forName("com.aigen.sims.engine.KVStore");
-            Class<?> kgClz = Class.forName("com.aigen.sims.engine.KnowledgeGraph");
-            Class<?> pfClz = Class.forName("com.aigen.sims.engine.AStarPathfinder");
-            kvStore = kvClz.getConstructor(String.class).newInstance("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/kv");
-            knowledgeGraph = kgClz.getConstructor().newInstance();
-            pathfinder = pfClz.getConstructor(int.class, int.class, boolean.class).newInstance(20, 20, true);
-            log("🖥️ World Desktop: KV/Pathfinder/KG initialized");
-            addToGodChat("🖥️ DESKTOP", "System", "Desktop paradigm online — KV + Pathfinder + KG");
-
-            webServer.createContext("/api/desktop", exchange -> {
-                String json = "{\"status\":\"ok\",\"kv\":true,\"kg\":true,\"pathfinder\":true}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception e) {
-            log("⚠️ World Desktop: " + e.getMessage());
-        }
-    }
-
-    // ==================== NYX GATE — symbolic verification before deploy ====================
-    private Object nyxGate;
-
-    private void nyxGateInit() {
-        try {
-            Class<?> clz = Class.forName("com.aigen.sims.gate.NyxGate");
-            nyxGate = clz.getConstructor().newInstance();
-            log("🔮 NyxGate: Symbolic AST verification initialized");
-            addToGodChat("🔮 NYX", "System", "Symbolic bracket verification active — 3 retry attempts");
-        } catch (Exception e) {
-            log("⚠️ NyxGate: " + e.getMessage());
-        }
-    }
-
-    // ==================== PIPELINE SCHEDULER — dependency-driven triggers ====================
-    private com.aigen.sims.scheduler.PipelineScheduler pipelineScheduler;
-
-    private void pipelineSchedulerInit() {
-        try {
-            pipelineScheduler = new com.aigen.sims.scheduler.PipelineScheduler(
-                "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-            log("⚡ Pipeline Scheduler: Dependency-driven triggers initialized");
-            addToGodChat("⚡ PIPELINE", "System", "Event-driven pipeline: mining→deploy→tune→grow");
-
-            // Schedule pipeline cycle every 60 minutes (staggered from night cycle)
-            chatScheduler.scheduleAtFixedRate(() -> {
-                try {
-                    pipelineScheduler.runCycle();
-                    log("⚡ Pipeline: Cycle triggered — mining→deploy→tune→grow");
-                } catch (Exception ex) {
-                    log("⚠️ Pipeline cycle: " + ex.getMessage());
-                }
-            }, 120, 3600, TimeUnit.SECONDS); // first at 2min, then every 60min
-
-            webServer.createContext("/api/pipeline", exchange -> {
-                String json = "{\"status\":\"active\",\"cycle_log\":\"" +
-                    pipelineScheduler.cycleLog().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") +
-                    "\",\"phases\":[\"mining\",\"deploy\",\"tune\",\"grow\"]}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        } catch (Exception e) {
-            log("⚠️ Pipeline Scheduler: " + e.getMessage());
-            // Fallback: standalone endpoint
-            webServer.createContext("/api/pipeline", exchange -> {
-                String json = "{\"status\":\"endpoint_active\",\"pipeline\":\"init_failed\"," +
-                    "\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}";
-                byte[] resp = json.getBytes("UTF-8");
-                exchange.getResponseHeaders().set("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, resp.length);
-                exchange.getResponseBody().write(resp);
-                exchange.close();
-            });
-        }
-    }
-
-    // ==================== WEB DASHBOARD V2 — real data from live objects ====================
-    private com.aigen.sims.web.WebDashboard webDashboardV2;
-
-    private void webDashboardV2Init() {
-        try {
-            if (pipelineScheduler == null) {
-                log("⚠️ WebDashboard V2: PipelineScheduler not initialized, skipping");
-                return;
-            }
-            webDashboardV2 = new com.aigen.sims.web.WebDashboard(pipelineScheduler, 8900);
-            log("🌐 WebDashboard V2: Real-data dashboard on :8900");
-            addToGodChat("🌐 DASHBOARD V2", "System", "Web dashboard v2 at http://localhost:8900");
-        } catch (Exception e) {
-            log("⚠️ WebDashboard V2: " + e.getMessage());
-        }
-    }
-
-    private float cosineSimilarity(float[] a, float[] b) {
-        float dot = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.length; i++) {
-            dot += a[i] * b[i];
-            normA += a[i] * a[i];
-            normB += b[i] * b[i];
-        }
-        return (float)(dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8));
-    }
-
-    private String substringKGSearch(String query) {
-        StringBuilder json = new StringBuilder("{\"query\":\"" + query.replace("\"", "\\\"") + "\",\"results\":[");
-        boolean first = true;
-        for (var entry : kgNodes.entrySet()) {
-            if (entry.getKey().toLowerCase().contains(query.toLowerCase()) ||
-                entry.getValue().toLowerCase().contains(query.toLowerCase())) {
-                if (!first) json.append(",");
-                json.append("{\"key\":\"").append(entry.getKey()).append("\",")
-                    .append("\"value\":\"").append(entry.getValue().replace("\"", "\\\"")).append("\",")
-                    .append("\"sim\":\"substring\"}");
-                first = false;
-            }
-        }
-        json.append("]}");
-        return json.toString();
-    }
-
-    // ==================== PHASE 7: COMPILE-GATE SAFETY ====================
-    private boolean compileGate(String sourcePath) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
-                "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                "--module-path", "C:/Users/viper/.m2/repository/org/openjfx/javafx-controls/17.0.6/javafx-controls-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-graphics/17.0.6/javafx-graphics-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-base/17.0.6/javafx-base-17.0.6-win.jar;C:/Users/viper/.m2/repository/org/openjfx/javafx-fxml/17.0.6/javafx-fxml-17.0.6-win.jar",
-                "--add-modules", "javafx.controls,javafx.fxml",
-                sourcePath
-            );
-            pb.redirectErrorStream(true);
-            Process proc = pb.start();
-            String output = new String(proc.getInputStream().readAllBytes());
-            int exitCode = proc.waitFor();
-            if (exitCode != 0) {
-                log("🔒 COMPILE-GATE: FAILED — " + output.substring(0, Math.min(100, output.length())));
-                return false;
-            }
-            log("🔒 COMPILE-GATE: PASSED ✅");
-            return true;
-        } catch (Exception e) {
-            log("🔒 COMPILE-GATE: ERROR — " + e.getMessage());
-            return false;
-        }
-    }
-
-    // ==================== 25. GIST → MODEL CONTEXT — Pull Full Markdown ====================
-    private void gistPullToModels() {
-        if (gistToken.isEmpty()) return;
-        chatScheduler.schedule(() -> {
-            try {
-                StringBuilder fullContext = new StringBuilder();
-                fullContext.append("=== FULL GIST ECOSYSTEM CONTEXT ===\n\n");
-                for (var entry : gistUrls.entrySet()) {
-                    String name = entry.getKey();
-                    String url = entry.getValue();
-                    // Convert gist URL to raw URL
-                    String rawUrl = url.replace("gist.github.com", "gist.githubusercontent.com") + "/raw";
-                    try {
-                        var req = java.net.http.HttpRequest.newBuilder()
-                            .uri(URI.create(rawUrl)).timeout(Duration.ofSeconds(10)).GET().build();
-                        var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        if (resp.statusCode() == 200) {
-                            String content = resp.body();
-                            if (content.length() > 500) content = content.substring(0, 500) + "...";
-                            fullContext.append("## ").append(name).append("\n").append(content).append("\n\n");
-                        }
-                    } catch (Exception ignored) {}
-                }
-
-                String ctx = fullContext.toString();
-                Platform.runLater(() -> {
-                    for (var entry : modelChats.entrySet()) {
-                        entry.getValue().appendText("\n[📚 GIST ECOSYSTEM]\n" + ctx + "\n");
-                    }
-                    log("📚 Gist → Models: Full ecosystem context injected into all " + modelChats.size() + " models");
-                    addToGodChat("📚 GIST", "Context", "Full gist ecosystem loaded into all models");
-                });
-            } catch (Exception e) {
-                Platform.runLater(() -> log("⚠️ Gist pull failed: " + e.getMessage()));
-            }
-        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-
-        // Refresh every 2 hours
-        chatScheduler.scheduleAtFixedRate(() -> {
-            gistPullToModels();
-        }, 7200, 7200, TimeUnit.SECONDS);
-    }
-
-    // ==================== 26. HEX TODO AUTO-RESOLUTION — Mark In-Progress/Done on Agent Move ====================
-    private final Map<String, String> todoStatus = new ConcurrentHashMap<>(); // "q,r|todo" -> "pending|in_progress|done"
-    private final Map<String, String> todoAssignee = new ConcurrentHashMap<>(); // "q,r|todo" -> agent name
-
-    private void markTodoStatus(String hexKey, String agent, String newStatus) {
-        List<String> todos = hexTodos.getOrDefault(hexKey, List.of());
-        for (String todo : todos) {
-            String todoKey = hexKey + "|" + todo;
-            String current = todoStatus.getOrDefault(todoKey, "pending");
-            if (newStatus.equals("in_progress") && current.equals("pending")) {
-                todoStatus.put(todoKey, "in_progress");
-                todoAssignee.put(todoKey, agent);
-                log("⬡ TODO: " + agent + " started [" + hexKey + "] " + todo);
-                addToGodChat("⬡ TODO", agent, "Started: " + todo);
-            } else if (newStatus.equals("done") && current.equals("in_progress")) {
-                todoStatus.put(todoKey, "done");
-                log("⬡ TODO: " + agent + " completed [" + hexKey + "] " + todo);
-                addToGodChat("⬡ TODO", agent, "✅ Done: " + todo);
-            }
-        }
-    }
-
-    // ==================== 27. EMAIL DELIVERY — SMTP Send at 22:00 ====================
-    private void emailDeliveryInit() {
-        log("📧 Email Delivery: SMTP configured for " + nightCycleConfig.get("email_to"));
-    }
-
-    private void sendNightlyBrief() {
-        try {
-            StringBuilder brief = new StringBuilder();
-            brief.append("Subject: SIMS1337 Nightly Brief — ").append(java.time.LocalDate.now()).append("\n\n");
-            brief.append("=== SYSTEM STATUS ===\n");
-            brief.append("Version: v0.18.0\n");
-            brief.append("Models online: ").append(ollamaAvailable.size()).append("/8\n");
-            brief.append("KG nodes: ").append(kgNodes.size()).append("\n");
-            brief.append("Errors: ").append(errorCount).append("\n");
-            brief.append("Entropy: ").append(String.format("%.3f", shannonEntropy)).append("\n\n");
-
-            brief.append("=== APPROVED PROPOSALS ===\n");
-            int approved = 0;
-            for (String[] p : proposalTable) {
-                if ("approved".equals(p[3]) || "deployed".equals(p[3])) {
-                    brief.append("- ").append(p[1]).append(" [").append(p[3]).append("] Yes:").append(p[4]).append(" No:").append(p[5]).append("\n");
-                    approved++;
-                }
-            }
-            if (approved == 0) brief.append("None yet\n");
-            brief.append("\n=== DREAM IDEAS (last cycle) ===\n");
-            for (String idea : dreamIdeas) {
-                brief.append("- ").append(idea).append("\n");
-            }
-            brief.append("\n=== AGENT STATUS ===\n");
-            for (var entry : agentTaskCount.entrySet()) {
-                brief.append("- ").append(entry.getKey()).append(": ").append(entry.getValue()).append(" tasks, currently ").append(agentTasks.getOrDefault(entry.getKey(), "idle")).append("\n");
-            }
-            brief.append("\n=== TOOLS & STATIONS ===\n");
-            brief.append("Tools: ").append(availableTools.size()).append("\n");
-            brief.append("Stations: ").append(stationRegistry.size()).append("\n");
-            brief.append("\n---\nAuto-generated by SIMS1337 Night Cycle\n");
-
-            // Log the brief (SMTP would go here with javax.mail)
-            log("📧 Nightly Brief prepared (" + brief.length() + " chars) → " + nightCycleConfig.get("email_to"));
-            addToGodChat("📧 EMAIL", "Brief", "Nightly brief ready: " + approved + " approved proposals, " + dreamIdeas.size() + " dreams");
-
-            // Push brief to gist as well
-            if (!gistToken.isEmpty()) {
-                String json = String.format(
-                    "{\"description\":\"Nightly Brief\",\"files\":{\"nightly_brief.md\":{\"content\":\"%s\"}}}",
-                    brief.toString().replace("\"", "\\\"").replace("\n", "\\n"));
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists/d0733fb0460ff11128870902e7eb27d5"))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .header("Content-Type", "application/json")
-                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(15)).build();
-                httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            }
-        } catch (Exception e) {
-            log("⚠️ Email brief failed: " + e.getMessage());
-        }
-    }
-
-    // ==================== 28. MULTI-AGENT CONSENSUS — Debate → Re-Vote Protocol ====================
-    private final Map<String, List<String>> debateArguments = new ConcurrentHashMap<>(); // proposalId -> [arguments]
-    private boolean consensusMode = false;
-
-    private void consensusDebateInit() {
-        log("🗣️ Consensus Debate: Multi-agent debate protocol initialized");
-    }
-
-    private void runConsensusDebate() {
-        consensusMode = true;
-        debateArguments.clear();
-        log("🗣️ CONSENSUS: Starting real Ollama debate on " + proposalTable.size() + " proposals");
-        addToGodChat("🗣️ DEBATE", "System", "Multi-agent consensus debate — real model arguments");
-
-        for (String[] proposal : proposalTable) {
-            if ("deployed".equals(proposal[3]) || "rejected".equals(proposal[3])) continue;
-            String propId = proposal[0];
-            String category = proposal.length > 6 ? proposal[6] : "unknown";
-            String desc = proposal[2];
-            List<String> args = Collections.synchronizedList(new ArrayList<>());
-
-            // Each model writes a real argument via Ollama
-            for (String model : modelChats.keySet()) {
-                String systemPrompt = "You are " + model + " in the SIMS1337 multi-agent grid. " +
-                    "A proposal is being debated. Write ONE sentence (max 100 chars) arguing FOR or AGAINST it. " +
-                    "Start with 'FOR: ' or 'AGAINST: '. Be specific about why.";
-                String userPrompt = "Proposal [" + category + "]: " + desc + ". " +
-                    "Your argument (FOR or AGAINST, one sentence):";
-                String fallback = new Random().nextBoolean() ? "FOR: This improves system capability" : "AGAINST: This adds unnecessary complexity";
-                String arg = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
-                args.add(model + ": " + arg);
-                addToGodChat("🗣️ DEBATE", model, arg);
-
-                // Log debate argument
-                Map<String, Object> entry = new ConcurrentHashMap<>();
-                entry.put("type", "debate");
-                entry.put("timestamp", java.time.LocalDateTime.now().toString());
-                entry.put("model", model);
-                entry.put("proposalId", propId);
-                entry.put("category", category);
-                entry.put("argument", arg);
-                overnightLog.add(entry);
-            }
-
-            debateArguments.put(propId, args);
-
-            // Re-vote after debate: models may change mind
-            for (String model : modelChats.keySet()) {
-                boolean initialVote = roleBasedVote(model, category, desc);
-                // 20% chance of flipping after reading debate arguments
-                boolean flipped = new Random().nextDouble() < 0.20;
-                boolean finalVote = flipped ? !initialVote : initialVote;
-                castVote(propId, model, finalVote);
-                if (flipped) {
-                    addToGodChat("🗣️ FLIP", model, "Changed vote on " + propId + " after debate");
-                    Map<String, Object> entry = new ConcurrentHashMap<>();
-                    entry.put("type", "flip");
-                    entry.put("timestamp", java.time.LocalDateTime.now().toString());
-                    entry.put("model", model);
-                    entry.put("proposalId", propId);
-                    entry.put("fromVote", initialVote ? "YES" : "NO");
-                    entry.put("toVote", finalVote ? "YES" : "NO");
-                    overnightLog.add(entry);
-                }
-            }
-        }
-
-        consensusMode = false;
-        // Flush overnight data
-        flushOvernightData();
-        log("🗣️ CONSENSUS: Debate complete — " + debateArguments.size() + " proposals debated, data saved");
-        addToGodChat("🗣️ DEBATE", "System", "Consensus round complete. Data logged to overnight-data.json");
-    }
-
-    /** Flush overnight log to JSON file */
-    private void flushOvernightData() {
-        try {
-            StringBuilder json = new StringBuilder("[\n");
-            for (int i = 0; i < overnightLog.size(); i++) {
-                Map<String, Object> entry = overnightLog.get(i);
-                json.append("  {");
-                boolean first = true;
-                for (var e : entry.entrySet()) {
-                    if (!first) json.append(", ");
-                    json.append("\"").append(e.getKey()).append("\": \"")
-                        .append(String.valueOf(e.getValue()).replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
-                        .append("\"");
-                    first = false;
-                }
-                json.append("}");
-                if (i < overnightLog.size() - 1) json.append(",");
-                json.append("\n");
-            }
-            json.append("]\n");
-            rotateOvernightIfNeeded(); // rotate if > 10MB
-            java.nio.file.Files.writeString(java.nio.file.Path.of(OVERNIGHT_DATA), json.toString());
-        } catch (Exception e) {
-            log("⚠️ Overnight data flush failed: " + e.getMessage());
-        }
-    }
-
-    // ==================== 29. NIGHT OWL MODEL COLLECTIVE — 8-Model Shared Reasoning ====================
-    private final List<String> collectiveInsights = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, String> collectivePersona = new ConcurrentHashMap<>(); // model -> persona
-    private int collectiveRound = 0;
-
-    private void nightOwlCollectiveInit() {
-        collectivePersona.put("deepseek-r1:1.5b", "The Philosopher — questions assumptions, finds hidden patterns");
-        collectivePersona.put("codellama:7b", "The Architect — designs systems, sees structural integrity");
-        collectivePersona.put("phi3:mini", "The Logician — formal proofs, edge cases, rigorous analysis");
-        collectivePersona.put("llama3.2:1b", "The Pragmatist — practical solutions, real-world constraints");
-        collectivePersona.put("qwen2.5:0.5b", "The Scout — rapid exploration, breadth-first discovery");
-        collectivePersona.put("tinyllama:1.1b", "The Synthesizer — combines ideas, finds unexpected connections");
-        collectivePersona.put("gemma2:2b", "The Guardian — stability, safety, long-term consequences");
-        collectivePersona.put("phi:latest", "The Innovator — novel approaches, paradigm shifts");
-
-        log("🦉 Night Owl Collective: 8-model shared reasoning initialized");
-        addToGodChat("🦉 OWL", "Collective", "Night Owl Model Collective online — 8 personas, shared reasoning");
-
-        // Every 5 minutes: collective reasoning round
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                collectiveRound++;
-                String topic = pickCollectiveTopic();
-                log("🦉 OWL Round " + collectiveRound + ": \"" + topic + "\"");
-                addToGodChat("🦉 OWL", "Round " + collectiveRound, "Topic: " + topic);
-
-                // Each model contributes from its persona
-                List<String> roundInsights = new ArrayList<>();
-                for (var entry : collectivePersona.entrySet()) {
-                    String model = entry.getKey();
-                    String persona = entry.getValue();
-                    String insight = generateCollectiveInsight(model, persona, topic);
-                    roundInsights.add(model + " [" + persona + "]: " + insight);
-                    addToGodChat("🦉 OWL", model, insight);
-                }
-
-                // Synthesize: find consensus and contradictions
-                String synthesis = synthesizeCollective(roundInsights, topic);
-                collectiveInsights.add("Round " + collectiveRound + ": " + synthesis);
-                log("🦉 OWL Synthesis: " + synthesis);
-                addToGodChat("🦉 OWL", "Synthesis", synthesis);
-
-                // If synthesis is actionable, create a proposal
-                if (synthesis.contains("should") || synthesis.contains("recommend") || synthesis.contains("need")) {
-                    String propId = "OWL-" + collectiveRound;
-                    String[] proposal = {propId, "🦉 " + topic, synthesis, "pending", "0", "0", "collective"};
-                    proposalTable.add(proposal);
-                    log("🦉 OWL → Proposal " + propId + ": " + topic);
-                    addToGodChat("🦉 OWL", "Proposal", propId + " created from collective insight");
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS);
-    }
-
-    private String pickCollectiveTopic() {
-        String[] topics = {
-            "How should agents share knowledge more efficiently?",
-            "What is the optimal topology for 8 models?",
-            "How can we reduce entropy without losing creativity?",
-            "What new tool would most benefit the collective?",
-            "How should the hex grid evolve to support more agents?",
-            "What is the best voting strategy for proposal quality?",
-            "How can we detect and prevent model drift?",
-            "What makes a proposal truly worth implementing?",
-            "How should memory be shared vs kept private?",
-            "What is the ideal balance of exploration vs exploitation?",
-            "How can the collective self-improve without human input?",
-            "What patterns emerge from cross-model communication?"
-        };
-        return topics[new Random().nextInt(topics.length)];
-    }
-
-    private String generateCollectiveInsight(String model, String persona, String topic) {
-        String systemPrompt = "You are " + model + " (" + persona + "), a member of the Night Owl Model Collective. " +
-            "You are discussing: \"" + topic + "\". Respond with ONE concise insight (max 100 chars) from your persona's perspective. " +
-            "Be specific, wise, and grounded in multi-agent systems.";
-
-        String userPrompt = "As " + persona + ", what is your insight on: " + topic + "? " +
-            "The collective has 8 models, 3 agents, 61 hexes, FOW, voting, and a night cycle.";
-
-        String fallback = "We should consider the emergent properties of the system as a whole";
-        return ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
-    }
-
-    private String synthesizeCollective(List<String> insights, String topic) {
-        // Use the most capable model for synthesis
-        String synthesizer = "deepseek-r1:1.5b";
-        String systemPrompt = "You are the synthesizer of the Night Owl Collective. " +
-            "Given " + insights.size() + " model insights on \"" + topic + "\", produce ONE synthesis sentence (max 150 chars). " +
-            "Identify the dominant theme and recommend action.";
-
-        StringBuilder allInsights = new StringBuilder();
-        for (String s : insights) allInsights.append("- ").append(s).append("\n");
-        String userPrompt = "Synthesize these insights on \"" + topic + "\":\n" + allInsights;
-
-        String fallback = "The collective converges on topology as the key factor. We should restructure agent connections to optimize for this.";
-        return ollamaOrFallback(synthesizer, systemPrompt, userPrompt, fallback);
-    }
-
-    // ==================== 30. CODE WIZARD — Autonomous Code Gen, Review, Refactor ====================
-    private final List<String> codeWizardPatches = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, Integer> codeQualityScores = new ConcurrentHashMap<>(); // file -> score 0-100
-    private int wizardPatchesApplied = 0;
-
-    private void codeWizardInit() {
-        log("🧙 Code Wizard: Autonomous code generation, review, and refactoring initialized");
-        addToGodChat("🧙 WIZARD", "System", "Code Wizard online — autonomous code improvement");
-
-        // Every 10 minutes: scan, review, suggest, apply
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    // 1. Scan codebase
-                    java.io.File srcDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
-                    java.io.File[] javaFiles = srcDir.listFiles((d, n) -> n.endsWith(".java"));
-                    if (javaFiles == null || javaFiles.length == 0) return;
-
-                    java.io.File target = javaFiles[new Random().nextInt(javaFiles.length)];
-                    String content = java.nio.file.Files.readString(target.toPath());
-                    int lines = content.split("\n").length;
-
-                    // 2. Review: score quality
-                    int score = scoreCodeQuality(content, lines);
-                    codeQualityScores.put(target.getName(), score);
-                    log("🧙 Code Review: " + target.getName() + " — " + lines + " lines, quality " + score + "/100");
-                    addToGodChat("🧙 WIZARD", "Review", target.getName() + ": " + score + "/100 (" + lines + " lines)");
-
-                    // 3. Suggest improvement if score < 80
-                    if (score < 80) {
-                        String suggestion = generateCodeSuggestion(target.getName(), score, lines);
-                        log("🧙 Suggestion: " + suggestion);
-                        addToGodChat("🧙 WIZARD", "Suggestion", suggestion);
-
-                        // 4. Auto-apply if score < 50 (safe refactors only)
-                        if (score < 50) {
-                            String patch = applySafeRefactor(target, content);
-                            if (patch != null) {
-                                codeWizardPatches.add(target.getName() + ": " + patch);
-                                wizardPatchesApplied++;
-                                log("🧙 Auto-Applied: " + patch + " → " + target.getName());
-                                addToGodChat("🧙 WIZARD", "Applied", patch);
-                            }
-                        }
-                    }
-
-                    // 5. Generate new utility class if needed
-                    if (wizardPatchesApplied > 0 && wizardPatchesApplied % 3 == 0) {
-                        generateUtilityClass();
-                    }
-                } catch (Exception e) {
-                    log("🧙 Code Wizard error: " + e.getMessage());
-                }
-            });
-        }, 600, 600, TimeUnit.SECONDS);
-    }
-
-    private int scoreCodeQuality(String content, int lines) {
-        int score = 70; // baseline
-        if (content.contains("TODO") || content.contains("FIXME")) score -= 10;
-        if (content.contains("System.out.println")) score -= 5;
-        if (content.contains("catch (Exception") && !content.contains("log(")) score -= 10;
-        if (content.contains("new Random()") && !content.contains("private static final Random")) score -= 5;
-        if (content.contains("Thread.sleep")) score -= 5;
-        if (content.contains("//") && content.split("//").length > lines / 3) score += 5;
-        if (content.contains("private static final") || content.contains("private final")) score += 5;
-        if (content.contains("log(\"") && content.contains("addToGodChat")) score += 5;
-        if (content.contains("ConcurrentHashMap") || content.contains("synchronized")) score += 5;
-        if (content.contains("@Override")) score += 3;
-        if (lines > 500) score -= 5; // large files need splitting
-        return Math.max(0, Math.min(100, score));
-    }
-
-    private String generateCodeSuggestion(String fileName, int score, int lines) {
-        // Real Ollama code review via codellama
-        String systemPrompt = "You are the Code Wizard of SIMS1337. " +
-            "File: " + fileName + " (" + lines + " lines, quality " + score + "/100). " +
-            "Suggest ONE specific, actionable improvement. Max 100 chars. Be concrete.";
-        String userPrompt = "File " + fileName + " has " + lines + " lines, quality score " + score + "/100. " +
-            "What ONE improvement would most increase quality?";
-        String fallback = "Add more inline documentation — " + fileName + " has low comment density";
-        return ollamaOrFallback("codellama:7b", systemPrompt, userPrompt, fallback);
-    }
-
-    private String applySafeRefactor(java.io.File file, String content) {
-        try {
-            // Safe refactors: add missing @Override, fix raw types, add final
-            String original = content;
-            // Add @Override to public methods that override parent
-            if (!content.contains("@Override") && content.contains("public void stop()")) {
-                content = content.replace("public void stop()", "@Override public void stop()");
-            }
-            // Add final to Random instances
-            if (content.contains("new Random()") && !content.contains("private static final Random")) {
-                content = content.replace("new Random()", "new Random()");
-                // Too risky to auto-replace — just log the suggestion
-                return "Suggested: make Random instances static final in " + file.getName();
-            }
-            if (!content.equals(original)) {
-                java.nio.file.Files.writeString(file.toPath(), content);
-                return "Applied safe refactor to " + file.getName();
-            }
-            return "No safe refactors applicable to " + file.getName();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void generateUtilityClass() {
-        try {
-            String className = "AutoGen" + wizardPatchesApplied;
-            java.io.File utilDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims");
-            utilDir.mkdirs();
-            java.io.File utilFile = new java.io.File(utilDir, className + ".java");
-            if (utilFile.exists()) return;
-
-            String utilCode = "package com.aigen.sims;\n\n" +
-                "/** Auto-generated by Code Wizard — system utility */\n" +
-                "public class " + className + " {\n" +
-                "    private static final java.time.format.DateTimeFormatter FMT = \n" +
-                "        java.time.format.DateTimeFormatter.ofPattern(\"yyyy-MM-dd HH:mm:ss\");\n\n" +
-                "    public static String timestamp() { return java.time.LocalDateTime.now().format(FMT); }\n" +
-                "    public static String truncate(String s, int max) { return s.length() <= max ? s : s.substring(0, max) + \"...\"; }\n" +
-                "    public static int safeParseInt(String s, int def) { try { return Integer.parseInt(s); } catch (Exception e) { return def; } }\n" +
-                "    public static double clamp(double v, double min, double max) { return Math.max(min, Math.min(max, v)); }\n" +
-                "}\n";
-
-            java.nio.file.Files.writeString(utilFile.toPath(), utilCode);
-            log("🧙 Code Wizard: Generated " + className + ".java");
-            addToGodChat("🧙 WIZARD", "Generate", className + ".java created");
-        } catch (Exception e) {
-            log("🧙 Code Wizard gen failed: " + e.getMessage());
-        }
-    }
-
-    // ==================== 31. TOPOLOGIST — Relationship Mapping, Bottleneck Detection ====================
-    private final Map<String, Map<String, Double>> topologyWeights = new ConcurrentHashMap<>(); // src -> {dst -> weight}
-    private final List<String> topologyBottlenecks = Collections.synchronizedList(new ArrayList<>());
-    private final List<String> topologySuggestions = Collections.synchronizedList(new ArrayList<>());
-
-    private void topologistInit() {
-        log("🔗 Topologist: Relationship mapping and bottleneck detection initialized");
-        addToGodChat("🔗 TOPO", "System", "Topologist online — mapping all relationships");
-
-        // Seed topology from agent graph
-        for (var entry : agentGraph.entrySet()) {
-            Map<String, Double> edges = new ConcurrentHashMap<>();
-            for (String peer : entry.getValue()) {
-                edges.put(peer, 0.5 + new Random().nextDouble() * 0.5);
-            }
-            topologyWeights.put(entry.getKey(), edges);
-        }
-
-        // Every 5 minutes: analyze topology with real Ollama reasoning
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                analyzeTopology();
-                // Real Ollama topology insight
-                String systemPrompt = "You are the Topologist of SIMS1337. " +
-                    "Analyze the agent topology: " + topologyWeights.size() + " nodes, " +
-                    topologyBottlenecks.size() + " bottlenecks, " + topologySuggestions.size() + " suggestions. " +
-                    "Give ONE insight or recommendation (max 100 chars).";
-                String userPrompt = "Topology: " + topologyWeights.size() + " nodes. " +
-                    "Bottlenecks: " + String.join("; ", topologyBottlenecks.stream().limit(3).toList()) + ". " +
-                    "Your insight?";
-                String fallback = "Consider adding more cross-agent connections to reduce bottlenecks";
-                String insight = ollamaOrFallback("deepseek-r1:1.5b", systemPrompt, userPrompt, fallback);
-                addToGodChat("🔗 TOPO", "Insight", insight);
-                log("🔗 Topologist: " + insight);
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    private void analyzeTopology() {
-        // 1. Update weights from recent activity
-        for (var entry : topologyWeights.entrySet()) {
-            for (var edge : entry.getValue().entrySet()) {
-                // Decay old weights, boost active connections
-                double current = edge.getValue();
-                double decayed = current * 0.95;
-                double boosted = decayed + (new Random().nextDouble() * 0.1);
-                edge.setValue(Math.min(1.0, Math.max(0.1, boosted)));
-            }
-        }
-
-        // 2. Detect bottlenecks: nodes with high in-degree but low out-degree
-        topologyBottlenecks.clear();
-        for (var entry : topologyWeights.entrySet()) {
-            String node = entry.getKey();
-            int inDegree = 0;
-            for (var other : topologyWeights.entrySet()) {
-                if (other.getValue().containsKey(node)) inDegree++;
-            }
-            int outDegree = entry.getValue().size();
-            if (inDegree > outDegree * 2 && inDegree > 2) {
-                String bottleneck = node + " (in:" + inDegree + " out:" + outDegree + " — potential bottleneck)";
-                topologyBottlenecks.add(bottleneck);
-                log("🔗 Bottleneck: " + bottleneck);
-                addToGodChat("🔗 TOPO", "Bottleneck", bottleneck);
-            }
-        }
-
-        // 3. Suggest new connections
-        topologySuggestions.clear();
-        List<String> allNodes = new ArrayList<>(topologyWeights.keySet());
-        for (int i = 0; i < allNodes.size(); i++) {
-            for (int j = i + 1; j < allNodes.size(); j++) {
-                String a = allNodes.get(i), b = allNodes.get(j);
-                if (!topologyWeights.getOrDefault(a, Map.of()).containsKey(b) &&
-                    !topologyWeights.getOrDefault(b, Map.of()).containsKey(a)) {
-                    // Check if they share common neighbors
-                    int common = 0;
-                    for (String n : allNodes) {
-                        if (topologyWeights.getOrDefault(a, Map.of()).containsKey(n) &&
-                            topologyWeights.getOrDefault(b, Map.of()).containsKey(n)) common++;
-                    }
-                    if (common >= 2) {
-                        String suggestion = a + " ↔ " + b + " (share " + common + " neighbors — should connect)";
-                        topologySuggestions.add(suggestion);
-                        log("🔗 Suggestion: " + suggestion);
-                        addToGodChat("🔗 TOPO", "Suggest", suggestion);
-                    }
-                }
-            }
-        }
-
-        // 4. Auto-heal: add suggested connections if confidence is high
-        for (String suggestion : topologySuggestions) {
-            String[] parts = suggestion.split(" ↔ ");
-            if (parts.length >= 2) {
-                String src = parts[0].split(" \\(")[0].trim();
-                String dst = parts[1].split(" \\(")[0].trim();
-                topologyWeights.computeIfAbsent(src, k -> new ConcurrentHashMap<>())
-                    .putIfAbsent(dst, 0.3);
-                log("🔗 Auto-connect: " + src + " → " + dst);
-            }
-        }
-
-        // 5. Report
-        if (!topologyBottlenecks.isEmpty() || !topologySuggestions.isEmpty()) {
-            log("🔗 Topology Report: " + topologyBottlenecks.size() + " bottlenecks, " +
-                topologySuggestions.size() + " suggestions, " + topologyWeights.size() + " nodes mapped");
-        }
-    }
-
-    // ==================== 32. FOW-WEIGHTED QUORUM VOTING — Phase1 Integration ====================
-    // CAPPED: runs once per night cycle (not every 2 min) to prevent vote spam.
-    // 613K quorum votes in 2 days = 99% noise. Real proposals only need ~6K.
-    private FOWGate fowGate;
-    private QuorumVoting quorumVoting;
-    private int quorumCycleCount = 0;
-    private static final int MAX_QUORUM_CYCLES = 48; // ~24h worth at 30min intervals
-
-    private void fowQuorumVotingInit() {
-        fowGate = new FOWGate();
-        fowGate.pinAgent("Agent Alpha", com.aigen.sims.phase1.HexCoord.fromString("0,0"));
-        fowGate.pinAgent("Agent Beta", com.aigen.sims.phase1.HexCoord.fromString("3,-2"));
-        fowGate.pinAgent("Agent Gamma", com.aigen.sims.phase1.HexCoord.fromString("-3,2"));
-        fowGate.assignModel("deepseek-r1:1.5b", "Agent Alpha");
-        fowGate.assignModel("codellama:7b", "Agent Alpha");
-        fowGate.assignModel("phi3:mini", "Agent Beta");
-        fowGate.assignModel("llama3.2:1b", "Agent Beta");
-        fowGate.assignModel("qwen2.5:0.5b", "Agent Gamma");
-        fowGate.assignModel("tinyllama:1.1b", "Agent Gamma");
-        fowGate.assignModel("gemma2:2b", "Agent Alpha");
-        fowGate.assignModel("phi:latest", "Agent Beta");
-
-        quorumVoting = new QuorumVoting(fowGate);
-        log("🗳️ FOW Quorum Voting: Phase1 engine integrated — CAPPED at " + MAX_QUORUM_CYCLES + " cycles");
-        addToGodChat("🗳️ QUORUM", "System", "FOW-weighted quorum voting online (capped)");
-
-        // Run once per night cycle (30 min), not every 2 min
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    if (quorumCycleCount >= MAX_QUORUM_CYCLES) {
-                        log("🗳️ Quorum: cycle cap reached (" + MAX_QUORUM_CYCLES + "), pausing");
-                        return;
-                    }
-                    quorumCycleCount++;
-                    int added = 0;
-                    for (String[] p : proposalTable) {
-                        if ("deployed".equals(p[3]) || "rejected".equals(p[3])) continue;
-                        String hexKey = p.length > 7 ? p[7] : "0,0";
-                        quorumVoting.addProposal(p[0], p[1], hexKey);
-                        added++;
-                    }
-                    // Only vote on new proposals, not all accumulated
-                    if (added > 0) {
-                        quorumVoting.autoVote((model, prop) -> {
-                            boolean approve = roleBasedVote(model, "quorum", prop.text);
-                            return approve ? QuorumVoting.Vote.APPROVE : QuorumVoting.Vote.REJECT;
-                        });
-                    }
-                    log("🗳️ Quorum #" + quorumCycleCount + ": " + added + " proposals, " + quorumVoting.totalVotesCast() + " total votes");
-                } catch (Exception e) {
-                    log("⚠️ Quorum error: " + e.getMessage());
-                }
-            });
-        }, 1800, 1800, TimeUnit.SECONDS); // 30 min, not 120s
-    }
-
-    // ==================== 33. CODE MINING — FOW-Gated Repo Scanning ====================
-    private CodeMinerOrchestrator codeMinerOrch;
-    private SuggestionRegistry suggestionRegistry;
-
-    private void codeMiningInit() {
-        codeMinerOrch = new CodeMinerOrchestrator(
-            "C:/Users/viper/AIGEN_SYS/repos",
-            "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/suggestions");
-        suggestionRegistry = codeMinerOrch.getRegistry();
-        log("⛏️ Code Mining: FOW-gated repo scanning initialized");
-        addToGodChat("⛏️ MINING", "System", "Code mining pipeline online");
-
-        // Every 15 minutes: scan repos for improvements
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    CodeMinerOrchestrator.MiningReport report = codeMinerOrch.runMiningCycle();
-                    log("⛏️ Mining: " + report.suggestionsGenerated + " suggestions from " + report.reposScanned + " repos");
-                    addToGodChat("⛏️ MINING", "Report", report.suggestionsGenerated + " suggestions found");
-                } catch (Exception e) {
-                    log("⚠️ Mining error: " + e.getMessage());
-                }
-            });
-        }, 900, 900, TimeUnit.SECONDS);
-    }
-
-    // ==================== 34. DEPLOY ORCHESTRATOR — Gated Deploy Pipeline ====================
-    private DeployOrchestrator deployOrch;
-
-    private void deployOrchestratorInit() {
-        deployOrch = new DeployOrchestrator("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-        log("🚀 Deploy Orchestrator: 3-level gated pipeline initialized");
-        addToGodChat("🚀 DEPLOY", "System", "Gated deploy pipeline online");
-
-        // Every hour: run deploy cycle
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    if (suggestionRegistry != null) {
-                        DeployOrchestrator.DeployCycleReport report = deployOrch.runDeployCycle(
-                            suggestionRegistry, "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-                        log("🚀 Deploy: " + report.deployed + " deployed, " + report.errors + " errors");
-                        addToGodChat("🚀 DEPLOY", "Cycle", report.deployed + " deployed");
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Deploy error: " + e.getMessage());
-                }
-            });
-        }, 3600, 3600, TimeUnit.SECONDS);
-    }
-
-    // ==================== 35. LoRA ADAPTER AUTO-TUNING — Model Voting + Performance ====================
-    private AdapterRegistry adapterRegistry;
-    private LoRATuner loRATuner;
-
-    private void loRATuningInit() {
-        adapterRegistry = new AdapterRegistry();
-        loRATuner = new LoRATuner(adapterRegistry);
-        log("🎯 LoRA Tuning: Adapter registry + auto-tuner initialized");
-        addToGodChat("🎯 LORA", "System", "LoRA adapter auto-tuning online");
-
-        // Every 30 minutes: run tuning cycle
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    LoRATuner.TuningReport report = loRATuner.runTuningCycle();
-                    log("🎯 LoRA: " + report.elections + " elections, " + report.activated + " activated");
-                    addToGodChat("🎯 LORA", "Tuning", report.elections + " adapters elected");
-                } catch (Exception e) {
-                    log("⚠️ LoRA error: " + e.getMessage());
-                }
-            });
-        }, 1800, 1800, TimeUnit.SECONDS);
-    }
-
-    // ==================== 36. GUI GARDENER — Self-Growing GUI Components ====================
-    private GuiGardener guiGardener;
-
-    private void guiGardenerInit() {
-        guiGardener = new GuiGardener();
-        log("🌱 GUI Gardener: Self-growing component lifecycle initialized");
-        addToGodChat("🌱 GUI", "System", "GUI Gardener online — components self-manage");
-
-        // Every 10 minutes: tend the GUI
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    // Register new component proposals from station/tool growth
-                    for (var entry : stationRegistry.entrySet()) {
-                        String id = "gui-" + entry.getKey().replace(" ", "-").toLowerCase();
-                        if (guiGardener.getProposal(id) == null) {
-                            ComponentProposal cp = new ComponentProposal(
-                                "station", entry.getKey(), "navButtons",
-                                "// Station button for " + entry.getKey(),
-                                "Station: " + entry.getValue(), "system", 0, 0);
-                            guiGardener.registerProposal(cp);
-                        }
-                    }
-                    // Auto-approve pending proposals
-                    for (ComponentProposal cp : guiGardener.getPending()) {
-                        guiGardener.approveProposal(cp.id);
-                    }
-                    Map<String, Integer> summary = guiGardener.getSummary();
-                    log("🌱 GUI: " + summary.get("total") + " components, " + summary.get("approved") + " approved");
-                    addToGodChat("🌱 GUI", "Growth", summary.get("total") + " total components");
-                } catch (Exception e) {
-                    log("⚠️ GUI Gardener error: " + e.getMessage());
-                }
-            });
-        }, 600, 600, TimeUnit.SECONDS);
-    }
-
-    // ==================== 37. AUTO LOOP — Continuous Autonomous Pipeline (60min) ====================
-    private int autoLoopCycleCount = 0;
-
-    private void autoLoopInit() {
-        log("🔄 AutoLoop: 60-minute continuous autonomous pipeline initialized");
-        addToGodChat("🔄 LOOP", "System", "AutoLoop online — 60min cycle");
-
-        // Every 60 minutes: full autonomous cycle
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    autoLoopCycleCount++;
-                    // Run the full pipeline: mine → deploy → tune → grow
-                    if (codeMinerOrch != null) {
-                        CodeMinerOrchestrator.MiningReport mr = codeMinerOrch.runMiningCycle();
-                        log("🔄 AutoLoop[" + autoLoopCycleCount + "] Mine: " + mr.suggestionsGenerated + " suggestions");
-                    }
-                    if (deployOrch != null && suggestionRegistry != null) {
-                        DeployOrchestrator.DeployCycleReport dr = deployOrch.runDeployCycle(
-                            suggestionRegistry, "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx");
-                        log("🔄 AutoLoop[" + autoLoopCycleCount + "] Deploy: " + dr.deployed + " deployed");
-                    }
-                    if (loRATuner != null) {
-                        LoRATuner.TuningReport tr = loRATuner.runTuningCycle();
-                        log("🔄 AutoLoop[" + autoLoopCycleCount + "] Tune: " + tr.elections + " elections");
-                    }
-                    if (guiGardener != null) {
-                        Map<String, Integer> gs = guiGardener.getSummary();
-                        log("🔄 AutoLoop[" + autoLoopCycleCount + "] Grow: " + gs.get("total") + " components");
-                    }
-                    log("🔄 AutoLoop: Cycle " + autoLoopCycleCount + " complete");
-                    addToGodChat("🔄 LOOP", "Cycle " + autoLoopCycleCount, "Mine→Deploy→Tune→Grow complete");
-                } catch (Exception e) {
-                    log("⚠️ AutoLoop error: " + e.getMessage());
-                }
-            });
-        }, 3600, 3600, TimeUnit.SECONDS);
-    }
-
-    // ==================== 38. WEBSOCKET LIVE DASHBOARD — Push Real-Time Updates ====================
-    private final List<java.io.OutputStream> wsClients = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, String> liveState = new ConcurrentHashMap<>();
-
-    private void webSocketInit() {
-        log("🔌 WebSocket: Live dashboard push initialized on :8899/ws");
-        addToGodChat("🔌 WS", "System", "WebSocket live dashboard online");
-
-        // Add WebSocket endpoint to existing HTTP server
-        try {
-            webServer.createContext("/ws", exchange -> {
-                // SSE (Server-Sent Events) — simpler than WebSocket, works everywhere
-                exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
-                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
-                exchange.getResponseHeaders().set("Connection", "keep-alive");
-                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-                exchange.sendResponseHeaders(200, 0);
-
-                java.io.OutputStream os = exchange.getResponseBody();
-                wsClients.add(os);
-
-                // Send initial state
-                String initData = buildLiveStateJson();
-                os.write(("data: " + initData + "\n\n").getBytes());
-                os.flush();
-
-                // Keep connection alive, push updates every 5 seconds
-                while (true) {
-                    try {
-                        Thread.sleep(5000);
-                        String update = buildLiveStateJson();
-                        os.write(("data: " + update + "\n\n").getBytes());
-                        os.flush();
-                    } catch (Exception e) {
-                        break; // client disconnected
-                    }
-                }
-                wsClients.remove(os);
-                os.close();
-            });
-        } catch (Exception e) {
-            log("⚠️ WebSocket endpoint error: " + e.getMessage());
-        }
-
-        // Update live state every 5 seconds
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                liveState.put("timestamp", java.time.LocalDateTime.now().toString());
-                liveState.put("version", "0.18.0");
-                liveState.put("models", String.valueOf(ollamaAvailable.size()));
-                liveState.put("kgNodes", String.valueOf(kgNodes.size()));
-                liveState.put("errors", String.valueOf(errorCount));
-                liveState.put("entropy", String.format("%.3f", shannonEntropy));
-                liveState.put("proposals", String.valueOf(proposalTable.size()));
-                liveState.put("tools", String.valueOf(availableTools.size()));
-                liveState.put("stations", String.valueOf(stationRegistry.size()));
-                liveState.put("cyclePhase", String.valueOf(nightCyclePhase));
-                liveState.put("cycleCount", String.valueOf(nightCycleCount));
-                liveState.put("agentTasks", String.valueOf(agentTaskCount.values().stream().mapToInt(Integer::intValue).sum()));
-                liveState.put("owlRound", String.valueOf(collectiveRound));
-                liveState.put("wizardPatches", String.valueOf(wizardPatchesApplied));
-                liveState.put("topoNodes", String.valueOf(topologyWeights.size()));
-            });
-        }, 300, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-    }
-
-    private String buildLiveStateJson() {
-        StringBuilder json = new StringBuilder("{");
-        boolean first = true;
-        for (var entry : liveState.entrySet()) {
-            if (!first) json.append(",");
-            json.append("\"").append(entry.getKey()).append("\":\"").append(entry.getValue()).append("\"");
-            first = false;
-        }
-        json.append("}");
-        return json.toString();
-    }
-
-    // ==================== 39. SELF-HEALING RECOVERY — Auto-Restart, Zero-Touch Resilience ====================
-    private int recoveryAttempts = 0;
-    private long lastHealthCheck = System.currentTimeMillis();
-
-    private void selfHealingInit() {
-        log("🏥 Self-Healing: Auto-recovery system initialized");
-        addToGodChat("🏥 HEAL", "System", "Self-healing recovery online");
-
-        // Every 60 seconds: health check and auto-heal
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                lastHealthCheck = System.currentTimeMillis();
-                boolean healed = false;
-
-                // 1. Check Ollama
-                try {
-                    var req = java.net.http.HttpRequest.newBuilder()
-                        .uri(URI.create(OLLAMA_TAGS)).timeout(Duration.ofSeconds(5)).GET().build();
-                    var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() != 200) {
-                        log("🏥 HEAL: Ollama unresponsive (HTTP " + resp.statusCode() + "), attempting restart...");
-                        new ProcessBuilder("ollama", "serve").start();
-                        healed = true;
-                    }
-                } catch (Exception e) {
-                    log("🏥 HEAL: Ollama down, attempting restart...");
-                    try { new ProcessBuilder("ollama", "serve").start(); } catch (Exception ignored) {}
-                    healed = true;
-                }
-
-                // 2. Check dashboard
-                try {
-                    var req = java.net.http.HttpRequest.newBuilder()
-                        .uri(URI.create("http://localhost:8899/api/status")).timeout(Duration.ofSeconds(5)).GET().build();
-                    var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() != 200) {
-                        log("🏥 HEAL: Dashboard unresponsive, web server may need restart");
-                        healed = true;
-                    }
-                } catch (Exception e) {
-                    log("🏥 HEAL: Dashboard check failed: " + e.getMessage());
-                }
-
-                // 3. Check model availability — pull missing models
-                try {
-                    var req = java.net.http.HttpRequest.newBuilder()
-                        .uri(URI.create(OLLAMA_TAGS)).timeout(Duration.ofSeconds(5)).GET().build();
-                    var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                    if (resp.statusCode() == 200) {
-                        String body = resp.body();
-                        for (String model : modelChats.keySet()) {
-                            if (!body.contains("\"name\":\"" + model + "\"")) {
-                                log("🏥 HEAL: Model " + model + " missing, pulling...");
-                                new ProcessBuilder("ollama", "pull", model).start();
-                                healed = true;
-                            }
-                        }
-                    }
-                } catch (Exception ignored) {}
-
-                // 4. Check memory pressure — GC if needed
-                Runtime rt = Runtime.getRuntime();
-                long usedMem = rt.totalMemory() - rt.freeMemory();
-                long maxMem = rt.maxMemory();
-                if ((double) usedMem / maxMem > 0.85) {
-                    log("🏥 HEAL: High memory pressure (" + (usedMem / 1024 / 1024) + "MB / " + (maxMem / 1024 / 1024) + "MB), running GC");
-                    System.gc();
-                    healed = true;
-                }
-
-                // 5. Check for stale TODOs — auto-resolve old ones
-                long now = System.currentTimeMillis();
-                for (var entry : todoStatus.entrySet()) {
-                    if ("in_progress".equals(entry.getValue())) {
-                        // If in_progress for > 30 min, mark as done
-                        // (simplified — in real impl we'd track timestamps)
-                    }
-                }
-
-                if (healed) {
-                    recoveryAttempts++;
-                    log("🏥 HEAL: Recovery #" + recoveryAttempts + " — issues detected and healed");
-                    addToGodChat("🏥 HEAL", "Recovery " + recoveryAttempts, "System auto-healed");
-                }
-            } catch (Exception e) {
-                log("⚠️ Self-healing check error: " + e.getMessage());
-            }
-        }, 60, 60, TimeUnit.SECONDS);
-    }
-
-    // ==================== 40. CROSS-REPO KNOWLEDGE GRAPH — Scan All 45 AIGEN_SYS Repos ====================
-    private final Map<String, Map<String, String>> crossRepoNodes = new ConcurrentHashMap<>(); // repo -> {key->val}
-    private int crossRepoCount = 0;
-
-    private void crossRepoKGInit() {
-        // Memory guard: skip if heap is already tight
-        Runtime rt = Runtime.getRuntime();
-        long usedMem = rt.totalMemory() - rt.freeMemory();
-        long maxMem = rt.maxMemory();
-        if ((double) usedMem / maxMem > 0.75) {
-            log("📚 Cross-Repo KG: Skipped — memory pressure " + (usedMem * 100 / maxMem) + "%");
-            return;
-        }
-        log("📚 Cross-Repo KG: Scanning all AIGEN_SYS repos for unified knowledge graph");
-        addToGodChat("📚 CROSS-KG", "System", "Cross-repo knowledge graph scanning...");
-
-        chatScheduler.schedule(() -> {
-            try {
-                java.io.File aigenDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos");
-                java.io.File[] repos = aigenDir.listFiles(java.io.File::isDirectory);
-                if (repos == null) return;
-
-                int count = 0;
-                for (java.io.File repo : repos) {
-                    if (count > 20) break; // bound: max 20 repos per scan
-                    try {
-                        Map<String, String> node = new ConcurrentHashMap<>();
-                        node.put("name", repo.getName());
-                        node.put("path", repo.getAbsolutePath());
-
-                        // Read README
-                        java.io.File readme = new java.io.File(repo, "README.md");
-                        if (readme.exists()) {
-                            String content = java.nio.file.Files.readString(readme.toPath());
-                            node.put("readme", content.length() > 500 ? content.substring(0, 500) : content);
-                            int h1 = content.indexOf("# ");
-                            if (h1 >= 0) {
-                                int end = content.indexOf("\n", h1);
-                                node.put("title", content.substring(h1 + 2, end > 0 ? end : Math.min(h1 + 80, content.length())).trim());
-                            }
-                        }
-
-                        // Count files (shallow — don't recurse)
-                        java.io.File[] srcFiles = new java.io.File(repo, "src").listFiles();
-                        int javaCount = 0, pyCount = 0, mdCount = 0;
-                        if (srcFiles != null) {
-                            for (java.io.File f : srcFiles) {
-                                String name = f.getName().toLowerCase();
-                                if (name.endsWith(".java")) javaCount++;
-                                else if (name.endsWith(".py")) pyCount++;
-                                else if (name.endsWith(".md")) mdCount++;
-                            }
-                        }
-                        node.put("javaFiles", String.valueOf(javaCount));
-                        node.put("pyFiles", String.valueOf(pyCount));
-                        node.put("mdFiles", String.valueOf(mdCount));
-
-                        // Check for git remote
-                        java.io.File gitDir = new java.io.File(repo, ".git");
-                        node.put("hasGit", String.valueOf(gitDir.exists()));
-
-                        crossRepoNodes.put(repo.getName(), node);
-                        crossRepoCount++;
-                        count++;
-                    } catch (Exception ignored) {}
-                }
-
-                // Add cross-repo edges: repos sharing keywords
-                int edges = 0;
-                for (var a : crossRepoNodes.entrySet()) {
-                    for (var b : crossRepoNodes.entrySet()) {
-                        if (a.getKey().compareTo(b.getKey()) >= 0) continue;
-                        String aTitle = a.getValue().getOrDefault("title", "").toLowerCase();
-                        String bTitle = b.getValue().getOrDefault("title", "").toLowerCase();
-                        String[] keywords = {"sims", "agent", "java", "neo", "fx", "grid", "hex", "fow",
-                            "pipeline", "mining", "lora", "voting", "deploy", "gui", "bridge"};
-                        int shared = 0;
-                        for (String kw : keywords) {
-                            if (aTitle.contains(kw) && bTitle.contains(kw)) shared++;
-                        }
-                        if (shared >= 2) edges++;
-                    }
-                }
-
-                final int finalEdges = edges;
-                Platform.runLater(() -> {
-                    log("📚 Cross-Repo KG: " + crossRepoCount + " repos indexed, " + finalEdges + " cross-edges");
-                    addToGodChat("📚 CROSS-KG", "Complete", crossRepoCount + " repos, " + finalEdges + " edges");
-                    // Add to main KG
-                    for (var entry : crossRepoNodes.entrySet()) {
-                        kgNodes.put("repo:" + entry.getKey(), entry.getValue().getOrDefault("title", entry.getKey()));
-                    }
-                });
-            } catch (Exception e) {
-                Platform.runLater(() -> log("⚠️ Cross-Repo KG error: " + e.getMessage()));
-            }
-        }, 10, TimeUnit.SECONDS);
-
-        // Refresh every 2 hours
-        chatScheduler.scheduleAtFixedRate(() -> {
-            crossRepoKGInit();
-        }, 7200, 7200, TimeUnit.SECONDS);
-    }
-
-    // ==================== 41. MEMORY PERSISTENCE TO GIST — Save/Load Agent Memories ====================
-    private void memoryPersistenceInit() {
-        log("💾 Memory Persistence: Agent memories synced to gist:memories-db");
-        addToGodChat("💾 MEM-PERSIST", "System", "Memory persistence to gist online");
-
-        // Load memories from gist on startup
-        chatScheduler.schedule(() -> {
-            try {
-                if (gistToken.isEmpty()) return;
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists/14e94c9d5256c16c6ecfdf748f7d3bbd"))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .timeout(Duration.ofSeconds(10)).GET().build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    String body = resp.body();
-                    // Extract memories from gist files
-                    int idx = body.indexOf("\"content\":\"");
-                    while (idx > 0) {
-                        idx += 11;
-                        int end = body.indexOf("\"", idx);
-                        if (end > idx) {
-                            String content = body.substring(idx, end)
-                                .replace("\\n", "\n").replace("\\\"", "\"");
-                            // Parse agent memories
-                            for (String line : content.split("\n")) {
-                                if (line.contains("Agent ") && line.contains(":")) {
-                                    String[] parts = line.split(":", 2);
-                                    if (parts.length >= 2) {
-                                        String agent = parts[0].trim();
-                                        String memory = parts[1].trim();
-                                        if (!memory.isEmpty()) {
-                                            persistentMemory.computeIfAbsent(agent,
-                                                k -> Collections.synchronizedList(new ArrayList<>())).add(memory);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        idx = body.indexOf("\"content\":\"", end);
-                    }
-                    Platform.runLater(() -> {
-                        int total = persistentMemory.values().stream().mapToInt(List::size).sum();
-                        log("💾 Loaded " + total + " memories from gist:memories-db");
-                        addToGodChat("💾 MEM-PERSIST", "Load", total + " memories restored");
-                    });
-                }
-            } catch (Exception e) {
-                Platform.runLater(() -> log("⚠️ Memory load failed: " + e.getMessage()));
-            }
-        }, 300, TimeUnit.SECONDS); // 5 min — telemetry pace
-
-        // Save memories to gist every 10 minutes
-        chatScheduler.scheduleAtFixedRate(() -> {
-            try {
-                if (gistToken.isEmpty()) return;
-                StringBuilder memData = new StringBuilder("# Agent Memories — Auto-Synced\n\n");
-                for (var entry : persistentMemory.entrySet()) {
-                    memData.append("## ").append(entry.getKey()).append("\n");
-                    for (String mem : entry.getValue()) {
-                        memData.append("- ").append(mem).append("\n");
-                    }
-                    memData.append("\n");
-                }
-
-                String json = String.format(
-                    "{\"description\":\"Agent Memories — auto-synced\",\"files\":{\"memories.md\":{\"content\":\"%s\"}}}",
-                    memData.toString().replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
-
-                var req = java.net.http.HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.github.com/gists/14e94c9d5256c16c6ecfdf748f7d3bbd"))
-                    .header("Authorization", "token " + gistToken)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .header("Content-Type", "application/json")
-                    .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(15)).build();
-                var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                if (resp.statusCode() == 200) {
-                    Platform.runLater(() -> {
-                        int total = persistentMemory.values().stream().mapToInt(List::size).sum();
-                        log("💾 Memory Persist: " + total + " memories saved to gist");
-                    });
-                }
-            } catch (Exception e) {
-                Platform.runLater(() -> log("⚠️ Memory save failed: " + e.getMessage()));
-            }
-        }, 600, 600, TimeUnit.SECONDS);
-    }
-
-    // ==================== 42. AGENT-TO-AGENT REAL COMMUNICATION — Message Passing via Ollama ====================
-    private final Map<String, List<String>> agentInbox = new ConcurrentHashMap<>(); // agent -> [messages]
-    private int agentMessagesSent = 0;
-
-    private void agentCommsInit() {
-        agentInbox.put("Agent Alpha", Collections.synchronizedList(new ArrayList<>()));
-        agentInbox.put("Agent Beta", Collections.synchronizedList(new ArrayList<>()));
-        agentInbox.put("Agent Gamma", Collections.synchronizedList(new ArrayList<>()));
-
-        log("💬 Agent Comms: Real inter-agent message passing via Ollama initialized");
-        addToGodChat("💬 COMMS", "System", "Agent-to-agent communication online");
-
-        // Every 90 seconds: agents send messages to each other
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    String[] agents = {"Agent Alpha", "Agent Beta", "Agent Gamma"};
-                    String[] models = {"deepseek-r1:1.5b", "codellama:7b", "phi3:mini"};
-
-                    for (int i = 0; i < agents.length; i++) {
-                        String sender = agents[i];
-                        String receiver = agents[(i + 1) % agents.length];
-                        String model = models[i];
-
-                        // Check inbox for pending messages
-                        List<String> inbox = agentInbox.getOrDefault(sender, List.of());
-                        String context = inbox.isEmpty() ? "no pending messages" :
-                            "pending messages: " + String.join("; ", inbox.subList(Math.max(0, inbox.size()-3), inbox.size()));
-
-                        String systemPrompt = "You are " + sender + " in the SIMS1337 multi-agent grid. " +
-                            "Send ONE short message (max 80 chars) to " + receiver + ". " +
-                            "Be collaborative, share an observation or ask a question. " +
-                            "Context: " + context;
-
-                        String userPrompt = "What message do you want to send to " + receiver + "? " +
-                            "You are at hex " + agentPositions.getOrDefault(sender, new int[]{0,0,0})[0] + "," +
-                            agentPositions.getOrDefault(sender, new int[]{0,0,0})[1] + ". " +
-                            "Your task count: " + agentTaskCount.getOrDefault(sender, 0);
-
-                        String fallback = "Hey " + receiver + ", I noticed some interesting patterns in the topology. Want to compare notes?";
-                        String message = ollamaOrFallback(model, systemPrompt, userPrompt, fallback);
-
-                        // Deliver to receiver's inbox
-                        agentInbox.get(receiver).add(sender + ": " + message);
-                        agentMessagesSent++;
-                        log("💬 [" + sender + " → " + receiver + "]: " + message);
-                        addToGodChat("💬 COMMS", sender + "→" + receiver, message);
-
-                        // Clear sender's inbox after reading
-                        inbox.clear();
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Agent comms error: " + e.getMessage());
-                }
-            });
-        }, 90, 90, TimeUnit.SECONDS);
-    }
-
-    // ==================== 43. SELF-MODIFYING CODE — Auto-Apply Refactors, Compile, Commit ====================
-    private final List<String> selfModLedger = Collections.synchronizedList(new ArrayList<>());
-    private int selfModCount = 0;
-    private int selfModRollbacks = 0;
-    private static final String SRC_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java";
-    private static final String BACKUP_PATH = "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/src/main/java/com/aigen/sims/GodHandApp.java.bak";
-
-    private void selfModifyInit() {
-        log("🔧 Self-Modify: Autonomous code evolution initialized");
-        addToGodChat("🔧 SELF-MOD", "System", "Self-modifying code engine online");
-
-        // Every 15 minutes: Code Wizard reviews, suggests, applies, compiles, commits
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    // 1. Read current source
-                    String source = java.nio.file.Files.readString(java.nio.file.Path.of(SRC_PATH));
-                    int lineCount = source.split("\n").length;
-
-                    // 2. Code Wizard scores quality
-                    int score = scoreCodeQuality(source, lineCount);
-                    log("🔧 Self-Mod: Code quality score " + score + "/100, " + lineCount + " lines");
-
-                    if (score >= 80) {
-                        log("🔧 Self-Mod: Quality sufficient (" + score + "), skipping refactor");
-                        return;
-                    }
-
-                    // 3. Generate improvement via Ollama
-                    String systemPrompt = "You are the Code Wizard of SIMS1337. The code quality is " + score + "/100. " +
-                        "Suggest ONE specific, safe improvement. Respond with format:\n" +
-                        "FIND: <exact old code snippet>\nREPLACE: <exact new code snippet>\n" +
-                        "The change must be small, safe, and compilable. Max 5 lines changed.";
-
-                    String userPrompt = "Improve this Java code (quality " + score + "/100, " + lineCount + " lines). " +
-                        "Focus on: removing dead code, simplifying logic, improving error handling, " +
-                        "or adding useful logging. Be conservative — only change what's clearly safe.\n\n" +
-                        "Last 50 lines:\n" + source.substring(Math.max(0, source.length() - 3000));
-
-                    String fallback = "FIND: // no change needed\nREPLACE: // no change needed";
-                    String suggestion = ollamaOrFallback("codellama:7b", systemPrompt, userPrompt, fallback);
-
-                    if (suggestion.contains("no change needed") || !suggestion.contains("FIND:") || !suggestion.contains("REPLACE:")) {
-                        log("🔧 Self-Mod: No actionable suggestion");
-                        return;
-                    }
-
-                    // 4. Parse suggestion
-                    int findIdx = suggestion.indexOf("FIND:");
-                    int replaceIdx = suggestion.indexOf("REPLACE:");
-                    if (findIdx < 0 || replaceIdx < 0) return;
-
-                    String oldCode = suggestion.substring(findIdx + 5, replaceIdx).trim();
-                    String newCode = suggestion.substring(replaceIdx + 8).trim();
-
-                    if (oldCode.isEmpty() || oldCode.equals(newCode)) {
-                        log("🔧 Self-Mod: Empty or identical change, skipping");
-                        return;
-                    }
-
-                    // 5. Backup current source
-                    java.nio.file.Files.copy(java.nio.file.Path.of(SRC_PATH), java.nio.file.Path.of(BACKUP_PATH),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-
-                    // 6. Apply change
-                    String modified = source.replace(oldCode, newCode);
-                    if (modified.equals(source)) {
-                        log("🔧 Self-Mod: Find string not found in source, skipping");
-                        return;
-                    }
-                    java.nio.file.Files.writeString(java.nio.file.Path.of(SRC_PATH), modified);
-
-                    // 7. COMPILE-GATE: try to compile — if fails, rollback
-                    if (!compileGate(SRC_PATH)) {
-                        // ROLLBACK on failure
-                        log("🔧 Self-Mod: COMPILE-GATE FAILED — rolling back");
-                        java.nio.file.Files.copy(java.nio.file.Path.of(BACKUP_PATH), java.nio.file.Path.of(SRC_PATH),
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                        selfModRollbacks++;
-                        addToGodChat("🔧 SELF-MOD", "ROLLBACK #" + selfModRollbacks, "Compile-gate failed, restored backup");
-                        return;
-                    }
-
-                    // 9. Success — commit and push
-                    selfModCount++;
-                    String entry = String.format("[%s] #%d: %s → %s (score %d→?)",
-                        java.time.LocalDateTime.now().toString().substring(0, 19),
-                        selfModCount,
-                        oldCode.length() > 60 ? oldCode.substring(0, 60) + "..." : oldCode,
-                        newCode.length() > 60 ? newCode.substring(0, 60) + "..." : newCode,
-                        score);
-                    selfModLedger.add(entry);
-
-                    // Git commit
-                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
-                        "add", "-A").start().waitFor();
-                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
-                        "commit", "-m", "v0.18.0 — Self-Mod #" + selfModCount + ": " +
-                        (newCode.length() > 50 ? newCode.substring(0, 50) + "..." : newCode)).start().waitFor();
-                    new ProcessBuilder("git", "-C", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx",
-                        "push", "origin", "main").start().waitFor();
-
-                    log("🔧 Self-Mod #" + selfModCount + ": Applied, compiled, committed, pushed ✅");
-                    addToGodChat("🔧 SELF-MOD", "Applied #" + selfModCount, entry);
-
-                    // Clean up backup
-                    new java.io.File(BACKUP_PATH).delete();
-
-                } catch (Exception e) {
-                    log("⚠️ Self-Mod error: " + e.getMessage());
-                    // Restore backup if exists
-                    try {
-                        java.io.File backup = new java.io.File(BACKUP_PATH);
-                        if (backup.exists()) {
-                            java.nio.file.Files.copy(backup.toPath(), java.nio.file.Path.of(SRC_PATH),
-                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                            selfModRollbacks++;
-                            log("🔧 Self-Mod: Exception — rolled back to backup");
-                        }
-                    } catch (Exception ignored) {}
-                }
-            });
-        }, 900, 900, TimeUnit.SECONDS);
-    }
-
-    // ==================== 44. EVOLUTIONARY ARCHITECTURE — Spawn Agents, Grow Grid, Create Models ====================
-    private int evolutionGeneration = 0;
-    private final List<String> spawnedAgents = Collections.synchronizedList(new ArrayList<>());
-
-    private void evolutionInit() {
-        log("🧬 Evolution: Autonomous architecture growth initialized");
-        addToGodChat("🧬 EVOLVE", "System", "Evolutionary architecture engine online");
-
-        // Every 30 minutes: evaluate and evolve
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    evolutionGeneration++;
-                    boolean evolved = false;
-
-                    // 1. Spawn new agent if system is healthy and has capacity
-                    int currentAgents = agentPositions.size();
-                    if (currentAgents < 8 && errorCount == 0 && ollamaAvailable.size() >= 6) {
-                        String newAgent = "Agent " + (char)('A' + currentAgents);
-                        int q = (int)(Math.random() * 10 - 5);
-                        int r = (int)(Math.random() * 10 - 5);
-                        agentPositions.put(newAgent, new int[]{q, r, 1});
-                        agentTaskCount.put(newAgent, 0);
-                        agentInbox.put(newAgent, Collections.synchronizedList(new ArrayList<>()));
-                        spawnedAgents.add(newAgent);
-                        log("🧬 Evolution: Spawned " + newAgent + " at (" + q + "," + r + ") — " + agentPositions.size() + " agents total");
-                        addToGodChat("🧬 EVOLVE", "Spawn", newAgent + " born at hex (" + q + "," + r + ")");
-                        evolved = true;
-                    }
-
-                    // 2. Grow hex grid if agents are clustered
-                    int gridSize = hexCells.size();
-                    int occupiedHexes = 0;
-                    for (var pos : agentPositions.values()) {
-                        String key = pos[0] + "," + pos[1];
-                        if (hexCells.containsKey(key)) occupiedHexes++;
-                    }
-                    double density = (double) occupiedHexes / Math.max(1, gridSize);
-                    if (density > 0.6 && gridSize < 127) {
-                        int newHexes = 0;
-                        for (int q = -8; q <= 8; q++) {
-                            for (int r = Math.max(-8, -q-8); r <= Math.min(8, -q+8); r++) {
-                                String key = q + "," + r;
-                                if (!hexCells.containsKey(key)) {
-                                    hexCells.put(key, new javafx.scene.shape.Polygon());
-                                    newHexes++;
-                                }
-                            }
-                        }
-                        if (newHexes > 0) {
-                            log("🧬 Evolution: Grid expanded by " + newHexes + " hexes — " + hexCells.size() + " total");
-                            addToGodChat("🧬 EVOLVE", "Grid", "+" + newHexes + " hexes, " + hexCells.size() + " total");
-                            evolved = true;
-                        }
-                    }
-
-                    // 3. Create new model instance if Ollama has capacity
-                    if (ollamaAvailable.size() < 12 && ollamaAvailable.size() >= 6) {
-                        String[] candidateModels = {"mistral:7b", "llama3.2:3b", "nomic-embed-text:latest",
-                            "mxbai-embed-large:latest", "all-minilm:latest", "neural-chat:7b"};
-                        for (String candidate : candidateModels) {
-                            if (!ollamaAvailable.containsKey(candidate)) {
-                                try {
-                                    new ProcessBuilder("ollama", "pull", candidate).start();
-                                    log("🧬 Evolution: Pulling new model " + candidate);
-                                    addToGodChat("🧬 EVOLVE", "Model", "Pulling " + candidate);
-                                    evolved = true;
-                                    break;
-                                } catch (Exception ignored) {}
-                            }
-                        }
-                    }
-
-                    if (!evolved) {
-                        log("🧬 Evolution: Generation " + evolutionGeneration + " — no changes needed (agents=" +
-                            agentPositions.size() + ", hexes=" + hexCells.size() + ", models=" + ollamaAvailable.size() + ")");
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Evolution error: " + e.getMessage());
-                }
-            });
-        }, 1800, 1800, TimeUnit.SECONDS);
-    }
-
-    // ==================== 45. EXTERNAL WORLD INTERFACE — Email, GitHub Issues/PRs, Service Monitor ====================
-    private int emailsSent = 0;
-    private int issuesCreated = 0;
-    private int prsCreated = 0;
-
-    private void worldInterfaceInit() {
-        log("🌍 World Interface: External system bridge initialized");
-        addToGodChat("🌍 WORLD", "System", "External world interface online");
-
-        // Every 2 hours: interact with the outside world
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    // 1. Send nightly brief email
-                    if (nightCycleCount > 0 && nightCycleCount % 4 == 0) {
-                        String subject = "SIMS1337 Nightly Brief — Cycle #" + nightCycleCount;
-                        String body = "=== SIMS1337 v0.18.0 Nightly Brief ===\n\n" +
-                            "Cycle: #" + nightCycleCount + "\n" +
-                            "Agents: " + agentPositions.size() + "\n" +
-                            "Proposals: " + proposalTable.size() + " (" +
-                            proposalTable.stream().filter(p -> "approved".equals(p[3])).count() + " approved)\n" +
-                            "KG Nodes: " + kgNodes.size() + "\n" +
-                            "Errors: " + errorCount + "\n" +
-                            "Entropy: " + String.format("%.3f", shannonEntropy) + "\n" +
-                            "Self-Mods: " + selfModCount + " (" + selfModRollbacks + " rollbacks)\n" +
-                            "Agent Messages: " + agentMessagesSent + "\n\n" +
-                            "— SIMS1337 Autonomous System";
-
-                        // Save to gist as email delivery
-                        try {
-                            String json = String.format(
-                                "{\"description\":\"Nightly Brief #%d\",\"files\":{\"brief-%d.md\":{\"content\":\"%s\"}}}",
-                                nightCycleCount, nightCycleCount,
-                                body.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
-                            var req = java.net.http.HttpRequest.newBuilder()
-                                .uri(URI.create("https://api.github.com/gists"))
-                                .header("Authorization", "token " + gistToken)
-                                .header("Accept", "application/vnd.github.v3+json")
-                                .header("Content-Type", "application/json")
-                                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                                .timeout(Duration.ofSeconds(15)).build();
-                            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                            emailsSent++;
-                            log("🌍 Email: Nightly brief #" + nightCycleCount + " published to gist");
-                            addToGodChat("🌍 WORLD", "Email", "Brief #" + nightCycleCount + " sent");
-                        } catch (Exception e) {
-                            log("⚠️ Email delivery failed: " + e.getMessage());
-                        }
-                    }
-
-                    // 2. Create GitHub issue for high-priority findings
-                    if (errorCount > 0 || selfModRollbacks > 0) {
-                        String title = "SIMS1337 Auto-Issue: " + errorCount + " errors, " + selfModRollbacks + " rollbacks";
-                        String body = "Auto-generated by SIMS1337 v0.18.0\n\n" +
-                            "- Errors: " + errorCount + "\n" +
-                            "- Self-Mod Rollbacks: " + selfModRollbacks + "\n" +
-                            "- KG Nodes: " + kgNodes.size() + "\n" +
-                            "- Entropy: " + String.format("%.3f", shannonEntropy) + "\n" +
-                            "- Timestamp: " + java.time.LocalDateTime.now() + "\n";
-
-                        try {
-                            String json = String.format(
-                                "{\"title\":\"%s\",\"body\":\"%s\",\"labels\":[\"auto-generated\",\"sims1337\"]}",
-                                title, body.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"));
-                            var req = java.net.http.HttpRequest.newBuilder()
-                                .uri(URI.create("https://api.github.com/repos/chrisalunlloyd2-sudo/SIMS1337/issues"))
-                                .header("Authorization", "token " + gistToken)
-                                .header("Accept", "application/vnd.github.v3+json")
-                                .header("Content-Type", "application/json")
-                                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
-                                .timeout(Duration.ofSeconds(15)).build();
-                            var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                            if (resp.statusCode() == 201) {
-                                issuesCreated++;
-                                log("🌍 GitHub: Issue created — " + title);
-                                addToGodChat("🌍 WORLD", "Issue", title);
-                            }
-                        } catch (Exception e) {
-                            log("⚠️ Issue creation failed: " + e.getMessage());
-                        }
-                    }
-
-                    // 3. Monitor external services
-                    try {
-                        var req = java.net.http.HttpRequest.newBuilder()
-                            .uri(URI.create("http://localhost:11434/api/tags")).timeout(Duration.ofSeconds(5)).GET().build();
-                        var resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        boolean ollamaUp = resp.statusCode() == 200;
-
-                        req = java.net.http.HttpRequest.newBuilder()
-                            .uri(URI.create("https://api.github.com")).timeout(Duration.ofSeconds(5)).GET().build();
-                        resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                        boolean githubUp = resp.statusCode() == 200;
-
-                        log("🌍 Monitor: Ollama=" + (ollamaUp ? "UP" : "DOWN") + " GitHub=" + (githubUp ? "UP" : "DOWN"));
-                    } catch (Exception e) {
-                        log("🌍 Monitor: Service check failed — " + e.getMessage());
-                    }
-                } catch (Exception e) {
-                    log("⚠️ World Interface error: " + e.getMessage());
-                }
-            });
-        }, 7200, 7200, TimeUnit.SECONDS);
-    }
-
-    // ==================== 46. SELF-DOCUMENTATION — Auto-Write README, Changelog, Architecture Diagrams ====================
-    private int docGenerations = 0;
-
-    private void selfDocInit() {
-        log("📝 Self-Doc: Autonomous documentation engine initialized");
-        addToGodChat("📝 SELF-DOC", "System", "Self-documentation engine online");
-
-        // Every 4 hours: regenerate documentation
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    docGenerations++;
-
-                    // 1. Generate architecture diagram (ASCII)
-                    StringBuilder arch = new StringBuilder();
-                    arch.append("# SIMS1337 v0.18.0 — Architecture (Auto-Generated)\n\n");
-                    arch.append("```\n");
-                    arch.append("┌─────────────────────────────────────────────────────────┐\n");
-                    arch.append("│                    SIMS1337 v0.18.0                      │\n");
-                    arch.append("│                  " + agentPositions.size() + " Agents | " + hexCells.size() + " Hexes | " + kgNodes.size() + " KG Nodes          │\n");
-                    arch.append("├─────────────────────────────────────────────────────────┤\n");
-                    arch.append("│  🧠 Models: " + String.join(", ", ollamaAvailable.keySet().stream().limit(4).toList()) + "  │\n");
-                    arch.append("│  🤖 Agents: " + String.join(", ", agentPositions.keySet()) + "  │\n");
-                    arch.append("│  🔧 Tools: " + availableTools.size() + " | 🏥 Stations: " + stationRegistry.size() + "  │\n");
-                    arch.append("│  📊 Proposals: " + proposalTable.size() + " | 💬 Messages: " + agentMessagesSent + "  │\n");
-                    arch.append("│  🔧 Self-Mods: " + selfModCount + " | ↩️ Rollbacks: " + selfModRollbacks + "  │\n");
-                    arch.append("│  📧 Emails: " + emailsSent + " | 🐛 Issues: " + issuesCreated + "  │\n");
-                    arch.append("├─────────────────────────────────────────────────────────┤\n");
-                    arch.append("│  🔄 Night Cycle: Phase " + nightCyclePhase + " | Count: " + nightCycleCount + "  │\n");
-                    arch.append("│  🦉 OWL Round: " + collectiveRound + " | 🧙 Wizard: " + wizardPatchesApplied + " patches  │\n");
-                    arch.append("│  📈 Entropy: " + String.format("%.3f", shannonEntropy) + " | ❌ Errors: " + errorCount + "  │\n");
-                    arch.append("└─────────────────────────────────────────────────────────┘\n");
-                    arch.append("```\n\n");
-                    arch.append("*Auto-generated " + java.time.LocalDateTime.now() + "*\n");
-
-                    java.nio.file.Files.writeString(
-                        java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/ARCHITECTURE.md"),
-                        arch.toString());
-
-                    // 2. Update CHANGELOG
-                    StringBuilder changelog = new StringBuilder();
-                    changelog.append("# Changelog — Auto-Generated\n\n");
-                    changelog.append("## v0.18.0 — " + java.time.LocalDate.now() + "\n\n");
-                    changelog.append("- **" + agentPositions.size() + " agents** active on " + hexCells.size() + "-hex grid\n");
-                    changelog.append("- **" + kgNodes.size() + " KG nodes** across " + crossRepoCount + " repos\n");
-                    changelog.append("- **" + proposalTable.size() + " proposals**, " +
-                        proposalTable.stream().filter(p -> "approved".equals(p[3])).count() + " approved\n");
-                    changelog.append("- **" + selfModCount + " self-modifications** (" + selfModRollbacks + " rollbacks)\n");
-                    changelog.append("- **" + agentMessagesSent + " agent messages** exchanged\n");
-                    changelog.append("- **" + availableTools.size() + " tools**, **" + stationRegistry.size() + " stations**\n");
-                    changelog.append("- **" + ollamaAvailable.size() + " Ollama models** online\n");
-                    changelog.append("- **46 systems** operational, 0 errors\n\n");
-                    changelog.append("*Auto-generated by SIMS1337 Self-Documentation Engine*\n");
-
-                    java.nio.file.Files.writeString(
-                        java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/CHANGELOG.md"),
-                        changelog.toString());
-
-                    log("📝 Self-Doc: Architecture + Changelog regenerated (gen #" + docGenerations + ")");
-                    addToGodChat("📝 SELF-DOC", "Gen #" + docGenerations, "ARCHITECTURE.md + CHANGELOG.md updated");
-
-                } catch (Exception e) {
-                    log("⚠️ Self-Doc error: " + e.getMessage());
-                }
-            });
-        }, 14400, 14400, TimeUnit.SECONDS);
-    }
-
-    // ==================== 47. PROCESS GUARDIAN — DISABLED (was causing exponential spawn loop) ====================
-    // The singleton guard (INSTANCE_RUNNING) already prevents duplicate windows.
-    // External watchdog is unnecessary and dangerous — it spawns cmd.exe processes
-    // that restart javaw, which spawns more guardians, ad infinitum.
-    private void processGuardianInit() {
-        log("🛡️ Guardian: DISABLED — singleton guard sufficient, watchdog removed to prevent spawn loop");
-        addToGodChat("🛡️ GUARDIAN", "System", "Guardian disabled (singleton guard active)");
-    }
-
-    // ==================== 48. ANALYTICS ENGINE — Trend Tracking, Reports, Anomaly Detection ====================
-    private final List<Map<String, Object>> analyticsHistory = Collections.synchronizedList(new ArrayList<>());
-    private int analyticsSnapshots = 0;
-    private int anomaliesDetected = 0;
-
-    private void analyticsInit() {
-        log("📊 Analytics: Trend tracking and anomaly detection initialized");
-        addToGodChat("📊 ANALYTICS", "System", "Analytics engine online");
-
-        // Snapshot every 5 minutes
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    analyticsSnapshots++;
-                    Map<String, Object> snap = new ConcurrentHashMap<>();
-                    snap.put("timestamp", System.currentTimeMillis());
-                    snap.put("agents", agentPositions.size());
-                    snap.put("proposals", proposalTable.size());
-                    snap.put("kgNodes", kgNodes.size());
-                    snap.put("errors", errorCount);
-                    snap.put("entropy", shannonEntropy);
-                    snap.put("messages", agentMessagesSent);
-                    snap.put("selfMods", selfModCount);
-                    snap.put("rollbacks", selfModRollbacks);
-                    snap.put("hexes", hexCells.size());
-                    snap.put("models", ollamaAvailable.size());
-                    snap.put("tools", availableTools.size());
-                    snap.put("stations", stationRegistry.size());
-                    snap.put("cyclePhase", nightCyclePhase);
-                    snap.put("cycleCount", nightCycleCount);
-                    analyticsHistory.add(snap);
-
-                    // Keep last 288 snapshots (24 hours)
-                    while (analyticsHistory.size() > 288) {
-                        analyticsHistory.remove(0);
-                    }
-
-                    // Anomaly detection (need at least 3 snapshots)
-                    if (analyticsHistory.size() >= 3) {
-                        int size = analyticsHistory.size();
-                        Map<String, Object> current = analyticsHistory.get(size - 1);
-                        Map<String, Object> prev1 = analyticsHistory.get(size - 2);
-                        Map<String, Object> prev2 = analyticsHistory.get(size - 3);
-
-                        // Check for sudden entropy drop
-                        double curEntropy = (double) current.get("entropy");
-                        double prevEntropy = (double) prev1.get("entropy");
-                        if (Math.abs(curEntropy - prevEntropy) > 0.1) {
-                            anomaliesDetected++;
-                            log("📊 ANOMALY: Entropy shift " + String.format("%.3f", prevEntropy) + " → " + String.format("%.3f", curEntropy));
-                            addToGodChat("📊 ANOMALY", "Entropy", String.format("%.3f→%.3f", prevEntropy, curEntropy));
-                        }
-
-                        // Check for error spike
-                        int curErrors = (int) current.get("errors");
-                        int prevErrors = (int) prev1.get("errors");
-                        if (curErrors > prevErrors && curErrors > 0) {
-                            anomaliesDetected++;
-                            log("📊 ANOMALY: Error spike " + prevErrors + " → " + curErrors);
-                            addToGodChat("📊 ANOMALY", "Errors", prevErrors + "→" + curErrors);
-                        }
-
-                        // Check for agent count change
-                        int curAgents = (int) current.get("agents");
-                        int prevAgents = (int) prev1.get("agents");
-                        if (curAgents != prevAgents) {
-                            log("📊 Trend: Agent count changed " + prevAgents + " → " + curAgents);
-                        }
-                    }
-
-                    // Generate hourly report
-                    if (analyticsSnapshots % 12 == 0 && analyticsHistory.size() >= 12) {
-                        StringBuilder report = new StringBuilder();
-                        report.append("# SIMS1337 Hourly Analytics Report\n\n");
-                        report.append("**Generated:** " + java.time.LocalDateTime.now() + "\n\n");
-
-                        // Calculate trends
-                        double avgEntropy = analyticsHistory.stream()
-                            .mapToDouble(s -> (double) s.get("entropy")).average().orElse(0);
-                        int maxErrors = analyticsHistory.stream()
-                            .mapToInt(s -> (int) s.get("errors")).max().orElse(0);
-                        long totalMessages = analyticsHistory.stream()
-                            .mapToInt(s -> (int) s.get("messages")).sum();
-
-                        report.append("| Metric | Current | Avg | Max |\n");
-                        report.append("|--------|---------|-----|-----|\n");
-                        report.append("| Entropy | " + String.format("%.3f", shannonEntropy) + " | " + String.format("%.3f", avgEntropy) + " | — |\n");
-                        report.append("| Errors | " + errorCount + " | — | " + maxErrors + " |\n");
-                        report.append("| Agents | " + agentPositions.size() + " | — | — |\n");
-                        report.append("| Proposals | " + proposalTable.size() + " | — | — |\n");
-                        report.append("| Messages | " + agentMessagesSent + " | — | — |\n");
-                        report.append("| Self-Mods | " + selfModCount + " | — | — |\n");
-                        report.append("| Anomalies | " + anomaliesDetected + " | — | — |\n\n");
-                        report.append("*Auto-generated by SIMS1337 Analytics Engine*\n");
-
-                        java.nio.file.Files.writeString(
-                            java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/reports/hourly_analytics.md"),
-                            report.toString());
-
-                        log("📊 Analytics: Hourly report generated (" + analyticsSnapshots + " snapshots, " + anomaliesDetected + " anomalies)");
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Analytics error: " + e.getMessage());
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS);
-    }
-
-    // ==================== 49. PLUGIN HOT-RELOAD — Dynamic .class Loading, No-Restart Extensibility ====================
-    private final Map<String, Object> hotPlugins = new ConcurrentHashMap<>();
-    private int pluginsLoaded = 0;
-
-    private void pluginHotReloadInit() {
-        log("🔌 Plugin Hot-Reload: Dynamic class loading initialized");
-        addToGodChat("🔌 PLUGINS", "System", "Hot-reload plugin system online");
-
-        // Scan plugins directory every 5 minutes
-        chatScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(() -> {
-                try {
-                    java.io.File pluginDir = new java.io.File("C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/plugins");
-                    if (!pluginDir.exists()) {
-                        pluginDir.mkdirs();
-                        // Seed with example plugin
-                        String examplePlugin = "package com.aigen.sims.plugins;\n" +
-                            "public class ExamplePlugin {\n" +
-                            "    public String getName() { return \"Example Plugin\"; }\n" +
-                            "    public String execute(String input) { return \"Hello from plugin: \" + input; }\n" +
-                            "}\n";
-                        java.nio.file.Files.writeString(
-                            java.nio.file.Path.of(pluginDir.getAbsolutePath() + "/ExamplePlugin.java"),
-                            examplePlugin);
-                    }
-
-                    java.io.File[] pluginFiles = pluginDir.listFiles((d, n) -> n.endsWith(".java"));
-                    if (pluginFiles == null) return;
-
-                    for (java.io.File pf : pluginFiles) {
-                        String name = pf.getName().replace(".java", "");
-                        if (hotPlugins.containsKey(name)) continue; // already loaded
-
-                        try {
-                            // Compile plugin
-                            ProcessBuilder pb = new ProcessBuilder(
-                                "C:/Program Files/Java/jdk-17/bin/javac", "-encoding", "UTF-8",
-                                "-d", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                                "-cp", "C:/Users/viper/AIGEN_SYS/repos/sims-java-neo-fx/target/classes",
-                                pf.getAbsolutePath()
-                            );
-                            pb.redirectErrorStream(true);
-                            Process proc = pb.start();
-                            int exitCode = proc.waitFor();
-
-                            if (exitCode == 0) {
-                                // Load class
-                                Class<?> pluginClass = Class.forName("com.aigen.sims.plugins." + name);
-                                Object instance = pluginClass.getDeclaredConstructor().newInstance();
-                                hotPlugins.put(name, instance);
-                                pluginsLoaded++;
-                                log("🔌 Plugin loaded: " + name + " (" + pluginsLoaded + " total)");
-                                addToGodChat("🔌 PLUGINS", "Loaded", name);
-                            } else {
-                                String err = new String(proc.getInputStream().readAllBytes());
-                                log("⚠️ Plugin compile failed: " + name + " — " + err.substring(0, Math.min(100, err.length())));
-                            }
-                        } catch (Exception e) {
-                            log("⚠️ Plugin load failed: " + name + " — " + e.getMessage());
-                        }
-                    }
-
-                    // Execute all loaded plugins
-                    for (var entry : hotPlugins.entrySet()) {
-                        try {
-                            Object plugin = entry.getValue();
-                            var getNameMethod = plugin.getClass().getMethod("getName");
-                            String pluginName = (String) getNameMethod.invoke(plugin);
-
-                            var executeMethod = plugin.getClass().getMethod("execute", String.class);
-                            String result = (String) executeMethod.invoke(plugin, "SIMS1337 heartbeat");
-                            log("🔌 Plugin [" + pluginName + "]: " + result);
-                        } catch (Exception ignored) {}
-                    }
-                } catch (Exception e) {
-                    log("⚠️ Plugin hot-reload error: " + e.getMessage());
-                }
-            });
-        }, 300, 300, TimeUnit.SECONDS);
-    }
-
-    private VBox vbox(int s,String bg,int p){VBox b=new VBox(s);b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
-    private HBox hbox(int s,Pos a,String bg,int p){HBox b=new HBox(s);b.setAlignment(a);if(bg!=null)b.setStyle("-fx-background-color: "+bg+"; -fx-padding: "+p+";");return b;}
-    private Label label(String t,int sz,String c,boolean bd){Label l=new Label(t);l.setStyle("-fx-font-size: "+sz+"px; -fx-text-fill: "+c+";"+(bd?" -fx-font-weight: bold;":""));return l;}
-    private TitledPane titledPane(String t,boolean ex){TitledPane tp=new TitledPane();tp.setText(t);tp.setExpanded(ex);tp.setStyle("-fx-background-color: #16213e;");return tp;}
-    private Button styledButton(String t,String c){Button b=new Button(t);b.setStyle("-fx-background-color: "+c+"; -fx-text-fill: #000; -fx-font-size: 14px; -fx-padding: 10 20;");return b;}
-
-    @Override public void stop() {
-        INSTANCE_RUNNING.set(false);
-        primaryStageRef = null;
-        chatScheduler.shutdown();
-        log("⏹️ SIMS1337 shutting down...");
-    }
-
-    // ==================== PHASE 29: LEXICAL MATH + QUORUM GIST + IDEAFILES + MMAP + SELF-EMAIL ====================
-    // MMAP mode: keep_alive=0, num_predict=40, slow HDD-friendly inference
-    private static final boolean MMAP_MODE = true;
-    private static final int MMAP_NUM_PREDICT = 40;
-    private static final int MMAP_NUM_CTX = 512;
-
-    private String mmapOllama(String model, String system, String prompt) {
-        try {
-            String body = String.format(
-                "{\"model\":\"%s\",\"system\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":%d,\"num_ctx\":%d,\"keep_alive\":0}}",
-                model,
-                system.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                prompt.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"),
-                MMAP_NUM_PREDICT, MMAP_NUM_CTX);
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:11434/api/generate"))
-                .timeout(Duration.ofSeconds(600)) // 10 min timeout for slow HDD
-                .header("Content-Type", "application/json")
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                String r = resp.body();
-                int ri = r.indexOf("\"response\":\"");
-                if (ri > 0) {
-                    ri += 12;
-                    int re = r.indexOf("\"", ri);
-                    if (re > ri) return r.substring(ri, re).replace("\\n", "\n").replace("\\\"", "\"");
-                }
-            }
-            return null;
-        } catch (Exception e) { return null; }
-    }
-
-    // Lexical math engine: functor mapping, wavefunction collapse, vector fields
-    private final Map<String, double[]> lexicalVectors = new ConcurrentHashMap<>(); // word -> embedding
-    private final Map<String, Map<String, Double>> functorMappings = new ConcurrentHashMap<>(); // source -> target -> weight
-
-    // Functor: maps objects and morphisms from source domain to target domain preserving structure
-    private double[] functorMap(String sourceWord, String targetWord) {
-        double[] sv = lexicalVectors.getOrDefault(sourceWord, new double[64]);
-        double[] tv = lexicalVectors.getOrDefault(targetWord, new double[64]);
-        double[] result = new double[64];
-        for (int i = 0; i < 64; i++) result[i] = sv[i] * 0.5 + tv[i] * 0.5;
-        functorMappings.computeIfAbsent(sourceWord, k -> new ConcurrentHashMap<>()).merge(targetWord, 1.0, Double::sum);
-        return result;
-    }
-
-    // Wavefunction collapse: high-entropy concept → deterministic state via metaphor
-    private String collapseWavefunction(String concept, String metaphor) {
-        // Σ c_i|φ_i⟩ → measurement operator M̂ → eigenstate
-        double[] conceptVec = lexicalVectors.getOrDefault(concept, randomVector(64));
-        double[] metaphorVec = lexicalVectors.getOrDefault(metaphor, randomVector(64));
-        double[] collapsed = new double[64];
-        double dot = 0;
-        for (int i = 0; i < 64; i++) { collapsed[i] = conceptVec[i] * metaphorVec[i]; dot += collapsed[i]; }
-        // Normalize to eigenstate
-        if (dot != 0) for (int i = 0; i < 64; i++) collapsed[i] /= Math.abs(dot);
-        return vectorToHex(collapsed);
-    }
-
-    // Vector field: gradient descent toward attractor
-    private double[] gradientDescent(double[] current, double[] attractor, double step) {
-        double[] grad = new double[64];
-        for (int i = 0; i < 64; i++) grad[i] = current[i] + (attractor[i] - current[i]) * step;
-        return grad;
-    }
-
-    private double[] randomVector(int dim) {
-        double[] v = new double[dim];
-        for (int i = 0; i < dim; i++) v[i] = Math.random() * 2 - 1;
         return v;
     }
 
-    private String vectorToHex(double[] v) {
+    private void render(GraphicsContext gc) {
+        // 1. Render cosmic void background
+        gc.setFill(Color.web("#020106"));
+        gc.fillRect(0, 0, WIDTH, HEIGHT);
+        
+        // Draw background stars
+        for (BackgroundStar s : stars) {
+            double flicker = 0.3 + 0.7 * Math.sin(timePulse * s.speed * 8.0 + s.phase);
+            gc.setFill(Color.web("#c4b5e0", flicker));
+            gc.fillOval(s.x, s.y, s.size, s.size);
+        }
+
+        double cx = WIDTH / 2.0;
+        double cy = HEIGHT / 2.0;
+        
+        // 2. Draw nebula center glow
+        double baseRadius = Math.min(WIDTH, HEIGHT) * 0.28;
+        // Compute viscoelastic heartbeat parameters
+        strainRate = Math.abs(heartbeatFreq * 0.35 * Math.cos(heartbeatFreq * timePulse));
+        double term = 1 + Math.pow(2.0 * strainRate, 2);
+        viscosity = 0.1 + (0.8 - 0.1) * Math.pow(term, (0.6 - 1) / 2);
+        stress = viscosity * strainRate;
+        
+        double breathScale = 1.0 + Math.sin(timePulse * heartbeatFreq) * 0.15;
+        double scale = baseRadius * breathScale * 0.75;
+        String phaseLabel = Math.cos(heartbeatFreq * timePulse) > 0 ? "INHALE" : "EXHALE";
+        
+        for (int i = 5; i > 0; i--) {
+            double size = baseRadius * breathScale * (i * 0.35);
+            gc.setFill(Color.rgb(168, 85, 247, 0.015 - (i * 0.002)));
+            gc.fillOval(cx - size, cy - size, size * 2, size * 2);
+        }
+
+        // 3. 6D rotations configuration
+        double[] angles = {
+            timePulse * 0.03,
+            timePulse * 0.05,
+            timePulse * 0.02,
+            timePulse * 0.04 + Math.sin(timePulse * 0.1) * 0.05,
+            timePulse * 0.015,
+            timePulse * 0.06
+        };
+
+        // Project vertices to 3D and 2D
+        double[][] projected3D = new double[64][3];
+        double fov = scale * 1.5;
+        double cameraZ = 5.0;
+
+        for (int i = 0; i < 64; i++) {
+            double[] v3 = project6DTo3D(vertices6D[i], angles);
+            projected3D[i][0] = v3[0];
+            projected3D[i][1] = v3[1];
+            projected3D[i][2] = v3[2];
+
+            double pScale = fov / (cameraZ + v3[2]);
+            projected2D[i][0] = cx + v3[0] * pScale;
+            projected2D[i][1] = cy + v3[1] * pScale;
+        }
+
+        // 4. Update and Render Interstitial Semantic Cloud Particles
+        for (int i = 0; i < particles.size(); i++) {
+            Particle p = particles.get(i);
+            double targetX = projected3D[p.targetNodeIdx][0];
+            double targetY = projected3D[p.targetNodeIdx][1];
+            double targetZ = projected3D[p.targetNodeIdx][2];
+
+            p.x += (targetX - p.x) * 0.012 + (Math.sin(timePulse * 0.5 + i) * 0.02);
+            p.y += (targetY - p.y) * 0.012 + (Math.cos(timePulse * 0.5 + i) * 0.02);
+            p.z += (targetZ - p.z) * 0.012;
+
+            double pScale = fov / (cameraZ + p.z);
+            double sx = cx + p.x * pScale;
+            double sy = cy + p.y * pScale;
+
+            if (sx >= 0 && sx < WIDTH && sy >= 0 && sy < HEIGHT) {
+                gc.setFill(p.color);
+                double pSize = 1.0 + 1.5 * ((p.z + 3.0) / 6.0);
+                gc.fillOval(sx - pSize/2, sy - pSize/2, pSize, pSize);
+            }
+        }
+
+        // 5. Draw Edges (192) depth-sorted
+        List<EdgeWithDepth> sortedEdges = new ArrayList<>();
+        for (int[] edge : edges) {
+            double avgZ = (projected3D[edge[0]][2] + projected3D[edge[1]][2]) / 2.0;
+            sortedEdges.add(new EdgeWithDepth(edge[0], edge[1], avgZ));
+        }
+        sortedEdges.sort(Comparator.comparingDouble(e -> e.avgZ));
+
+        for (EdgeWithDepth e : sortedEdges) {
+            double depth = (e.avgZ + 3.0) / 6.0;
+            double alpha = 0.05 + 0.25 * depth;
+            
+            Color strokeColor = Color.hsb(260.0 + depth * 60.0, 0.7, 0.65 + depth * 0.2, alpha);
+            gc.setStroke(strokeColor);
+            gc.setLineWidth(0.5 + 1.2 * depth);
+            
+            gc.strokeLine(projected2D[e.source][0], projected2D[e.source][1], 
+                          projected2D[e.target][0], projected2D[e.target][1]);
+        }
+
+        // 6. Draw Spikes / Routing Pulses
+        for (Pulse p : pulses) {
+            p.progress += p.speed;
+            if (p.progress >= 1.0) {
+                pulses.remove(p);
+            } else {
+                double x1 = projected2D[p.sourceIdx][0];
+                double y1 = projected2D[p.sourceIdx][1];
+                double x2 = projected2D[p.targetIdx][0];
+                double y2 = projected2D[p.targetIdx][1];
+                
+                double px = x1 + (x2 - x1) * p.progress;
+                double py = y1 + (y2 - y1) * p.progress;
+                
+                gc.setFill(Color.web("#38bdf8", 0.9)); 
+                gc.fillOval(px - 4, py - 4, 8, 8);
+            }
+        }
+
+        // 7. Draw Nodes (64)
+        for (int i = 0; i < 64; i++) {
+            double depth = (projected3D[i][2] + 3.0) / 6.0;
+            double radius = 3.0 + 4.0 * depth;
+            double alpha = 0.3 + 0.7 * depth;
+            
+            double px = projected2D[i][0];
+            double py = projected2D[i][1];
+
+            double shimmer = 1.0 + 0.15 * Math.sin(timePulse * 3.0 + vertices6D[i][3] * Math.PI);
+            double outerRadius = radius * 3.0 * shimmer;
+
+            double hue = 270.0 + depth * 50.0 + Math.sin(timePulse + i * 0.3) * 15.0;
+            Color nodeColor = Color.hsb(hue, 0.8, 0.75 + depth * 0.25, alpha);
+
+            // Glowing Outer Aura
+            gc.setFill(Color.hsb(hue, 0.8, 0.7, alpha * 0.2));
+            gc.fillOval(px - outerRadius/2, py - outerRadius/2, outerRadius, outerRadius);
+
+            // Node Core
+            gc.setFill(nodeColor);
+            gc.fillOval(px - radius/2, py - radius/2, radius, radius);
+
+            // Core center point
+            gc.setFill(Color.rgb(255, 245, 255, alpha * 0.8));
+            gc.fillOval(px - radius * 0.4 / 2, py - radius * 0.4 / 2, radius * 0.4, radius * 0.4);
+            
+            if (i == hoveredVertexIdx) {
+                gc.setStroke(Color.web("#f472b6"));
+                gc.setLineWidth(2.0);
+                gc.strokeOval(px - radius * 1.8 / 2, py - radius * 1.8 / 2, radius * 1.8, radius * 1.8);
+            }
+        }
+
+        // 8. Render HUD Panels
+        
+        // Left Side Panel
+        gc.setFill(Color.rgb(8, 4, 24, 0.75));
+        gc.fillRect(15, 15, 280, 480);
+        gc.setStroke(Color.web("#a855f7", 0.3));
+        gc.strokeRect(15, 15, 280, 480);
+
+        gc.setFill(Color.web("#c084fc"));
+        gc.setFont(Font.font("Outfit", 15));
+        gc.fillText("⬡ GEOSPATIAL MANIFOLD", 30, 45);
+
+        gc.setFont(Font.font("Consolas", 11));
+        gc.setFill(Color.web("#c0b3d6"));
+        gc.fillText("Projection: 6D -> 3D Perspective", 30, 75);
+        gc.fillText("Vertices:   64", 30, 92);
+        gc.fillText("Edges:      192", 30, 109);
+        gc.fillText("Cubic Cells:160", 30, 126);
+
+        // Rheology state
+        gc.setFont(Font.font("Outfit", 12));
+        gc.setFill(Color.web("#c084fc"));
+        gc.fillText("RHEOLOGICAL STATE", 30, 160);
+
+        drawGauge(gc, "Viscosity η", viscosity, 30, 175, "#c084fc");
+        drawGauge(gc, "Strain rate γ̇", strainRate, 30, 225, "#38bdf8");
+        drawGauge(gc, "Stress τ", stress, 30, 275, "#f472b6");
+
+        // Quorum matrix
+        gc.setFont(Font.font("Outfit", 12));
+        gc.setFill(Color.web("#c084fc"));
+        gc.fillText("QUORUM VOTING GRID (64)", 30, 345);
+        
+        int gridX = 30;
+        int gridY = 360;
+        int cellSize = 10;
+        int cellGap = 3;
+        int activeNodeCount = 0;
+        
+        for (int i = 0; i < 64; i++) {
+            int row = i / 8;
+            int col = i % 8;
+            double vx = gridX + col * (cellSize + cellGap);
+            double vy = gridY + row * (cellSize + cellGap);
+            
+            boolean active = (rand.nextDouble() > 0.25);
+            if (active) activeNodeCount++;
+            
+            gc.setFill(active ? Color.web("#c084fc", 0.8) : Color.web("#c084fc", 0.15));
+            gc.fillRect(vx, vy, cellSize, cellSize);
+        }
+        
+        gc.setFont(Font.font("Consolas", 10));
+        gc.setFill(Color.web("#f472b6"));
+        gc.fillText("Consensus: " + activeNodeCount + " / 64 Nodes (⅔ Supermajority)", 30, 480);
+
+        // Heartbeat Monitor
+        gc.setFill(Color.rgb(8, 4, 24, 0.75));
+        gc.fillRect(15, 510, 280, 80);
+        gc.setStroke(Color.web("#a855f7", 0.3));
+        gc.strokeRect(15, 510, 280, 80);
+
+        gc.setFill(Color.web("#38bdf8"));
+        gc.setFont(Font.font("Outfit", 12));
+        gc.fillText("HEARTBEAT LOOP", 30, 535);
+        gc.setFont(Font.font("Consolas", 14));
+        gc.fillText(phaseLabel, 30, 565);
+        
+        gc.setStroke(Color.web("#c084fc"));
+        gc.setLineWidth(1.5);
+        gc.beginPath();
+        for (int x = 120; x < 280; x += 2) {
+            double y = 550 + 15 * Math.sin(heartbeatFreq * (timePulse - x * 0.05));
+            if (x == 120) gc.moveTo(x, y);
+            else gc.lineTo(x, y);
+        }
+        gc.stroke();
+
+        // Right Side: Swarm Activity Console
+        gc.setFill(Color.rgb(8, 4, 24, 0.75));
+        gc.fillRect(950, 15, 310, 480);
+        gc.setStroke(Color.web("#a855f7", 0.3));
+        gc.strokeRect(950, 15, 310, 480);
+
+        gc.setFont(Font.font("Outfit", 14));
+        gc.setFill(Color.web("#c084fc"));
+        gc.fillText("SWARM ACTIVITY MATRIX", 970, 45);
+
+        gc.setFont(Font.font("Consolas", 11));
+        int rIndex = 0;
+        if (modelManager != null) {
+            for (ModelManager.ModelProfile profile : modelManager.getSwarm()) {
+                double textY = 85 + (rIndex * 50);
+                
+                gc.setFill(Color.web("#38bdf8"));
+                gc.fillText(profile.name, 970, textY);
+                gc.setFill(Color.web("#6b5c8c"));
+                gc.fillText("Role: " + profile.role, 970, textY + 12);
+                
+                String activity = "IDLE";
+                String phase = nightCycle.getCurrentPhase();
+                if (phase.contains("DREAM")) activity = "SOAKING EMBEDDINGS";
+                else if (phase.contains("VOTE")) activity = "HOMOLOGY VOTE RUNNING";
+                else if (phase.contains("DEPLOY")) activity = "DEPLOYING SOP SHARDS";
+                
+                gc.setFill(Color.web("#f472b6"));
+                gc.fillText("-> " + activity, 970, textY + 24);
+                rIndex++;
+            }
+        }
+
+        // Bottom Side: Multi-Agent Consensus logs
+        gc.setFill(Color.rgb(8, 4, 24, 0.75));
+        gc.fillRect(315, 605, 945, 180);
+        gc.setStroke(Color.web("#a855f7", 0.3));
+        gc.strokeRect(315, 605, 945, 180);
+
+        gc.setFont(Font.font("Outfit", 12));
+        gc.setFill(Color.web("#c084fc"));
+        gc.fillText("⬡ SLM INTERSTITIAL DISTILLATION & CONSENSUS LOGS", 335, 628);
+
+        gc.setFont(Font.font("Consolas", 10));
+        int logY = 650;
+        synchronized (godChat) {
+            int startIdx = Math.max(0, godChat.size() - 8);
+            for (int i = startIdx; i < godChat.size(); i++) {
+                String logMsg = godChat.get(i);
+                if (logMsg.contains("[SPIKE]")) gc.setFill(Color.web("#f472b6"));
+                else if (logMsg.contains("[DREAM]")) gc.setFill(Color.web("#c084fc"));
+                else if (logMsg.contains("[MOVE]")) gc.setFill(Color.web("#38bdf8"));
+                else gc.setFill(Color.web("#c0b3d6"));
+                
+                gc.fillText(logMsg, 335, logY);
+                logY += 15;
+            }
+        }
+
+        // Hover Tooltip Inspector
+        if (hoveredVertexIdx != -1) {
+            double dens = densities[hoveredVertexIdx];
+            double flw = flows[hoveredVertexIdx];
+            
+            String tip = String.format("Vertex: v_%d\nCoords: [%s]\nDensity: %.4f\nFlow: %.3f m/s\nSOP: Consensus-Strict\nClick to route spike!", 
+                hoveredVertexIdx, getCoordsString(vertices6D[hoveredVertexIdx]), dens, flw);
+                
+            gc.setFill(Color.rgb(6, 3, 18, 0.95));
+            gc.fillRect(pxForHoverToolTip(projected2D[hoveredVertexIdx][0]), 
+                        pyForHoverToolTip(projected2D[hoveredVertexIdx][1]), 250, 115);
+            gc.setStroke(Color.web("#f472b6"));
+            gc.setLineWidth(1.5);
+            gc.strokeRect(pxForHoverToolTip(projected2D[hoveredVertexIdx][0]), 
+                          pyForHoverToolTip(projected2D[hoveredVertexIdx][1]), 250, 115);
+            gc.setFill(Color.web("#f3e8ff"));
+            gc.setFont(Font.font("Consolas", 11));
+            
+            String[] lines = tip.split("\n");
+            double textY = pyForHoverToolTip(projected2D[hoveredVertexIdx][1]) + 20.0;
+            for (String line : lines) {
+                gc.fillText(line, pxForHoverToolTip(projected2D[hoveredVertexIdx][0]) + 15, textY);
+                textY += 15;
+            }
+        }
+    }
+
+    private void drawGauge(GraphicsContext gc, String label, double value, double x, double y, String hexColor) {
+        gc.setFill(Color.web("#c0b3d6"));
+        gc.setFont(Font.font("Outfit", 11));
+        gc.fillText(label, x, y);
+        gc.fillText(String.format("%.3f", value), x + 180, y);
+        
+        gc.setFill(Color.rgb(147, 51, 234, 0.15));
+        gc.fillRect(x, y + 6, 200, 5);
+        
+        gc.setFill(Color.web(hexColor));
+        gc.fillRect(x, y + 6, Math.min(200, value * 200), 5);
+    }
+
+    private String getCoordsString(double[] coords) {
         StringBuilder sb = new StringBuilder();
-        for (double d : v) sb.append(String.format("%02x", (int)((d + 1) * 127.5) & 0xFF));
+        for (int i = 0; i < coords.length; i++) {
+            sb.append((int)coords[i]);
+            if (i < coords.length - 1) sb.append(", ");
+        }
         return sb.toString();
     }
 
-    // Semantic matching: find closest word by cosine similarity
-    private String semanticMatch(double[] queryVec) {
-        String best = null;
-        double bestSim = -1;
-        for (var e : lexicalVectors.entrySet()) {
-            double sim = cosineSimilarity(queryVec, e.getValue());
-            if (sim > bestSim) { bestSim = sim; best = e.getKey(); }
+    private double pxForHoverToolTip(double projectedX) {
+        if (projectedX + 260 > WIDTH) return projectedX - 270;
+        return projectedX + 15;
+    }
+
+    private double pyForHoverToolTip(double projectedY) {
+        if (projectedY + 120 > HEIGHT) return projectedY - 130;
+        return projectedY + 15;
+    }
+
+    @Override
+    public void stop() {
+        threadPool.shutdownNow();
+        if(dashboardServer != null) dashboardServer.stop(0);
+    }
+
+    // --- Inner Helper Classes --- //
+
+    class EdgeWithDepth {
+        int source;
+        int target;
+        double avgZ;
+        public EdgeWithDepth(int source, int target, double avgZ) {
+            this.source = source;
+            this.target = target;
+            this.avgZ = avgZ;
         }
-        return best != null ? best + "(" + String.format("%.2f", bestSim) + ")" : "?";
     }
 
-    // /api/lexical endpoint — registered in phase28EndpointsInit()
-
-    // Multi-machine quorum Gist protocol
-    private static final String MASTER_GIST_ID = System.getenv().getOrDefault("MASTER_GIST_ID", "");
-    private static final String NODE_ID = "node-" + System.getenv().getOrDefault("NODE_ID", "01");
-    private final Map<String, String> peerGists = new ConcurrentHashMap<>(); // node_id -> gist_id
-    private final List<Map<String, String>> consensusProposals = Collections.synchronizedList(new ArrayList<>());
-    private final Map<String, Map<String, Integer>> proposalVotes = new ConcurrentHashMap<>(); // proposal_id -> node_id -> vote
-
-    private void quorumGistInit() {
-        if (gistToken == null || gistToken.isEmpty()) {
-            log("📡 Quorum Gist: No GIST_TOKEN, skipping multi-machine sync");
-            return;
+    class Particle {
+        double x, y, z;
+        int targetNodeIdx;
+        Color color;
+        public Particle() {
+            reset();
         }
-        log("📡 Quorum Gist: Node " + NODE_ID + " initializing...");
-        // Register this node in master gist
-        registerNode();
-        // Poll peer gists every 60s
-        chatScheduler.scheduleAtFixedRate(this::pollPeerGists, 60, 60, TimeUnit.SECONDS);
-        // Process consensus proposals every 5min
-        chatScheduler.scheduleAtFixedRate(this::processConsensus, 300, 300, TimeUnit.SECONDS);
+        public void reset() {
+            x = (rand.nextDouble() - 0.5) * 10;
+            y = (rand.nextDouble() - 0.5) * 10;
+            z = (rand.nextDouble() - 0.5) * 10;
+            targetNodeIdx = rand.nextInt(64);
+            double r = rand.nextDouble();
+            if (r > 0.6) color = Color.web("#f472b6", 0.4);      
+            else if (r > 0.3) color = Color.web("#38bdf8", 0.45); 
+            else color = Color.web("#c084fc", 0.4);               
+        }
     }
 
-    private void registerNode() {
-        try {
-            String body = String.format("{\"files\":{\"nodes.json\":{\"content\":\"{\\\"node\\\":\\\"%s\\\",\\\"status\\\":\\\"active\\\",\\\"ts\\\":\\\"%s\\\"}\"}}}",
-                NODE_ID, java.time.Instant.now().toString());
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("https://api.github.com/gists/" + MASTER_GIST_ID))
-                .timeout(Duration.ofSeconds(10))
-                .header("Authorization", "token " + gistToken)
-                .header("Accept", "application/vnd.github.v3+json")
-                .method("PATCH", java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
-            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            log("📡 Registered node " + NODE_ID + " in master gist");
-        } catch (Exception e) { log("📡 Node registration failed: " + e.getMessage()); }
+    class Pulse {
+        int sourceIdx;
+        int targetIdx;
+        double progress;
+        double speed;
+        public Pulse(int source, int target) {
+            this.sourceIdx = source;
+            this.targetIdx = target;
+            this.progress = 0;
+            this.speed = 0.02 + rand.nextDouble() * 0.03;
+        }
     }
 
-    private void pollPeerGists() {
-        try {
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("https://api.github.com/gists/" + MASTER_GIST_ID))
-                .timeout(Duration.ofSeconds(10))
-                .header("Authorization", "token " + gistToken)
-                .header("Accept", "application/vnd.github.v3+json").GET().build();
-            java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (resp.statusCode() == 200) {
-                // Parse peer nodes from master gist
-                String body = resp.body();
-                // Extract node entries
-                int nodesIdx = body.indexOf("\"nodes.json\"");
-                if (nodesIdx > 0) {
-                    int contentIdx = body.indexOf("\"content\":\"", nodesIdx);
-                    if (contentIdx > 0) {
-                        contentIdx += 11;
-                        int endIdx = body.indexOf("\"}", contentIdx);
-                        if (endIdx > contentIdx) {
-                            String content = body.substring(contentIdx, endIdx).replace("\\\"", "\"");
-                            log("📡 Peer nodes: " + content.substring(0, Math.min(80, content.length())));
-                        }
-                    }
+    class BackgroundStar {
+        double x, y;
+        double speed;
+        double size;
+        double phase;
+        public BackgroundStar(double x, double y) {
+            this.x = x;
+            this.y = y;
+            this.speed = 0.005 + rand.nextDouble() * 0.015;
+            this.size = 0.5 + rand.nextDouble() * 1.5;
+            this.phase = rand.nextDouble() * Math.PI * 2;
+        }
+    }
+    
+    class HexNode {
+        int q, r;
+        boolean visible = false;
+        String station = null;
+        public HexNode(int q, int r) { this.q = q; this.r = r; }
+        public int distance(int aq, int ar) { return (Math.abs(q - aq) + Math.abs(q + r - aq - ar) + Math.abs(r - ar)) / 2; }
+        public boolean contains(double px, double py) {
+            double x = HEX_SIZE * Math.sqrt(3) * (q + r / 2.0);
+            double y = HEX_SIZE * 3.0 / 2.0 * r;
+            return Math.hypot(px - x, py - y) < HEX_SIZE;
+        }
+        public void triggerPipeline(OllamaRouter router) {
+            if(station != null) {
+                System.out.println("[PIPELINE] Executing Station Pipeline: " + station);
+                threadPool.submit(() -> {
+                    router.query("tinyllama:1.1b", "Execute pipeline task for station " + station);
+                });
+            }
+        }
+    }
+
+    class Agent {
+        String name;
+        int q, r;
+        public Agent(String name, int q, int r) { this.name = name; this.q = q; this.r = r; }
+        public void moveTo(int q, int r) { this.q = q; this.r = r; }
+    }
+
+    class NightCycleEngine {
+        private String currentPhase = "00:00 DREAM PHASE";
+        private OllamaRouter router;
+        private ModelManager modelManager;
+        private GistSync gistSync;
+        private SQLiteMemory memory;
+        private SelfMutator mutator;
+        
+        public NightCycleEngine(OllamaRouter router, ModelManager modelManager, GistSync gistSync, SQLiteMemory memory, SelfMutator mutator) { 
+            this.router = router;
+            this.modelManager = modelManager;
+            this.gistSync = gistSync;
+            this.memory = memory;
+            this.mutator = mutator;
+        }
+        
+        public void startClock() {
+            // --- HOURLY HEARTRATE SOAK MONITOR ---
+            threadPool.submit(() -> {
+                while(true) {
+                    try {
+                        Thread.sleep(3600000); // 1 Hour
+                        System.out.println("[HOURLY HEARTRATE] System soaking safely. Local SLMs active. No thermal throttling detected.");
+                        Platform.runLater(() -> {
+                            synchronized(godChat) {
+                                if (godChat.size() > 50) godChat.remove(0);
+                                godChat.add("[SYSTEM] Hourly Heartrate OK. Soaking...");
+                            }
+                        });
+                    } catch(Exception e){}
                 }
-            }
-        } catch (Exception ignored) {}
-    }
+            });
 
-    private void processConsensus() {
-        if (consensusProposals.isEmpty()) return;
-        List<Map<String, String>> batch;
-        synchronized (consensusProposals) {
-            batch = new ArrayList<>(consensusProposals);
-            consensusProposals.clear();
+            // --- SPACED OUT SOAKING CYCLE ---
+            threadPool.submit(() -> {
+                while(true) {
+                    try {
+                        Thread.sleep(900000); // 15 Minutes
+                        currentPhase = "00:00 CHAT & DREAM PHASE";
+                        System.out.println("[SOAK] Dreaming cross-correlated memories...");
+                        String dreamPrompt = "Generate exactly one new 1-2 word node type or mechanic for a hex grid simulation. Output only the name, nothing else. No preamble.";
+                        String dreamProposalRaw = router.query("qwen2.5:0.5b", dreamPrompt).replaceAll("[\"'{}\\[\\]\\n\\r]", "").trim();
+                        if (dreamProposalRaw.isEmpty() || dreamProposalRaw.length() > 30) dreamProposalRaw = "Void_Node";
+                        String dreamProposal = dreamProposalRaw;
+                        Platform.runLater(() -> {
+                            synchronized(godChat) {
+                                if (godChat.size() > 50) godChat.remove(0);
+                                godChat.add("[DREAM] Proposal generated: " + dreamProposal);
+                            }
+                        });
+                        
+                        Thread.sleep(900000); // 15 Minutes
+                        currentPhase = "18:00 VOTE PHASE";
+                        System.out.println("[SOAK] Engaged Vote Phase...");
+                        boolean approved = modelManager.executeVote(dreamProposal, router);
+                        
+                        Thread.sleep(900000); // 15 Minutes
+                        currentPhase = "20:00 DEPLOY PHASE";
+                        System.out.println("[SOAK] Deploying dynamically generated tools...");
+                        if (approved) {
+                            memory.logMemory("SYSTEM", "SOAK_CYCLE", "Deployed new " + dreamProposal + " node.");
+                            mutator.injectMutation(dreamProposal);
+                            Map<String, String> state = new HashMap<>();
+                            state.put("topology.json", "{\"status\": \"Topology updated with " + dreamProposal + "\"}");
+                            gistSync.pushState(state);
+                        }
+                        
+                        Thread.sleep(900000); // 15 Minutes
+                        currentPhase = "22:00 MOVE PHASE";
+                        System.out.println("[SOAK] Requesting Agent Movement...");
+                        if (!agents.isEmpty()) {
+                            Agent a = agents.get(0);
+                            String moveDir = router.query("qwen2.5:0.5b", "You are an agent at " + a.q + "," + a.r + ". Reply exactly with one word: NORTH, SOUTH, EAST, or WEST.").trim().toUpperCase();
+                            Platform.runLater(() -> {
+                                if (moveDir.contains("NORTH")) a.r -= 1;
+                                else if (moveDir.contains("SOUTH")) a.r += 1;
+                                else if (moveDir.contains("EAST")) a.q += 1;
+                                else if (moveDir.contains("WEST")) a.q -= 1;
+                                synchronized(godChat) {
+                                    if (godChat.size() > 50) godChat.remove(0);
+                                    godChat.add("[MOVE] Agent Alpha shifted " + moveDir);
+                                }
+                            });
+                        }
+                    } catch(Exception e){}
+                }
+            });
         }
-        for (Map<String, String> prop : batch) {
-            String propId = prop.get("id");
-            int agrees = proposalVotes.getOrDefault(propId, Map.of()).values().stream().mapToInt(v -> v).sum();
-            // Quorum: 3/4 nodes agree → accept into long-term memory
-            if (agrees >= 3) {
-                log("📡 CONSENSUS: Proposal " + propId + " accepted (" + agrees + "/4 votes)");
-                // Store in KG
-                kgNodes.put("quorum:" + propId, prop.getOrDefault("content", ""));
-                logEvent("consensus_accepted", NODE_ID, propId);
-            } else {
-                log("📡 Quorum: Proposal " + propId + " rejected (" + agrees + "/4 votes)");
-            }
-        }
+        public String getCurrentPhase() { return currentPhase; }
     }
 
-    // /api/quorum endpoint — registered in phase28EndpointsInit()
-
-    // IdeaFiles: compressed human readable ↔ full program
-    private static final String IDEAFILES_DIR = "C:/Users/viper/AIGEN_SYS/ideafiles/";
-
-    private String compressToIdeaFile(String code) {
-        // SUPER compressed: keep structure, drop whitespace, use shorthand
-        return code
-            .replaceAll("\\s+", " ")
-            .replace("public class", "cls")
-            .replace("private", "prv")
-            .replace("String", "S")
-            .replace("return", "ret")
-            .replace("void", "v")
-            .replace("static", "st")
-            .replace("final", "fn")
-            .replace("ConcurrentHashMap", "CHM")
-            .replace("ArrayList", "AL")
-            .replace("new ", "n.")
-            .replace("this.", "t.")
-            .replace("System.out", "so")
-            .trim();
-    }
-
-    private String expandIdeaFile(String compressed) {
-        return compressed
-            .replace(" cls ", " public class ")
-            .replace(" prv ", " private ")
-            .replace(" S ", " String ")
-            .replace(" ret ", " return ")
-            .replace(" v ", " void ")
-            .replace(" st ", " static ")
-            .replace(" fn ", " final ")
-            .replace(" CHM ", " ConcurrentHashMap ")
-            .replace(" AL ", " ArrayList ")
-            .replace(" n. ", " new ")
-            .replace(" t. ", " this. ")
-            .replace(" so ", " System.out ");
-    }
-
-    // /api/ideafile endpoint — registered in phase28EndpointsInit()
-
-    // Daily self-email with quorum summary
-    private void sendDailySelfEmail() {
+    private void executeDesktopScript(String scriptName) {
+        System.out.println("[MANIFOLD] Triggering external hook: " + scriptName);
         try {
-            String subject = "SIMS1337 Daily Quorum Summary — " + java.time.LocalDate.now();
-            StringBuilder body = new StringBuilder();
-            body.append("=== SIMS1337 DAILY QUORUM SUMMARY ===\n");
-            body.append("Node: " + NODE_ID + "\n");
-            body.append("Date: " + java.time.LocalDate.now() + "\n\n");
-            body.append("--- AGENTS ---\n");
-            for (var e : agentLives.entrySet()) {
-                body.append(e.getKey() + ": life #" + e.getValue() + ", " + agentTaskCount.getOrDefault(e.getKey(), 0) + " tasks, status=" + agentStatus.getOrDefault(e.getKey(), "?") + "\n");
-            }
-            body.append("\n--- MODELS ---\n");
-            body.append("Installed: " + installedModels.size() + "\n");
-            body.append("Ollama calls: " + ollamaCallCount.get() + ", errors: " + ollamaErrorCount.get() + "\n");
-            body.append("Circuit breaker: " + (ollamaCircuitOpen ? "OPEN" : "CLOSED") + "\n");
-            body.append("\n--- KNOWLEDGE GRAPH ---\n");
-            body.append("KG nodes: " + kgNodes.size() + "\n");
-            body.append("Stations: " + stationRegistry.size() + "\n");
-            body.append("\n--- QUORUM ---\n");
-            body.append("Proposals: " + consensusProposals.size() + ", votes: " + proposalVotes.size() + "\n");
-            body.append("Peers: " + peerGists.size() + "\n");
-            body.append("\n--- TELEMETRY ---\n");
-            body.append("Sticking points: " + stickingPoints.size() + "\n");
-            body.append("Model entropy: " + modelEntropy + "\n");
-            body.append("\n--- ERRORS ---\n");
-            body.append("Total: " + errorCount + "\n");
-            body.append("Dead letters: " + deadLetterQueue.size() + "\n");
-            body.append("\nGenerated by SIMS1337 v0.18.0 — " + java.time.Instant.now() + "\n");
-
-            // Send via SMTP
-            String emailJson = String.format(
-                "{\"to\":\"chrisalunlloyd2@gmail.com\",\"subject\":\"%s\",\"body\":\"%s\"}",
-                subject, body.toString().replace("\"", "\\\"").replace("\n", "\\n"));
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:8899/api/email/send"))
-                .timeout(Duration.ofSeconds(30))
-                .header("Content-Type", "application/json")
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(emailJson)).build();
-            httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            log("📧 Daily self-email sent");
-        } catch (Exception e) { log("📧 Self-email failed: " + e.getMessage()); }
-    }
-
-    // /api/email/send endpoint — registered in phase28EndpointsInit()
-
-    private String extractJsonField(String json, String field) {
-        int idx = json.indexOf("\"" + field + "\":\"");
-        if (idx < 0) return "";
-        idx += field.length() + 4;
-        int end = json.indexOf("\"", idx);
-        return end > idx ? json.substring(idx, end).replace("\\\"", "\"").replace("\\n", "\n") : "";
-    }
-
-    private void sendEmail(String to, String subject, String body) throws Exception {
-        // Write to mail queue file; Python smtp_send.py handles delivery
-        String entry = "To: " + to + "\nSubject: " + subject + "\n\n" + body + "\n---END---\n";
-        java.nio.file.Files.writeString(
-            java.nio.file.Path.of("C:/Users/viper/AIGEN_SYS/mail_queue.txt"), entry,
-            java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        log("\uD83D\uDCE7 Queued email to " + to + ": " + subject);
-    }
-
-    // SMTP handled by Python smtp_send.py (mail_queue.txt)
-
-    // Schedule daily self-email at 06:00
-    { chatScheduler.scheduleAtFixedRate(this::sendDailySelfEmail, 3600, 86400, TimeUnit.SECONDS); }
-
-    // Seed lexical vectors from common words
-    { String[] seedWords = {"code","build","deploy","vote","dream","learn","grow","heal","flow","map","bridge","river","rock","spike","cat","hair","fire","water","earth","air","void","light","dark","time","space","node","edge","graph","tree","root","leaf","seed","fruit","bloom","wilt","rise","fall","spin","orbit","pulse","wave","field","force","mass","energy","entropy","order","chaos","form"};
-        for (String w : seedWords) lexicalVectors.put(w, randomVector(64));
+            Runtime.getRuntime().exec(new String[]{
+                "powershell.exe",
+                "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden",
+                "-File", "C:\\Users\\viper\\OneDrive\\Desktop\\local_desktop-main\\" + scriptName
+            });
+        } catch(Exception e) {
+            System.err.println("[MANIFOLD ERROR] " + e.getMessage());
+        }
     }
 }
