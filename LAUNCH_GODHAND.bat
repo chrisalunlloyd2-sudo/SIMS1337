@@ -7,8 +7,8 @@ echo 🎮 GODHAND GUI LAUNCHER
 echo ========================================
 
 REM Set Java paths CORRECTLY
-set "JAVA_HOME=C:\Program Files\Java\jdk-17"
-set "MAVEN_HOME=C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.16"
+set "JAVA_HOME=C:\Program Files\Android\openjdk\jdk-21.0.8"
+set "MAVEN_HOME=C:\Users\viper\scoop\apps\maven\current"
 set "PATH=%JAVA_HOME%\bin;%MAVEN_HOME%\bin;%PATH%"
 
 echo JAVA_HOME=%JAVA_HOME%
@@ -19,9 +19,8 @@ echo.
 
 cd /d C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx
 
-REM Run JavaFX app with correct JAVA_HOME
-set JAVA_HOME=C:\Program Files\Java\jdk-17
-"%MAVEN_HOME%\bin\mvn.cmd" javafx:run
+REM Run JavaFX app
+mvn javafx:run
 
 echo.
 echo GUI closed.
