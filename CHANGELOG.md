@@ -1,124 +1,56 @@
-# 📝 CHANGELOG - Sims Java Neo FX
+﻿# Changelog
 
----
+All notable changes to this project.
 
-## [0.2.1] - 2026-08-04 - PHASE 1C: CRASH RECOVERY & DOCS
+## 2026-08
+- **[Docs]** docs(SIMS1337): autonomous update ΓÇö 1 file(s) ($hash)
+- **[Changed]** [Moe autonomous] SIMS1337 2026-08-02 23:43 ($hash)
+- **[Added]** feat: implement unified cosmic operating system, cellular microphone gating, draggable sub-windows, and KQML messaging ($hash)
+- **[Added]** feat: implement moveable windows layout taskbar and cellular mic gating telemetry in GodHandApp ($hash)
+- **[Fixed]** fix: clamp opacity parameters inside GodHandApp.java rendering loop to prevent IllegalArgumentException ($hash)
+- **[Added]** feat: implement 6D hexeract geospatial manifold visualizer inside JavaFX GodHandApp canvas ($hash)
+- **[Added]** feat: implement 6D geospatial manifold visualization using Three.js and link multi-agent Ollama routing ($hash)
+- **[Docs]** docs: add white paper link to README ($hash)
+- **[Docs]** docs: add SIMS1337 technical white paper (v1.0, August 2026) ($hash)
+- **[Added]** feat: add SIMS1337 header image (from self-email 2026-08-05) ($hash)
+- **[Changed]** ≡ƒöÑ Crash Recovery: Breathing Hexeract GUI + Code Registry + Full Documentation ($hash)
+- **[Added]** feat: Phase 29 ΓÇö lexical math, quorum Gist, IdeaFiles, MMAP, daily self-email ($hash)
+- **[Added]** feat: Phase 28 ΓÇö backpressure, dead letter queue, safety scoring, Prometheus, replayable events, agent web search ($hash)
+- **[Added]** feat: Phase 27 ΓÇö one-hot agent lifecycle with death & rebirth ($hash)
+- **[Added]** feat: Phase 26 ΓÇö telemetry, Markov, Shannon, neuromorphic paradigms, 22 stations ($hash)
+- **[Added]** feat: mobile-responsive web UI + public WiFi port 1338 + JSON fix + governor cron ($hash)
+- **[Added]** feat: Phase 24 ΓÇö formal Tool/Plugin API with stable interface ($hash)
+- **[Added]** feat: Phase 23 ΓÇö evaluation framework with regression tests, benchmarks, quality scores ($hash)
+- **[Added]** feat: colored hex grid visualization + routing overlay + agent names ($hash)
+- **[Added]** feat: cellular gate + SSD/HDD fencing + A/B/C routing + message bus + proposal versioning ($hash)
+- **[Added]** feat: KV store writes from agent memories + votes, tool usage in vote cycle ($hash)
+- **[Added]** feat: A/B shadow model pairs + pipeline cycle + Euler/Audio/KV wiring ($hash)
+- **[Added]** feat: PipelineScheduler runCycle scheduled every 60min ($hash)
+- **[Added]** feat: Euler DB + audio auto-enable + Cloudflare immediate sync + KV writes ($hash)
+- **[Fixed]** fix: rate limiter + circuit breaker + A/B routing wired into callOllama ($hash)
+- **[Fixed]** fix: PipelineScheduler + WebDashboardV2 fully activated ($hash)
+- **[Docs]** docs: Phase 21 ΓÇö architecture blueprint + threat model + runbook ($hash)
+- **[Fixed]** fix: PipelineScheduler + WebDashboardV2 ΓÇö standalone endpoints pending dependency fixes ($hash)
+- **[Fixed]** fix: root context only serves / and /index.html ΓÇö /api/* no longer caught ($hash)
+- **[Added]** feat: Phase 23-24 ΓÇö TocTokTree + World Desktop + NyxGate + PipelineScheduler + WebDashboard V2 ($hash)
+- **[Added]** feat: evidence logging + audio routing wired into votes + MMF scripts ($hash)
+- **[Fixed]** fix: Maslow needs populated with hardcoded model list (installedModels not ready at init) ($hash)
+- **[Added]** feat: Maslow hierarchy + Euler DB + Audio pipeline + Cloudflare clock + Evidence log ($hash)
+- **[Added]** feat: Phase 16 ΓÇö distributed scaling with multi-instance coordination ($hash)
+- **[Added]** feat: Phase 22 ΓÇö native llama.cpp build + SmolLM-135M fallback ($hash)
+- **[Added]** feat: Phase 19 + 20 ΓÇö model lifecycle + governance ($hash)
+- **[Added]** feat: Phase 17 + 18 ΓÇö circuit breaker + observability metrics ($hash)
+- **[Fixed]** fix: OOM guard ΓÇö cross-repo KG scan bounded to 20 repos + memory pressure check ($hash)
+- **[Fixed]** fix: replace addToGodChat + log with bufferedLog ΓÇö 2 Platform.runLater sinks eliminated ($hash)
+- **[Added]** feat: stability hardening + web search + PHASES 15-25 ($hash)
+- **[Fixed]** fix: wire PipelineScheduler + WebDashboard into the real AutoLoop entrypoint ($hash)
+- **[Changed]** runbook: verified SmolLM-135M fallback + on-device MatrixVault ladder (no quantize needed) ($hash)
+- **[Docs]** docs: REAL_AGENT_BUILD.md ΓÇö no-simulation runbook for Qwen/any agent ($hash)
+- **[Changed]** agents: REAL inter-agent messaging via house GGUF server (no mocks) ($hash)
+- **[Changed]** deps: DEPENDENCIES.md + setup_deps.sh (same doctrine as MatrixWinCE) ($hash)
+- **[Chore]** chore: ignore __pycache__ ($hash)
+- **[Changed]** hessian learning: curvature-aware LoRA policy + crew procedure doc ($hash)
+- **[Changed]** toc_tok: harden _auto_sync ΓÇö repo-relative node_kv_sync discovery ($hash)
+- **[Changed]** Add TOC-TOK GUI editor: hex-map canvas with drag-drop node relocation ($hash)
+- **[Changed]** Enhance onboarding: board ID stamping, hex claim tracking, tree sync, verification poll; add TocTokTree Java read-side (Jackson) ($hash)
 
-### Added — Emergency Recovery Procedures
-- **Crash Recovery Protocol**: Initiated agent mesh restart and diagnostic procedures.
-- **NEVER-MAKE-CODE-TWICE DATABASE**: Created SQLite registry for code tracking, deduplication, and hashing.
-- **scan_and_register.py**: Python script to populate database with project source files.
-- **BLUEPRINT.md**: Added system architecture and Hexeract topology.
-- **README.md**: Rebuilt master README with ASCII art and topological tree.
-
----
-
-## [0.18.1] - 2026-07-28 - FOW VOTING HOOKUP
-
-### Added — FOW-Gated Voting System
-- **modelAgentMap**: 6 models assigned to 3 agents (Alpha/Beta/Gamma) for FOW visibility
-- **proposalHex**: Each proposal tagged with hex coordinate for spatial FOW gating
-- **isHexVisibleToModel()**: Checks 1-hop axial hex distance between model's agent and proposal hex
-- **FOW-gated castVote()**: Models outside visibility range record "BLIND" vote, cannot approve/reject
-- **BLIND vote tracking**: Separate 🌫️ display in proposal status for models blocked by FOW
-- **Hex column in proposal table**: Shows which hex each proposal anchors to
-
-### Changed
-- Proposal table expanded from 5→6 columns (added Hex)
-- `updateProposalStatus()` handles BLIND votes — "🌫️ BLINDED" when majority can't see
-- Night cycle auto-vote now FOW-aware (models only vote on visible proposals)
-- Hex TODO at (0,0) "Wire FOW to all 8 models" → marked ✅ done
-
-### Model→Agent Assignments
-| Model | Agent | Hex |
-|-------|-------|-----|
-| qwen2.5:0.5b | Agent Alpha | (0,0) |
-| tinyllama:1.1b | Agent Alpha | (0,0) |
-| phi:latest | Agent Beta | (3,-2) |
-| phi3:mini | Agent Beta | (3,-2) |
-| llama3.2:1b | Agent Gamma | (-3,2) |
-| deepseek-r1:1.5b | Agent Gamma | (-3,2) |
-
-### Proposal→Hex Anchors
-| Proposal | Hex |
-|----------|-----|
-| Add WebSocket support | (1,0) |
-| Implement Markov reviews | (-1,-1) |
-| Deploy to production | (0,0) |
-| Refactor ModelRouter | (2,-1) |
-
----
-
-## [0.2.0] - 2026-07-19 - PHASE 2A COMPLETE
-
-### Added - Core Routing
-- **SLMAgent.java** (3.5KB) - Ollama model wrapper with HTTP client
-  - Warm-up functionality
-  - Context management for LoRA adapters
-  - 120s timeout for inference
-  
-- **ModelPool.java** (2.9KB) - 4-tier model management
-  - qwen2.5:0.5b (fast tier)
-  - tinyllama:1.1b (balanced tier)
-  - phi:latest (reasoning tier)
-  - phi3:mini (deep tier)
-  - Auto warm-up on initialization
-  
-- **ModelRouter.java** (5.8KB) - Complexity-based routing
-  - 6 complexity levels (VERY_LOW to CRITICAL)
-  - Latency-constrained routing
-  - Routing recommendations with explanations
-  - <10ms routing decision time
-  
-- **TaskQueue.java** (4.2KB) - Priority queue with statistics
-  - BlockingQueue implementation
-  - Capacity limits
-  - Utilization tracking
-  - Thread-safe operations
-  
-- **LoRASwitcher.java** (8.4KB) - Circular adapter switching
-  - 6 adapter types (CHAT, CODE, PATHFIND, MOTIVES, CAREER, ANALYSIS)
-  - Circular buffer for round-robin
-  - <100ms switch time target
-  - Context preservation per adapter
-  - Switch statistics tracking
-
-### Added - Task System
-- **Complexity.java** - 6-level complexity enum with multipliers
-- **Task.java** - Task representation with UUID, status tracking
-- **TaskStatus.java** - 5-state lifecycle enum
-
-### Added - Tests (40 total)
-- **ModelPoolTest.java** (8 tests) - Model initialization, retrieval
-- **ModelRouterTest.java** (12 tests) - Routing logic, latency constraints
-- **TaskQueueTest.java** (9 tests) - Queue operations, statistics
-- **LoRASwitcherTest.java** (11 tests) - Adapter switching, circular buffer
-
-### Changed
-- Updated pom.xml with JUnit 5, TestFX, JaCoCo
-- Updated CHANGELOG.md with Phase 2A details
-- Created PHASE2A_COMPLETE.md status report
-
-### Technical Debt
-- ⏳ Tests blocked on Java 17 + Maven installation
-- ⏳ Coverage report pending (target >90%)
-
----
-
-## [0.1.0] - 2026-07-19 - Project Init
-
-### Added
-- Initial repository structure
-- Phase 1: Discovery complete
-- 4 Ollama models downloaded
-- 1700-step blueprint found
-
----
-
-*The organism builds. The code compiles. The tests await.* 💙🚀
-[2026-07-28T04:10] Agent Beta: write changelog entry
-[2026-07-28T04:12] Agent Beta: write changelog entry
-[2026-07-28T17:28] Agent Beta: write changelog entry
-[2026-07-28T17:47] Agent Beta: write changelog entry
-[2026-07-28T20:12] Agent Beta: write changelog entry
-[2026-07-28T20:17] Agent Beta: write changelog entry
