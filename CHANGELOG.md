@@ -13,6 +13,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Added]** feat: Phase 16 ΓÇö distributed scaling with multi-instance coordination ($hash)
 - **[Added]** feat: Phase 22 ΓÇö native llama.cpp build + SmolLM-135M fallback ($hash)
 - **[Added]** feat: Phase 19 + 20 ΓÇö model lifecycle + governance ($hash)
-- **[Added]** feat: Phase 17 + 18 ΓÇö circuit breaker + observability metrics ($hash)
 
