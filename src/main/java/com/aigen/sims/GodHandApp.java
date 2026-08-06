@@ -7,12 +7,23 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.Stop;
 import javafx.scene.text.Font;
 import javafx.scene.input.MouseButton;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.control.ComboBox;
+import javafx.geometry.Pos;
+import javafx.geometry.Insets;
 import javafx.stage.Stage;
 
 import java.io.BufferedReader;
@@ -34,9 +45,9 @@ import java.net.InetSocketAddress;
 import java.io.IOException;
 
 /**
- * SIMS1337 v0.22.0 - GodHandApp
+ * SIMS1337 v0.24.0 - GodHandApp
  * Pure Programmatic JavaFX GUI
- * 6D Hexeract Geospatial Manifold Visualization
+ * 6D Hexeract Geospatial Manifold Visualizer with Moveable Windows
  */
 public class GodHandApp extends Application {
     private static final int WIDTH = 1280;
@@ -51,7 +62,6 @@ public class GodHandApp extends Application {
     
     private double timePulse = 0;
     private int zElevation = 0;
-    private HexNode hoveredHex = null;
     
     private NightCycleEngine nightCycle;
     private OllamaRouter ollamaRouter;
@@ -84,12 +94,17 @@ public class GodHandApp extends Application {
     private double strainRate = 0.681;
     private double stress = 0.312;
     private double heartbeatFreq = 1.20;
+    private double storageModulus = 50.0;
+    private double lossModulus = 35.0;
     
     // Particle Swarm and Signal Pulses
     private List<Particle> particles = new ArrayList<>();
     private List<Pulse> pulses = new CopyOnWriteArrayList<>();
     private List<BackgroundStar> stars = new ArrayList<>();
     private Random rand = new Random();
+
+    // Draggable Window Overlay Pane
+    private Pane windowOverlay;
 
     public static void main(String[] args) {
         launch(args);
@@ -129,7 +144,6 @@ public class GodHandApp extends Application {
                 if (e.getButton() == MouseButton.PRIMARY) {
                     triggerPulse(hoveredVertexIdx);
                 } else if (e.getButton() == MouseButton.SECONDARY) {
-                    // Trigger agent inference route
                     triggerPulse(hoveredVertexIdx);
                     threadPool.submit(() -> {
                         ollamaRouter.query("tinyllama:1.1b", "Spike routing instruction at coordinate " + hoveredVertexIdx);
@@ -162,49 +176,397 @@ public class GodHandApp extends Application {
             }
         };
 
-        StackPane root = new StackPane(canvas);
+        // Window overlay container
+        windowOverlay = new Pane();
+        windowOverlay.setPickOnBounds(false); // Let mouse events pass to canvas when clicking empty space
+
+        // main StackPane root layout
+        StackPane root = new StackPane();
         root.setStyle("-fx-background-color: #020106;");
         
-        // --- MANIFOLD COMMAND CENTER (Geospatial Side Hooks) ---
-        javafx.scene.layout.VBox manifoldPanel = new javafx.scene.layout.VBox(8);
-        manifoldPanel.setTranslateX(15);
-        manifoldPanel.setTranslateY(15);
-        manifoldPanel.setPickOnBounds(false); 
-        manifoldPanel.setStyle("-fx-background-color: rgba(8, 4, 24, 0.75); -fx-padding: 10; -fx-border-color: #a855f7; -fx-border-width: 1;");
-        manifoldPanel.setMaxSize(240, 400);
-        javafx.scene.layout.StackPane.setAlignment(manifoldPanel, javafx.geometry.Pos.TOP_LEFT);
+        // Horizontal glassmorphic launcher taskbar at the top
+        HBox taskbar = new HBox(12);
+        taskbar.setAlignment(Pos.CENTER);
+        taskbar.setStyle("-fx-background-color: rgba(15, 10, 36, 0.85); " +
+                         "-fx-border-color: #a855f7; " +
+                         "-fx-border-width: 1.5; " +
+                         "-fx-background-radius: 20; " +
+                         "-fx-border-radius: 20; " +
+                         "-fx-padding: 8 20;");
+        taskbar.setMaxSize(720, 50);
+        StackPane.setAlignment(taskbar, Pos.TOP_CENTER);
+        StackPane.setMargin(taskbar, new Insets(10, 0, 0, 0));
 
-        javafx.scene.control.Label manifoldLabel = new javafx.scene.control.Label("MANIFOLD CONTROL");
-        manifoldLabel.setStyle("-fx-text-fill: #c084fc; -fx-font-family: monospace; -fx-font-weight: bold; -fx-font-size: 14px;");
-        
-        javafx.scene.control.Button btnLogic = new javafx.scene.control.Button("REBOOT LOGIC SHIPPER");
-        btnLogic.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
-        btnLogic.setOnAction(e -> executeDesktopScript("START_LOGIC_BLOCKCHAIN_PORT.ps1"));
+        // Create Taskbar button styles
+        String btnStyle = "-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-border-radius: 12; -fx-background-radius: 12; -fx-cursor: hand;";
 
-        javafx.scene.control.Button btnTopology = new javafx.scene.control.Button("REBOOT TOPOLOGY SIDECAR");
-        btnTopology.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
-        btnTopology.setOnAction(e -> executeDesktopScript("START_TOPOLOGY_SIDECAR.ps1"));
+        Button btnNotes = new Button("📓 Notes");
+        btnNotes.setStyle(btnStyle);
+        btnNotes.setOnAction(e -> openWindow("Viper Notes", createViperNotesView(), 420, 360));
 
-        javafx.scene.control.Button btnHouse = new javafx.scene.control.Button("REBOOT HOUSE ENGINE");
-        btnHouse.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
-        btnHouse.setOnAction(e -> executeDesktopScript("START_HOUSE_ENGINE_RECOVERY.ps1"));
-        
-        javafx.scene.control.Button btnAgent = new javafx.scene.control.Button("SPIN UP LEGACY AGENT");
-        btnAgent.setStyle("-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px;");
-        btnAgent.setOnAction(e -> executeDesktopScript("SPIN_UP_AGENT_NODE.ps1"));
+        Button btnChat = new Button("💬 Chat");
+        btnChat.setStyle(btnStyle);
+        btnChat.setOnAction(e -> openWindow("Viper Chat", createViperChatView(), 420, 340));
 
-        manifoldPanel.getChildren().addAll(manifoldLabel, btnLogic, btnTopology, btnHouse, btnAgent);
-        root.getChildren().add(manifoldPanel);
+        Button btnTraining = new Button("📈 Training");
+        btnTraining.setStyle(btnStyle);
+        btnTraining.setOnAction(e -> openWindow("Viper Training", createViperTrainingView(), 400, 260));
+
+        Button btnInterstitials = new Button("🌫️ Interstitials");
+        btnInterstitials.setStyle(btnStyle);
+        btnInterstitials.setOnAction(e -> openWindow("Viper Interstitials", createViperInterstitialsView(), 440, 320));
+
+        Button btnMoltbook = new Button("📖 Moltbook");
+        btnMoltbook.setStyle(btnStyle);
+        btnMoltbook.setOnAction(e -> openWindow("Moltbook", createMoltbookView(), 440, 350));
+
+        Button btnRebootCtrl = new Button("⚙️ Reboot Panel");
+        btnRebootCtrl.setStyle(btnStyle);
+        btnRebootCtrl.setOnAction(e -> openWindow("Manifold Control", createManifoldControlView(), 240, 320));
+
+        Button btnReset = new Button("× Clear Windows");
+        btnReset.setStyle("-fx-background-color: #111; -fx-text-fill: #f472b6; -fx-font-family: monospace; -fx-border-color: #f472b6; -fx-border-radius: 12; -fx-background-radius: 12; -fx-cursor: hand;");
+        btnReset.setOnAction(e -> resetLayout());
+
+        taskbar.getChildren().addAll(btnNotes, btnChat, btnTraining, btnInterstitials, btnMoltbook, btnRebootCtrl, btnReset);
+
+        root.getChildren().addAll(canvas, windowOverlay, taskbar);
 
         Scene scene = new Scene(root, WIDTH, HEIGHT);
         
-        primaryStage.setTitle("SIMS1337 v0.22.0 - 6D Hexeract Geospatial Manifold");
+        primaryStage.setTitle("SIMS1337 v0.24.0 - 6D Hexeract Geospatial Manifold Organism");
         primaryStage.setScene(scene);
         primaryStage.show();
         
         timer.start();
         nightCycle.startClock();
     }
+
+    private void openWindow(String title, javafx.scene.Node content, double width, double height) {
+        // Bring to front if already exists
+        for (javafx.scene.Node node : windowOverlay.getChildren()) {
+            if (node instanceof DraggableWindow) {
+                DraggableWindow win = (DraggableWindow) node;
+                if (win.getTitle().equals(title)) {
+                    win.toFront();
+                    return;
+                }
+            }
+        }
+        
+        DraggableWindow win = new DraggableWindow(title, content, width, height);
+        int count = windowOverlay.getChildren().size();
+        win.setTranslateX(320 + count * 40);
+        win.setTranslateY(120 + count * 30);
+        windowOverlay.getChildren().add(win);
+    }
+
+    private void resetLayout() {
+        windowOverlay.getChildren().clear();
+    }
+
+    // --- Sub-Window View Generators ---
+
+    private VBox createViperNotesView() {
+        VBox root = new VBox(8);
+        TextArea area = new TextArea();
+        area.setPrefSize(400, 300);
+        area.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #e9d5ff; -fx-font-family: monospace; -fx-font-size: 11px;");
+        area.setText(
+            "# VIPER NOTES - SIMS1337 HYPERCUBE SUBSTRATE\n" +
+            "-------------------------------------------\n" +
+            "Active degrees of freedom: 64\n" +
+            "Viscoelastic threshold limit: eta = 0.1 Pa.s\n" +
+            "Shannon entropy threshold: H_s > 0.420 bits\n" +
+            "Consensus Homology Hash: Vietoris-Rips alpha complex active.\n\n" +
+            "Giesekus tensor updates:\n" +
+            "d/dt(tau) + u.grad(tau) = (eta/lambda) * gamma_dot\n\n" +
+            "TODO: Link 22 system tools to coordinates.\n" +
+            "Distilled prior modules fully loaded from mmapped SSD."
+        );
+        VBox.setVgrow(area, Priority.ALWAYS);
+        
+        Button saveBtn = new Button("Save Notes to Disk");
+        saveBtn.setStyle("-fx-background-color: #7c3aed; -fx-text-fill: white; -fx-font-family: monospace; -fx-cursor: hand;");
+        saveBtn.setOnAction(e -> {
+            try {
+                java.nio.file.Files.writeString(
+                    java.nio.file.Paths.get("C:\\Users\\viper\\local_desktop_main\\docs\\viper_notes.txt"),
+                    area.getText()
+                );
+                synchronized (godChat) {
+                    if (godChat.size() > 50) godChat.remove(0);
+                    godChat.add("[SYSTEM] Notes saved to local_desktop_main/docs/viper_notes.txt");
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+        
+        root.getChildren().addAll(area, saveBtn);
+        return root;
+    }
+
+    private VBox createViperChatView() {
+        VBox root = new VBox(8);
+        ComboBox<String> modelSelector = new ComboBox<>();
+        modelSelector.getItems().addAll("qwen2.5:3b", "deepseek-r1:1.5b", "tinyllama:1.1b", "qwen2.5:0.5b");
+        modelSelector.setValue("qwen2.5:3b");
+        modelSelector.setStyle("-fx-background-color: #0b0720; -fx-text-fill: #38bdf8; -fx-border-color: #c084fc;");
+        
+        TextArea chatLog = new TextArea();
+        chatLog.setEditable(false);
+        chatLog.setPrefSize(400, 240);
+        chatLog.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #f3e8ff; -fx-font-family: monospace; -fx-font-size: 11px;");
+        chatLog.setText("SYSTEM: Ready to chat with local SLMs inside coordinate manifold...\n");
+        VBox.setVgrow(chatLog, Priority.ALWAYS);
+        
+        HBox inputBar = new HBox(8);
+        TextField inputField = new TextField();
+        inputField.setPromptText("Type your prompt here...");
+        inputField.setStyle("-fx-background-color: #0b0720; -fx-text-fill: white; -fx-border-color: #c084fc;");
+        HBox.setHgrow(inputField, Priority.ALWAYS);
+        
+        Button sendBtn = new Button("Send");
+        sendBtn.setStyle("-fx-background-color: #7c3aed; -fx-text-fill: white; -fx-font-family: monospace; -fx-cursor: hand;");
+        
+        Runnable sendAction = () -> {
+            String prompt = inputField.getText().trim();
+            if (!prompt.isEmpty()) {
+                String model = modelSelector.getValue();
+                chatLog.appendText("USER: " + prompt + "\n");
+                inputField.clear();
+                
+                threadPool.submit(() -> {
+                    String response = ollamaRouter.query(model, prompt);
+                    Platform.runLater(() -> {
+                        chatLog.appendText(model.toUpperCase() + ": " + response + "\n");
+                        triggerPulse(rand.nextInt(64));
+                    });
+                });
+            }
+        };
+        
+        sendBtn.setOnAction(e -> sendAction.run());
+        inputField.setOnAction(e -> sendAction.run());
+        
+        inputBar.getChildren().addAll(inputField, sendBtn);
+        root.getChildren().addAll(modelSelector, chatLog, inputBar);
+        return root;
+    }
+
+    private VBox createViperTrainingView() {
+        VBox root = new VBox(8);
+        
+        Label statsLabel = new Label();
+        statsLabel.setStyle("-fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-font-size: 11px;");
+        
+        Canvas miniChart = new Canvas(380, 160);
+        GraphicsContext mgc = miniChart.getGraphicsContext2D();
+        
+        AnimationTimer chartTimer = new AnimationTimer() {
+            private double step = 0;
+            @Override
+            public void handle(long now) {
+                step += 0.05;
+                mgc.setFill(Color.web("#060312"));
+                mgc.fillRect(0, 0, 380, 160);
+                
+                mgc.setStroke(Color.web("#c084fc", 0.15));
+                mgc.setLineWidth(1);
+                for (int x = 20; x < 380; x += 40) mgc.strokeLine(x, 0, x, 160);
+                for (int y = 20; y < 160; y += 40) mgc.strokeLine(0, y, 380, y);
+                
+                // Draw storage modulus G' (violet curve)
+                mgc.setStroke(Color.web("#c084fc"));
+                mgc.beginPath();
+                for (int x = 0; x < 380; x++) {
+                    double freqVal = x * 0.02;
+                    double gPrime = 40.0 + 20.0 * Math.sin(freqVal + step) + 15.0 * Math.sin(freqVal * 2.3 + step);
+                    double y = 120 - gPrime;
+                    if (x == 0) mgc.moveTo(x, y);
+                    else mgc.lineTo(x, y);
+                }
+                mgc.stroke();
+                
+                // Draw loss modulus G'' (sky blue curve)
+                mgc.setStroke(Color.web("#38bdf8"));
+                mgc.beginPath();
+                for (int x = 0; x < 380; x++) {
+                    double freqVal = x * 0.02;
+                    double gDoublePrime = 30.0 + 10.0 * Math.cos(freqVal * 1.5 - step) + 5.0 * Math.sin(freqVal * 3.0 + step);
+                    double y = 140 - gDoublePrime;
+                    if (x == 0) mgc.moveTo(x, y);
+                    else mgc.lineTo(x, y);
+                }
+                mgc.stroke();
+                
+                storageModulus = 50.0 + 10.0 * Math.sin(step);
+                lossModulus = 35.0 + 8.0 * Math.cos(step);
+                
+                statsLabel.setText(String.format(
+                    "Elastic Storage G'(ω): %.3f Pa\n" +
+                    "Viscous Loss G''(ω):   %.3f Pa\n" +
+                    "Deborah Number (De):   %.4f\n" +
+                    "Shear Thinning Exp:    n = 0.600",
+                    storageModulus, lossModulus, (viscosity / 0.8)
+                ));
+            }
+        };
+        chartTimer.start();
+        
+        root.getChildren().addAll(statsLabel, miniChart);
+        
+        root.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene == null) chartTimer.stop();
+        });
+        
+        return root;
+    }
+
+    private VBox createViperInterstitialsView() {
+        VBox root = new VBox(8);
+        root.setStyle("-fx-padding: 5;");
+        
+        Label descLabel = new Label("Distilled SOP prior layers sitting between manifold vertices:");
+        descLabel.setStyle("-fx-text-fill: #c084fc; -fx-font-family: monospace; -fx-font-size: 11px;");
+        
+        TextArea toolsArea = new TextArea();
+        toolsArea.setEditable(false);
+        toolsArea.setPrefSize(400, 260);
+        toolsArea.setStyle("-fx-control-inner-background: #0b0720; -fx-text-fill: #f472b6; -fx-font-family: monospace; -fx-font-size: 10px;");
+        
+        String[] tools = {
+            "START_LOGIC_BLOCKCHAIN", "START_TOPOLOGY_SIDECAR", "START_HOUSE_ENGINE",
+            "SPIN_UP_AGENT_NODE", "START_LAB_SUITE", "START_NOTES_SUITE",
+            "START_NOTES_TUNNEL", "LAUNCH_MOLTBOOK", "VECTOR_STORE_INDEX",
+            "SQLITE_MEMORY_DB", "GIST_SYNC_SERVICE", "OLLAMA_HIVE_DAEMON",
+            "MCTS_SAMPLER", "STABILITY_CHECKER", "HOMOLOGY_QUORUM",
+            "GIESEKUS_RHEOLOGY", "ADVERSARIAL_FUZZER", "METALOGIC_SUPERVISOR",
+            "EVOLUTION_ENGINE", "NEURAL_WATCHDOG", "CLEIBERS_SCALE_LAW",
+            "NYQUIST_SAMPLER"
+        };
+        
+        AnimationTimer updater = new AnimationTimer() {
+            private long lastUpdate = 0;
+            @Override
+            public void handle(long now) {
+                if (now - lastUpdate > 1_000_000_000L) { // 1 second
+                    lastUpdate = now;
+                    StringBuilder sb2 = new StringBuilder();
+                    sb2.append("COORDINATE | DISTILLATION SHARD | SHANNON ENTROPY | STATE\n");
+                    sb2.append("----------------------------------------------------------\n");
+                    for (int i = 0; i < tools.length; i++) {
+                        double entropy = 0.35 + 0.6 * Math.abs(Math.sin(timePulse + i * 0.7));
+                        sb2.append(String.format("[0x%02X]    | %-22s | H=%.4f bits   | %s\n",
+                            i, tools[i], entropy, entropy > 0.50 ? "OPEN (ACTIVE)" : "GATED (IDLE)"
+                        ));
+                    }
+                    toolsArea.setText(sb2.toString());
+                }
+            }
+        };
+        updater.start();
+        
+        root.getChildren().addAll(descLabel, toolsArea);
+        root.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene == null) updater.stop();
+        });
+        return root;
+    }
+
+    private VBox createMoltbookView() {
+        VBox root = new VBox(8);
+        TextArea swarmLog = new TextArea();
+        swarmLog.setEditable(false);
+        swarmLog.setPrefSize(420, 280);
+        swarmLog.setStyle("-fx-control-inner-background: #060312; -fx-text-fill: #a855f7; -fx-font-family: monospace; -fx-font-size: 11px;");
+        swarmLog.setText("MOLTBOOK - UNRESTRICTED SELF-ORGANIZING CHAT FEED\n");
+        VBox.setVgrow(swarmLog, Priority.ALWAYS);
+        
+        HBox controls = new HBox(8);
+        Button pauseBtn = new Button("Pause Swarm Loop");
+        pauseBtn.setStyle("-fx-background-color: #7c3aed; -fx-text-fill: white; -fx-font-family: monospace; -fx-cursor: hand;");
+        
+        final boolean[] isRunning = {true};
+        pauseBtn.setOnAction(e -> {
+            isRunning[0] = !isRunning[0];
+            pauseBtn.setText(isRunning[0] ? "Pause Swarm Loop" : "Resume Swarm Loop");
+        });
+        
+        controls.getChildren().add(pauseBtn);
+        root.getChildren().addAll(swarmLog, controls);
+        
+        AnimationTimer chatter = new AnimationTimer() {
+            private long lastChat = 0;
+            private int turn = 0;
+            private String[] agentsList = {"Alpha", "Beta", "Gamma", "Stability Daemon"};
+            private String[] modelsList = {"qwen2.5:3b", "deepseek-r1:1.5b", "tinyllama:1.1b", "qwen2.5:0.5b"};
+            private String[] topics = {
+                "Giesekus rheological flow attenuation along penteract edges",
+                "Entropy barrier limits of the Vietoris-Rips homology filtration",
+                "Self-mutation injection safety certificates",
+                "Memory-mapped files on SSD for model distillations",
+                "Cellular microphone gate activation levels"
+            };
+            
+            @Override
+            public void handle(long now) {
+                if (!isRunning[0]) return;
+                if (now - lastChat > 15_000_000_000L) { // 15 seconds
+                    lastChat = now;
+                    String sender = agentsList[turn % 4];
+                    String model = modelsList[turn % 4];
+                    String topic = topics[rand.nextInt(topics.length)];
+                    
+                    threadPool.submit(() -> {
+                        String prompt = "You are Agent " + sender + " using model " + model + ". Write exactly one short sentence debating this topic: " + topic;
+                        String reply = ollamaRouter.query(model, prompt);
+                        Platform.runLater(() -> {
+                            swarmLog.appendText(String.format("[%s (%s)]: %s\n\n", sender.toUpperCase(), model, reply));
+                            swarmLog.selectPositionCaret(swarmLog.getLength());
+                            triggerPulse(rand.nextInt(64));
+                        });
+                    });
+                    turn++;
+                }
+            }
+        };
+        chatter.start();
+        root.sceneProperty().addListener((obs, oldScene, newScene) -> {
+            if (newScene == null) chatter.stop();
+        });
+        
+        return root;
+    }
+
+    private VBox createManifoldControlView() {
+        VBox root = new VBox(6);
+        root.setAlignment(Pos.CENTER);
+        
+        String btnStyle = "-fx-background-color: #111; -fx-text-fill: #38bdf8; -fx-font-family: monospace; -fx-border-color: #c084fc; -fx-pref-width: 200px; -fx-cursor: hand;";
+        
+        Button btnLogic = new Button("REBOOT LOGIC SHIPPER");
+        btnLogic.setStyle(btnStyle);
+        btnLogic.setOnAction(e -> executeDesktopScript("START_LOGIC_BLOCKCHAIN_PORT.ps1"));
+
+        Button btnTopology = new Button("REBOOT TOPOLOGY");
+        btnTopology.setStyle(btnStyle);
+        btnTopology.setOnAction(e -> executeDesktopScript("START_TOPOLOGY_SIDECAR.ps1"));
+
+        Button btnHouse = new Button("REBOOT HOUSE ENGINE");
+        btnHouse.setStyle(btnStyle);
+        btnHouse.setOnAction(e -> executeDesktopScript("START_HOUSE_ENGINE_RECOVERY.ps1"));
+        
+        Button btnAgent = new Button("SPIN UP AGENT NODE");
+        btnAgent.setStyle(btnStyle);
+        btnAgent.setOnAction(e -> executeDesktopScript("SPIN_UP_AGENT_NODE.ps1"));
+
+        root.getChildren().addAll(btnLogic, btnTopology, btnHouse, btnAgent);
+        return root;
+    }
+
+    // --- Core Operations & Rotations ---
 
     private void initHexGrid() {
         int radius = 4;
@@ -230,7 +592,6 @@ public class GodHandApp extends Application {
     }
 
     private void initHexeract() {
-        // Generate 6D coordinates for 64 vertices
         for (int i = 0; i < 64; i++) {
             for (int d = 0; d < 6; d++) {
                 vertices6D[i][d] = ((i >> d) & 1) == 1 ? 1.0 : -1.0;
@@ -239,7 +600,6 @@ public class GodHandApp extends Application {
             flows[i] = 0.2 + rand.nextDouble() * 0.8;
         }
 
-        // Generate 192 edges (Hamming distance = 1)
         for (int i = 0; i < 64; i++) {
             for (int j = i + 1; j < 64; j++) {
                 int diffs = 0;
@@ -252,12 +612,10 @@ public class GodHandApp extends Application {
             }
         }
 
-        // Generate stars
         for (int i = 0; i < 150; i++) {
             stars.add(new BackgroundStar(rand.nextDouble() * WIDTH, rand.nextDouble() * HEIGHT));
         }
 
-        // Generate stardust particles representing interstitial semantic clouds
         for (int i = 0; i < 600; i++) {
             particles.add(new Particle());
         }
@@ -283,7 +641,7 @@ public class GodHandApp extends Application {
             dashboardServer.createContext("/api/status", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
-                    String resp = "{\"version\":\"0.22.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
+                    String resp = "{\"version\":\"0.24.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.sendResponseHeaders(200, resp.length());
                     OutputStream os = exchange.getResponseBody();
@@ -318,7 +676,6 @@ public class GodHandApp extends Application {
                 if (grid.containsKey(nq + "," + nr)) {
                     a.moveTo(nq, nr);
                     
-                    // Inject visual routing pulse when agent moves
                     int randomNodeIdx = rand.nextInt(64);
                     triggerPulse(randomNodeIdx);
                     
@@ -381,12 +738,24 @@ public class GodHandApp extends Application {
         return v;
     }
 
+    private double clampOpacity(double val) {
+        if (val < 0.0) return 0.0;
+        if (val > 1.0) return 1.0;
+        return val;
+    }
+
+    private double calculateEntropy(int index) {
+        double p = densities[index] / (densities[index] + flows[index]);
+        if (p <= 0.0 || p >= 1.0) return 0.0;
+        double entropy = - (p * Math.log(p)/Math.log(2) + (1.0 - p) * Math.log(1.0 - p)/Math.log(2));
+        return Double.isNaN(entropy) ? 0.0 : entropy;
+    }
+
     private void render(GraphicsContext gc) {
-        // 1. Render cosmic void background
+        // 1. Render cosmic background
         gc.setFill(Color.web("#020106"));
         gc.fillRect(0, 0, WIDTH, HEIGHT);
         
-        // Draw background stars
         for (BackgroundStar s : stars) {
             double flicker = 0.3 + 0.7 * Math.sin(timePulse * s.speed * 8.0 + s.phase);
             gc.setFill(Color.web("#c4b5e0", clampOpacity(flicker)));
@@ -398,7 +767,8 @@ public class GodHandApp extends Application {
         
         // 2. Draw nebula center glow
         double baseRadius = Math.min(WIDTH, HEIGHT) * 0.28;
-        // Compute viscoelastic heartbeat parameters
+        
+        // Dynamic Viscoelastic telemetry
         strainRate = Math.abs(heartbeatFreq * 0.35 * Math.cos(heartbeatFreq * timePulse));
         double term = 1 + Math.pow(2.0 * strainRate, 2);
         viscosity = 0.1 + (0.8 - 0.1) * Math.pow(term, (0.6 - 1) / 2);
@@ -414,7 +784,7 @@ public class GodHandApp extends Application {
             gc.fillOval(cx - size, cy - size, size * 2, size * 2);
         }
 
-        // 3. 6D rotations configuration
+        // 3. 6D Rotations
         double[] angles = {
             timePulse * 0.03,
             timePulse * 0.05,
@@ -424,7 +794,6 @@ public class GodHandApp extends Application {
             timePulse * 0.06
         };
 
-        // Project vertices to 3D and 2D
         double[][] projected3D = new double[64][3];
         double fov = scale * 1.5;
         double cameraZ = 5.0;
@@ -539,37 +908,37 @@ public class GodHandApp extends Application {
         
         // Left Side Panel
         gc.setFill(Color.rgb(8, 4, 24, 0.75));
-        gc.fillRect(15, 15, 280, 480);
+        gc.fillRect(15, 75, 280, 480);
         gc.setStroke(Color.web("#a855f7", 0.3));
-        gc.strokeRect(15, 15, 280, 480);
+        gc.strokeRect(15, 75, 280, 480);
 
         gc.setFill(Color.web("#c084fc"));
         gc.setFont(Font.font("Outfit", 15));
-        gc.fillText("⬡ GEOSPATIAL MANIFOLD", 30, 45);
+        gc.fillText("⬡ GEOSPATIAL MANIFOLD", 30, 105);
 
         gc.setFont(Font.font("Consolas", 11));
         gc.setFill(Color.web("#c0b3d6"));
-        gc.fillText("Projection: 6D -> 3D Perspective", 30, 75);
-        gc.fillText("Vertices:   64", 30, 92);
-        gc.fillText("Edges:      192", 30, 109);
-        gc.fillText("Cubic Cells:160", 30, 126);
+        gc.fillText("Projection: 6D -> 3D Perspective", 30, 135);
+        gc.fillText("Vertices:   64", 30, 152);
+        gc.fillText("Edges:      192", 30, 169);
+        gc.fillText("Cubic Cells:160", 30, 186);
 
         // Rheology state
         gc.setFont(Font.font("Outfit", 12));
         gc.setFill(Color.web("#c084fc"));
-        gc.fillText("RHEOLOGICAL STATE", 30, 160);
+        gc.fillText("RHEOLOGICAL STATE", 30, 220);
 
-        drawGauge(gc, "Viscosity η", viscosity, 30, 175, "#c084fc");
-        drawGauge(gc, "Strain rate γ̇", strainRate, 30, 225, "#38bdf8");
-        drawGauge(gc, "Stress τ", stress, 30, 275, "#f472b6");
+        drawGauge(gc, "Viscosity η", viscosity, 30, 235, "#c084fc");
+        drawGauge(gc, "Strain rate γ̇", strainRate, 30, 285, "#38bdf8");
+        drawGauge(gc, "Stress τ", stress, 30, 335, "#f472b6");
 
         // Quorum matrix
         gc.setFont(Font.font("Outfit", 12));
         gc.setFill(Color.web("#c084fc"));
-        gc.fillText("QUORUM VOTING GRID (64)", 30, 345);
+        gc.fillText("QUORUM VOTING GRID (64)", 30, 405);
         
         int gridX = 30;
-        int gridY = 360;
+        int gridY = 420;
         int cellSize = 10;
         int cellGap = 3;
         int activeNodeCount = 0;
@@ -589,25 +958,25 @@ public class GodHandApp extends Application {
         
         gc.setFont(Font.font("Consolas", 10));
         gc.setFill(Color.web("#f472b6"));
-        gc.fillText("Consensus: " + activeNodeCount + " / 64 Nodes (⅔ Supermajority)", 30, 480);
+        gc.fillText("Consensus: " + activeNodeCount + " / 64 Nodes (⅔ Supermajority)", 30, 540);
 
         // Heartbeat Monitor
         gc.setFill(Color.rgb(8, 4, 24, 0.75));
-        gc.fillRect(15, 510, 280, 80);
+        gc.fillRect(15, 570, 280, 80);
         gc.setStroke(Color.web("#a855f7", 0.3));
-        gc.strokeRect(15, 510, 280, 80);
+        gc.strokeRect(15, 570, 280, 80);
 
         gc.setFill(Color.web("#38bdf8"));
         gc.setFont(Font.font("Outfit", 12));
-        gc.fillText("HEARTBEAT LOOP", 30, 535);
+        gc.fillText("HEARTBEAT LOOP", 30, 595);
         gc.setFont(Font.font("Consolas", 14));
-        gc.fillText(phaseLabel, 30, 565);
+        gc.fillText(phaseLabel, 30, 625);
         
         gc.setStroke(Color.web("#c084fc"));
         gc.setLineWidth(1.5);
         gc.beginPath();
         for (int x = 120; x < 280; x += 2) {
-            double y = 550 + 15 * Math.sin(heartbeatFreq * (timePulse - x * 0.05));
+            double y = 610 + 15 * Math.sin(heartbeatFreq * (timePulse - x * 0.05));
             if (x == 120) gc.moveTo(x, y);
             else gc.lineTo(x, y);
         }
@@ -615,19 +984,19 @@ public class GodHandApp extends Application {
 
         // Right Side: Swarm Activity Console
         gc.setFill(Color.rgb(8, 4, 24, 0.75));
-        gc.fillRect(950, 15, 310, 480);
+        gc.fillRect(950, 75, 310, 480);
         gc.setStroke(Color.web("#a855f7", 0.3));
-        gc.strokeRect(950, 15, 310, 480);
+        gc.strokeRect(950, 75, 310, 480);
 
         gc.setFont(Font.font("Outfit", 14));
         gc.setFill(Color.web("#c084fc"));
-        gc.fillText("SWARM ACTIVITY MATRIX", 970, 45);
+        gc.fillText("SWARM ACTIVITY MATRIX", 970, 105);
 
         gc.setFont(Font.font("Consolas", 11));
         int rIndex = 0;
         if (modelManager != null) {
             for (ModelManager.ModelProfile profile : modelManager.getSwarm()) {
-                double textY = 85 + (rIndex * 50);
+                double textY = 145 + (rIndex * 50);
                 
                 gc.setFill(Color.web("#38bdf8"));
                 gc.fillText(profile.name, 970, textY);
@@ -672,37 +1041,33 @@ public class GodHandApp extends Application {
             }
         }
 
-        // Hover Tooltip Inspector
+        // Hover Tooltip Inspector with Shannon Entropy
         if (hoveredVertexIdx != -1) {
             double dens = densities[hoveredVertexIdx];
             double flw = flows[hoveredVertexIdx];
+            double entropy = calculateEntropy(hoveredVertexIdx);
             
-            String tip = String.format("Vertex: v_%d\nCoords: [%s]\nDensity: %.4f\nFlow: %.3f m/s\nSOP: Consensus-Strict\nClick to route spike!", 
-                hoveredVertexIdx, getCoordsString(vertices6D[hoveredVertexIdx]), dens, flw);
+            String tip = String.format("Vertex: v_%d\nCoords: [%s]\nDensity: %.4f\nFlow: %.3f m/s\nEntropy: H=%.4f bits\nSOP: Consensus-Strict\nClick to route spike!", 
+                hoveredVertexIdx, getCoordsString(vertices6D[hoveredVertexIdx]), dens, flw, entropy);
                 
+            double tpx = projected2D[hoveredVertexIdx][0];
+            double tpy = projected2D[hoveredVertexIdx][1];
+            
             gc.setFill(Color.rgb(6, 3, 18, 0.95));
-            gc.fillRect(pxForHoverToolTip(projected2D[hoveredVertexIdx][0]), 
-                        pyForHoverToolTip(projected2D[hoveredVertexIdx][1]), 250, 115);
+            gc.fillRect(pxForHoverToolTip(tpx), pyForHoverToolTip(tpy), 250, 115);
             gc.setStroke(Color.web("#f472b6"));
             gc.setLineWidth(1.5);
-            gc.strokeRect(pxForHoverToolTip(projected2D[hoveredVertexIdx][0]), 
-                          pyForHoverToolTip(projected2D[hoveredVertexIdx][1]), 250, 115);
+            gc.strokeRect(pxForHoverToolTip(tpx), pyForHoverToolTip(tpy), 250, 115);
             gc.setFill(Color.web("#f3e8ff"));
             gc.setFont(Font.font("Consolas", 11));
             
             String[] lines = tip.split("\n");
-            double textY = pyForHoverToolTip(projected2D[hoveredVertexIdx][1]) + 20.0;
+            double textY = pyForHoverToolTip(tpy) + 20.0;
             for (String line : lines) {
-                gc.fillText(line, pxForHoverToolTip(projected2D[hoveredVertexIdx][0]) + 15, textY);
+                gc.fillText(line, pxForHoverToolTip(tpx) + 15, textY);
                 textY += 15;
             }
         }
-    }
-
-    private double clampOpacity(double val) {
-        if (val < 0.0) return 0.0;
-        if (val > 1.0) return 1.0;
-        return val;
     }
 
     private void drawGauge(GraphicsContext gc, String label, double value, double x, double y, String hexColor) {
@@ -741,6 +1106,67 @@ public class GodHandApp extends Application {
     public void stop() {
         threadPool.shutdownNow();
         if(dashboardServer != null) dashboardServer.stop(0);
+    }
+
+    // --- Draggable Sub-Window Custom Component ---
+
+    class DraggableWindow extends VBox {
+        private double dragStartX;
+        private double dragStartY;
+        private Label titleLabel;
+        private String title;
+        
+        public DraggableWindow(String title, javafx.scene.Node content, double width, double height) {
+            this.title = title;
+            this.setPrefSize(width, height);
+            this.setMaxSize(width, height);
+            this.setStyle("-fx-background-color: rgba(6, 3, 18, 0.9); " +
+                          "-fx-border-color: #a855f7; " +
+                          "-fx-border-width: 1.5; " +
+                          "-fx-background-radius: 6; " +
+                          "-fx-border-radius: 6;");
+            
+            // Header bar
+            HBox header = new HBox();
+            header.setAlignment(Pos.CENTER_LEFT);
+            header.setStyle("-fx-background-color: #7c3aed; -fx-padding: 6 10; -fx-cursor: move; -fx-background-radius: 4 4 0 0;");
+            
+            titleLabel = new Label(title);
+            titleLabel.setStyle("-fx-text-fill: white; -fx-font-family: 'Outfit', monospace; -fx-font-weight: bold; -fx-font-size: 12px;");
+            HBox.setHgrow(titleLabel, Priority.ALWAYS);
+            
+            Button btnClose = new Button("×");
+            btnClose.setStyle("-fx-background-color: transparent; -fx-text-fill: #f472b6; -fx-font-family: monospace; -fx-font-size: 14px; -fx-padding: 0 4 0 4; -fx-cursor: hand;");
+            btnClose.setOnAction(e -> {
+                Pane parent = (Pane) this.getParent();
+                if (parent != null) parent.getChildren().remove(this);
+            });
+            
+            header.getChildren().addAll(titleLabel, btnClose);
+            HBox.setHgrow(btnClose, Priority.NEVER);
+            
+            // Drag listeners
+            header.setOnMousePressed(e -> {
+                dragStartX = e.getSceneX() - this.getTranslateX();
+                dragStartY = e.getSceneY() - this.getTranslateY();
+                this.toFront();
+            });
+            header.setOnMouseDragged(e -> {
+                this.setTranslateX(e.getSceneX() - dragStartX);
+                this.setTranslateY(e.getSceneY() - dragStartY);
+            });
+            
+            // Content container
+            VBox container = new VBox(content);
+            container.setStyle("-fx-padding: 10;");
+            VBox.setVgrow(content, Priority.ALWAYS);
+            
+            this.getChildren().addAll(header, container);
+        }
+        
+        public String getTitle() {
+            return title;
+        }
     }
 
     // --- Inner Helper Classes --- //
@@ -847,7 +1273,6 @@ public class GodHandApp extends Application {
         }
         
         public void startClock() {
-            // --- HOURLY HEARTRATE SOAK MONITOR ---
             threadPool.submit(() -> {
                 while(true) {
                     try {
@@ -863,7 +1288,6 @@ public class GodHandApp extends Application {
                 }
             });
 
-            // --- SPACED OUT SOAKING CYCLE ---
             threadPool.submit(() -> {
                 while(true) {
                     try {
