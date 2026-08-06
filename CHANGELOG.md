@@ -26,6 +26,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Added]** feat: KV store writes from agent memories + votes, tool usage in vote cycle ($hash)
 - **[Added]** feat: A/B shadow model pairs + pipeline cycle + Euler/Audio/KV wiring ($hash)
 - **[Added]** feat: PipelineScheduler runCycle scheduled every 60min ($hash)
-- **[Added]** feat: Euler DB + audio auto-enable + Cloudflare immediate sync + KV writes ($hash)
 
