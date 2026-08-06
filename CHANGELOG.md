@@ -15,6 +15,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Fixed]** fix: Maslow needs populated with hardcoded model list (installedModels not ready at init) ($hash)
 - **[Added]** feat: Maslow hierarchy + Euler DB + Audio pipeline + Cloudflare clock + Evidence log ($hash)
 - **[Added]** feat: Phase 16 ΓÇö distributed scaling with multi-instance coordination ($hash)
-- **[Added]** feat: Phase 22 ΓÇö native llama.cpp build + SmolLM-135M fallback ($hash)
 
