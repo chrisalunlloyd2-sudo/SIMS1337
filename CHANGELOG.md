@@ -36,6 +36,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Changed]** ≡ƒöÑ Crash Recovery: Breathing Hexeract GUI + Code Registry + Full Documentation ($hash)
 - **[Added]** feat: Phase 29 ΓÇö lexical math, quorum Gist, IdeaFiles, MMAP, daily self-email ($hash)
 - **[Added]** feat: Phase 28 ΓÇö backpressure, dead letter queue, safety scoring, Prometheus, replayable events, agent web search ($hash)
-- **[Added]** feat: Phase 27 ΓÇö one-hot agent lifecycle with death & rebirth ($hash)
 
