@@ -41,6 +41,7 @@ All notable changes to this project.
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
+- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-06 00:18 ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Added]** feat: implement 6D hexeract geospatial manifold visualizer inside JavaFX GodHandApp canvas ($hash)
 - **[Added]** feat: implement 6D geospatial manifold visualization using Three.js and link multi-agent Ollama routing ($hash)
 - **[Docs]** docs: add white paper link to README ($hash)
-- **[Docs]** docs: add SIMS1337 technical white paper (v1.0, August 2026) ($hash)
 
