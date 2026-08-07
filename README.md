@@ -4,6 +4,19 @@
 
 ![GodHand](godhand.png)
 
+## 📸 Live Screens
+
+**Real GUI (GodHand on device)**
+
+![Real GUI](docs/screenshots/real_gui.jpg)
+
+**Swarm Hub — Executive Cortex**
+
+![Swarm Hub](docs/screenshots/swarm_hub.jpg)
+
+---
+
+
 
 
 ```
