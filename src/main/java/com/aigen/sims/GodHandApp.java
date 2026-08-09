@@ -158,14 +158,39 @@ public class GodHandApp extends Application {
         AnimationTimer timer = new AnimationTimer() {
             private long lastMove = 0;
             private long lastEnterpriseTick = 0;
-            
+            private long lastRender = 0;
+            private long lastState = 0;
+
+            // FRAME BUDGET. This loop used to render on EVERY pulse -- ~60 Hz -- recomputing 64
+            // six-dimensional projections, 192 edges, 600 particles and 150 stars each time, on a
+            // 4-core Xeon with no GPU. Nothing in the scene changes fast enough to need that: the
+            // hexeract turns slowly and the system beat is currently once a MINUTE. 10 Hz is
+            // indistinguishable to the eye here and costs a sixth of the CPU.
+            private final long frameNs = 1_000_000_000L
+                    / Math.max(1, Integer.getInteger("viper.hex.fps", 10));
+
             @Override
             public void handle(long now) {
-                timePulse += 0.02;
-                
-                // Decay stress level slowly towards baseline
-                stressLevel = Math.max(0.05, stressLevel - 0.001);
-                
+                if (now - lastRender < frameNs) {
+                    return;                       // skip: under the frame budget
+                }
+                double dt = lastRender == 0 ? 1.0 / 60 : (now - lastRender) / 1_000_000_000.0;
+                lastRender = now;
+
+                // Advance by ELAPSED TIME, not per frame. The old `+= 0.02` was tied to the frame
+                // rate, so dropping to 10 Hz would have slowed the rotation and breathing to a
+                // sixth of their speed. Rate-independent motion looks identical at any FPS.
+                timePulse += 1.2 * dt;
+
+                // Decay stress level slowly towards baseline (also rate-independent)
+                stressLevel = Math.max(0.05, stressLevel - 0.06 * dt);
+
+                // Real occupancy, refreshed on a slow cadence -- never per frame.
+                if (now - lastState > 15_000_000_000L) {
+                    lastState = now;
+                    ViperState.refreshAsync(densities, flows);
+                }
+
                 if (now - lastMove > 10_000_000_000L) { // 10 seconds
                     lastMove = now;
                     triggerAutonomousInferenceMovement();
@@ -615,8 +640,12 @@ public class GodHandApp extends Application {
             for (int d = 0; d < 6; d++) {
                 vertices6D[i][d] = ((i >> d) & 1) == 1 ? 1.0 : -1.0;
             }
-            densities[i] = 0.3 + rand.nextDouble() * 0.7;
-            flows[i] = 0.2 + rand.nextDouble() * 0.8;
+            // Seeded flat and DIM, not random. These are overwritten within ~15 s by real
+            // occupancy from ViperState. Random seeding was the old behaviour and it made an
+            // unpopulated board look busy and alive -- the single most misleading thing a
+            // dashboard can do. An unknown board should look unknown.
+            densities[i] = 0.10;
+            flows[i] = 0.20;
         }
 
         for (int i = 0; i < 64; i++) {
