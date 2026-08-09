@@ -167,6 +167,19 @@ def build_pass(model, hex_str, role, mission, toc_file, continuity_file, board_i
         lines.append("CONTINUITY: (no prior context — fresh spawn)")
     lines.append("")
 
+    # fleet role doctrine (Chris-approved 2026-08-09) — every spawn must know it
+    lines.append("FLEET DOCTRINE:")
+    lines.append("  • AEGIS RUNS THE FLEET — sandbox brain operates all fleet services")
+    lines.append("    (game daemon, chain runner, scheduler, hourly pipeline, :5000/:5001).")
+    lines.append("  • THE APK CONTROLS THE FLEET — device app is the command surface:")
+    lines.append("    Command Deck, HooksClient control panel, control+matrix+stats.")
+    lines.append("  • QWEN HELPS WITH THE APK — builds, troubleshooting via /hooks/*,")
+    lines.append("    live edits. NEVER spawn fleet services, NEVER run parallel models.")
+    lines.append("  • CELLULAR CHAIN: ONE model cell active per node, serial a→B→c→d,")
+    lines.append("    10s cooldown between inference and node fire. Never parallel.")
+    lines.append("  • ADD ONLY, NEVER DELETE. Few model calls/hour; vote consensus 1/day.")
+    lines.append("")
+
     lines.append(f"MISSION: {mission}")
     lines.append("═══ END BOARDING PASS ═══")
     lines.append("")
