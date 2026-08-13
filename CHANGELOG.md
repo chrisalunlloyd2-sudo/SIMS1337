@@ -3,6 +3,7 @@
 All notable changes to this project.
 
 ## 2026-08
+- **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 17:45 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 16:39 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 15:48 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 14:39 ($hash)
@@ -15,7 +16,6 @@ All notable changes to this project.
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 04:34 ($hash)
 - **[Changed]** perf(godhand): 60Hz -> 10Hz frame budget, and real occupancy instead of rand() ($hash)
 - **[Changed]** BUILD BLOCKER: GodHandApp.java does not compile ΓÇö stop selecting its TODOs ($hash)
-- **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
 - **[Docs]** docs: auto-update [skip-docs] ($hash)
