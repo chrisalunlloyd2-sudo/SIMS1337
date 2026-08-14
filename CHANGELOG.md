@@ -3,6 +3,7 @@
 All notable changes to this project.
 
 ## 2026-08
+- **[Changed]** [Moe autonomous] SIMS1337 2026-08-14 01:26 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-13 23:24 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-13 21:56 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-13 20:20 ($hash)
@@ -52,5 +53,4 @@ All notable changes to this project.
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 08:37 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 06:43 ($hash)
 - **[Changed]** [Moe autonomous] SIMS1337 2026-08-12 04:34 ($hash)
-- **[Changed]** perf(godhand): 60Hz -> 10Hz frame budget, and real occupancy instead of rand() ($hash)
 
