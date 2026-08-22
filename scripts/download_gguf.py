@@ -77,31 +77,31 @@ def check_ollama():
         req = urllib.request.Request(f"{OLLAMA_HOST}/api/tags")
         resp = urllib.request.urlopen(req, timeout=5)
         return resp.status == 200
-    except:
+    except Exception:
         return False
 
 def download_gguf(model_key):
     info = GGUF_MODELS[model_key]
     url = f"https://huggingface.co/{info['repo']}/resolve/main/{info['file']}"
     dest = os.path.expanduser(f"~/.ollama/models/{info['file']}")
-    
+
     print(f"  Downloading: {info['file']} ({info['size_gb']:.1f} GB)")
     print(f"  From: {url}")
     print(f"  To: {dest}")
-    
+
     # Use curl for reliable downloads with progress
     result = subprocess.run([
         "curl", "-L", "--progress-bar", "-o", dest, url
     ], capture_output=True, text=True, timeout=3600)
-    
+
     if result.returncode != 0:
         print(f"  FAILED: {result.stderr[:200]}")
         return False
-    
+
     # Verify file size
     actual_size = os.path.getsize(dest) / (1024**3)
     print(f"  Downloaded: {actual_size:.2f} GB")
-    
+
     # Create Modelfile for Ollama
     model_name = model_key.replace("-q4_K_M", "")
     modelfile_path = os.path.expanduser(f"~/.ollama/models/Modelfile.{model_name}")
@@ -112,7 +112,7 @@ PARAMETER num_predict 256
 """
     with open(modelfile_path, 'w') as f:
         f.write(modelfile)
-    
+
     # Create in Ollama
     result = subprocess.run(
         ["ollama", "create", model_name, "-f", modelfile_path],
@@ -125,14 +125,14 @@ def main():
     if not check_ollama():
         print("ERROR: Ollama not running at localhost:11434")
         sys.exit(1)
-    
+
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
-    
+
     if target == "all":
         print(f"=== Downloading ALL {len(GGUF_MODELS)} Q4_K_M models ===\n")
         total_gb = sum(m['size_gb'] for m in GGUF_MODELS.values())
         print(f"Total: ~{total_gb:.1f} GB\n")
-        
+
         for key in GGUF_MODELS:
             print(f"[{key}]")
             if download_gguf(key):
@@ -147,7 +147,7 @@ def main():
         print(f"Unknown model: {target}")
         print(f"Available: {', '.join(GGUF_MODELS.keys())}")
         sys.exit(1)
-    
+
     print("\n=== Done ===")
     subprocess.run(["ollama", "list"], timeout=10)
 
