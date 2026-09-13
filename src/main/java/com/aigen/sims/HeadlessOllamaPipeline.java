@@ -17,7 +17,7 @@ import java.nio.file.*;
  */
 public class HeadlessOllamaPipeline {
 
-    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
+    private static final String OLLAMA_URL = "http://localhost:5000/api/generate";
     private static final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
@@ -197,32 +197,77 @@ public class HeadlessOllamaPipeline {
 
     // ==================== OLLAMA API CALL ====================
     private static String callModel(String model, String prompt, int maxTokens, double temp) throws Exception {
+        String escapedPrompt = escapeJson(prompt);
         String json = String.format(
-            "{\"model\":\"%s\",\"prompt\":\"%s\",\"stream\":false,\"options\":{\"num_predict\":%d,\"temperature\":%.1f}}",
-            model, prompt.replace("\"", "\\\"").replace("\n", "\\n"), maxTokens, temp);
+            "{\"prompt\":\"%s\",\"max_tokens\":%d}",
+            escapedPrompt, maxTokens);
 
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(OLLAMA_URL))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(120))
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
+        int maxRetries = 3;
+        long[] backoffMs = {1000, 3000, 7000};
+        Exception lastEx = null;
 
-        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(OLLAMA_URL))
+                        .header("Content-Type", "application/json")
+                        .timeout(Duration.ofSeconds(120))
+                        .POST(HttpRequest.BodyPublishers.ofString(json))
+                        .build();
 
-        if (resp.statusCode() == 200) {
-            String body = resp.body();
-            int s = body.indexOf("\"response\":\"");
-            if (s > 0) {
-                s += 12;
-                int e = body.indexOf("\"", s);
-                if (e > s) return body.substring(s, e)
-                        .replace("\\n", "\n")
-                        .replace("\\\"", "\"")
-                        .replace("\\t", "\t");
+                HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+
+                if (resp.statusCode() == 200) {
+                    String body = resp.body();
+                    int s = body.indexOf("\"response\":\"");
+                    if (s > 0) {
+                        s += 12;
+                        int e = body.indexOf("\"", s);
+                        if (e > s) return body.substring(s, e)
+                                .replace("\\n", "\n")
+                                .replace("\\\"", "\"")
+                                .replace("\\t", "\t");
+                    }
+                    return body;
+                }
+                lastEx = new RuntimeException("HTTP " + resp.statusCode());
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw ie;
+            } catch (Exception e) {
+                lastEx = e;
             }
-            return body;
+
+            if (attempt < maxRetries) {
+                try { Thread.sleep(backoffMs[attempt]); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); throw ie; }
+            }
         }
-        throw new RuntimeException("HTTP " + resp.statusCode());
+
+        throw lastEx != null ? lastEx : new RuntimeException("Ollama unreachable after " + maxRetries + " retries");
+    }
+
+    /** Escape a string for safe inclusion in a JSON value. */
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\b': sb.append("\\b");  break;
+                case '\f': sb.append("\\f");  break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
     }
 }
