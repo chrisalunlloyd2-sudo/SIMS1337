@@ -1,0 +1,9 @@
+# codellama:7b Q4_K_M — download GGUF from HuggingFace, create via Modelfile
+# Step 1: Download Q4_K_M GGUF
+# Step 2: Create this Modelfile pointing to the GGUF
+# Step 3: ollama create codellama:7b-q4_K_M -f thisfile
+
+# For now, use the existing codellama:7b with higher context
+FROM codellama:7b
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.7

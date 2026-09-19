@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOC-TOK Editor — Hex Knowledge Tree</title>
+<style>
+  :root { --bg:#141414; --panel:#1e1e1e; --border:#333; --accent:#4d9fff;
+          --text:#e0e0e0; --dim:#999; --at:#4dff88; --hop:#ffd24d; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 ui-monospace,monospace;
+         display:flex; height:100vh; overflow:hidden; }
+  #mapPane { flex:1; position:relative; background:#101010; }
+  #mapPane svg { width:100%; height:100%; display:block; }
+  #panel { width:340px; background:var(--panel); border-left:1px solid var(--border);
+           display:flex; flex-direction:column; overflow:hidden; }
+  #panel header { padding:10px 14px; border-bottom:1px solid var(--border);
+                  font-weight:bold; letter-spacing:1px; }
+  #search { margin:10px 14px; padding:8px; background:#111; border:1px solid var(--border);
+            color:var(--text); border-radius:4px; }
+  #tree { flex:1; overflow-y:auto; padding:0 8px 12px; }
+  .tnode { padding:4px 8px; border-radius:4px; cursor:pointer; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
+  .tnode:hover { background:#2a2a2a; }
+  .tnode.sel { background:#2a4a6a; }
+  .t-arrow { color:var(--dim); }
+  .t-type { color:var(--accent); font-size:11px; margin-right:6px; }
+  .t-hex { color:var(--dim); font-size:11px; }
+  .t-tag { background:#2a2a2a; color:var(--dim); border-radius:3px; padding:1px 5px;
+           font-size:10px; margin-left:4px; }
+  #form { border-top:1px solid var(--border); padding:10px 14px; display:grid; gap:6px; }
+  #form input, #form select { padding:6px; background:#111; border:1px solid var(--border);
+           color:var(--text); border-radius:4px; width:100%; }
+  #form .row { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  #form button { padding:8px; background:var(--accent); color:#000; border:0;
+           border-radius:4px; font-weight:bold; cursor:pointer; }
+  #form button.danger { background:#c44; }
+  #hint { position:absolute; bottom:10px; left:10px; color:var(--dim); font-size:12px;
+          background:rgba(0,0,0,.7); padding:6px 10px; border-radius:4px; }
+  #status { position:absolute; top:10px; right:10px; color:var(--dim); font-size:12px;
+            background:rgba(0,0,0,.7); padding:6px 10px; border-radius:4px; }
+  .node-label { font-size:11px; fill:var(--text); pointer-events:none;
+                text-anchor:middle; }
+  .hex-cell { fill:rgba(255,255,255,.02); stroke:#2a2a2a; }
+  .hex-cell:hover { fill:rgba(255,255,255,.06); }
+  .drag-node { cursor:grab; }
+  .drag-node:active { cursor:grabbing; }
+</style>
+</head>
+<body>
+<div id="mapPane">
+  <svg id="svg"></svg>
+  <div id="status"></div>
+  <div id="hint">🖱 drag a node to a new hex · 🖱 click hex to see contents · panel: add/edit/remove</div>
+</div>
+<div id="panel">
+  <header>🗺️ TOC-TOK Tree</header>
+  <input id="search" placeholder="search nodes...">
+  <div id="tree"></div>
+  <div id="form">
+    <input id="fPath" placeholder="/projects/NewProject">
+    <div class="row">
+      <input id="fType" list="types" placeholder="type">
+      <input id="fHex" placeholder="hex (q,r)">
+    </div>
+    <datalist id="types">
+      <option value="project"><option value="phase"><option value="component">
+      <option value="task"><option value="knowledge"><option value="idea">
+    </datalist>
+    <input id="fTags" placeholder="tags (comma sep)">
+    <input id="fContent" placeholder="content / description">
+    <div class="row">
+      <button id="btnAdd">➕ Add / Update</button>
+      <button id="btnMove" class="danger">🎯 Move to hex</button>
+    </div>
+    <div class="row">
+      <button id="btnDel" style="background:#555">🗑 Remove</button>
+      <button id="btnRefresh">🔄 Refresh</button>
+    </div>
+  </div>
+</div>
+<script>
+const S = 34; // hex size px
+let TREE = null, selPath = null;
+
+// ---------- hex math (axial, pointy-top) ----------
+function hexToPixel(q, r) { return { x: S * Math.sqrt(3) * (q + r/2), y: S * 1.5 * r }; }
+function pixelToHex(x, y) {
+  const q = (Math.sqrt(3)/3 * x - 1/3 * y) / S;
+  const r = (2/3 * y) / S;
+  return cubeRound(q, r);
+}
+function cubeRound(q, r) {
+  let x = q, z = r, y = -x - z;
+  let rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
+  const dx = Math.abs(rx-x), dy = Math.abs(ry-y), dz = Math.abs(rz-z);
+  if (dx > dy && dx > dz) rx = -ry-rz; else if (dy > dz) ry = -rx-rz; else rz = -rx-ry;
+  return [rx, rz];
+}
+function hexDist(a, b) {
+  const dq = a[0]-b[0], dr = a[1]-b[1];
+  return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq+dr));
+}
+
+// ---------- tree helpers ----------
+function allNodes() {
+  const out = [];
+  (function walk(n){ out.push(n); (n.children||[]).forEach(walk); })(TREE.root);
+  return out;
+}
+function findNode(path) {
+  const parts = path.split("/").filter(Boolean);
+  let n = TREE.root;
+  for (const p of parts) { n = (n.children||[]).find(c => c.path === "/"+[...(path.split("/").filter(Boolean).slice(0, parts.indexOf(p)+1))].join("/")); if(!n) return null; }
+  return n;
+}
+
+// ---------- render ----------
+function render() {
+  const svg = document.getElementById("svg");
+  svg.innerHTML = "";
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  svg.appendChild(g);
+  if (!TREE) return;
+
+  // hex cells (render a window around origin)
+  const seen = new Set();
+  const nodes = allNodes();
+  const coords = nodes.map(n => (n.hex||"0,0").split(",").map(Number));
+  coords.push([0,0]);
+  for (const [q,r] of coords) {
+    if (seen.has(q+","+r)) continue; seen.add(q+","+r);
+    const {x,y} = hexToPixel(q,r);
+    const cell = document.createElementNS("http://www.w3.org/2000/svg","polygon");
+    cell.setAttribute("class","hex-cell");
+    cell.setAttribute("points", hexPoints(x,y).join(" "));
+    cell.setAttribute("data-hex", q+","+r);
+    cell.addEventListener("click", () => showHex(q+","+r));
+    g.appendChild(cell);
+    // hex label
+    const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute("x",x); t.setAttribute("y",y+3);
+    t.setAttribute("class","node-label");
+    t.style.fill="#555"; t.textContent = q+","+r;
+    g.appendChild(t);
+  }
+
+  // node markers (draggable)
+  for (const n of nodes) {
+    const [q,r] = (n.hex||"0,0").split(",").map(Number);
+    const {x,y} = hexToPixel(q,r);
+    const grp = document.createElementNS("http://www.w3.org/2000/svg","g");
+    grp.setAttribute("class","drag-node");
+    grp.setAttribute("data-path", n.path);
+    grp.setAttribute("transform", `translate(${x},${y})`);
+    const circ = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    circ.setAttribute("r", 13);
+    circ.setAttribute("fill", typeColor(n.type));
+    circ.setAttribute("stroke", selPath===n.path ? "#fff" : "#000");
+    circ.setAttribute("stroke-width", selPath===n.path ? 2 : 1);
+    grp.appendChild(circ);
+    const lbl = document.createElementNS("http://www.w3.org/2000/svg","text");
+    lbl.setAttribute("class","node-label");
+    lbl.setAttribute("y", 4);
+    lbl.textContent = n.path.split("/").pop() || "?";
+    grp.appendChild(lbl);
+    grp.addEventListener("click", (e) => { e.stopPropagation(); selectNode(n.path); });
+    makeDraggable(grp, n);
+    g.appendChild(grp);
+  }
+  renderTree();
+}
+
+function hexPoints(x, y) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const ang = Math.PI/180 * (60*i - 30);
+    pts.push([x + S*Math.cos(ang), y + S*Math.sin(ang)]);
+  }
+  return pts;
+}
+
+function typeColor(t) {
+  return {project:"#4d9fff", phase:"#4dff88", component:"#ffd24d",
+          task:"#ff7a4d", knowledge:"#c44dff", idea:"#ff4d88", folder:"#777",
+          root:"#999"}[t] || "#999";
+}
+
+// ---------- drag ----------
+function makeDraggable(grp, node) {
+  let dragging = false, off = {x:0,y:0};
+  grp.addEventListener("mousedown", (e) => {
+    dragging = true;
+    off = {x: e.clientX - e.clientX, y: 0};
+    grp.style.opacity = 0.7;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const svg = document.getElementById("svg");
+    const rect = svg.getBoundingClientRect();
+    const pt = svg.createSVGPoint ? svg.createSVGPoint() : null;
+    let mx, my;
+    if (pt) { pt.x = e.clientX-rect.left; pt.y = e.clientY-rect.top; const p = pt.matrixTransform(svg.getScreenCTM().inverse()); mx=p.x; my=p.y; }
+    else { mx = e.clientX-rect.left; my = e.clientY-rect.top; }
+    grp.setAttribute("transform", `translate(${mx},${my})`);
+  });
+  window.addEventListener("mouseup", async (e) => {
+    if (!dragging) return;
+    dragging = false;
+    grp.style.opacity = 1;
+    const svg = document.getElementById("svg");
+    const rect = svg.getBoundingClientRect();
+    const pt = svg.createSVGPoint ? svg.createSVGPoint() : null;
+    let mx, my;
+    if (pt) { pt.x = e.clientX-rect.left; pt.y = e.clientY-rect.top; const p = pt.matrixTransform(svg.getScreenCTM().inverse()); mx=p.x; my=p.y; }
+    else { mx = e.clientX-rect.left; my = e.clientY-rect.top; }
+    const [q,r] = pixelToHex(mx, my);
+    if (q !== node.hex.split(",").map(Number)[0] || r !== node.hex.split(",").map(Number)[1]) {
+      await api("POST","/api/move", {path: node.path, hex: q+","+r});
+      node.hex = q+","+r;
+      status(`moved ${node.path} → (${q},${r})`);
+    }
+    render();
+  });
+}
+
+// ---------- tree panel ----------
+function renderTree() {
+  const el = document.getElementById("tree");
+  el.innerHTML = "";
+  (function walk(n, depth) {
+    const row = document.createElement("div");
+    row.className = "tnode" + (selPath===n.path ? " sel" : "");
+    row.style.paddingLeft = (8 + depth*16) + "px";
+    const type = document.createElement("span");
+    type.className = "t-type"; type.textContent = n.type==="root" ? "🏠" : n.type[0]||"";
+    const label = document.createElement("span");
+    label.textContent = (n.path.split("/").pop() || "/") + " ";
+    const hex = document.createElement("span");
+    hex.className = "t-hex"; hex.textContent = "@" + n.hex;
+    row.appendChild(type); row.appendChild(label); row.appendChild(hex);
+    for (const t of (n.tags||[]).slice(0,2)) {
+      const tag = document.createElement("span"); tag.className="t-tag"; tag.textContent=t;
+      row.appendChild(tag);
+    }
+    row.addEventListener("click", () => selectNode(n.path));
+    el.appendChild(row);
+    (n.children||[]).forEach(c => walk(c, depth+1));
+  })(TREE.root, 0);
+  // filter by search
+  const q = document.getElementById("search").value.toLowerCase();
+  if (q) for (const row of el.children) {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+  }
+}
+
+function selectNode(path) {
+  selPath = path;
+  const n = findNode(path);
+  if (n) {
+    document.getElementById("fPath").value = n.path;
+    document.getElementById("fType").value = n.type||"";
+    document.getElementById("fHex").value = n.hex||"";
+    document.getElementById("fTags").value = (n.tags||[]).join(",");
+    document.getElementById("fContent").value = n.content||"";
+  }
+  render();
+}
+
+async function showHex(h) {
+  const hits = await api("GET", "/api/at?hex="+h);
+  status(`hex ${h}: ${hits.length ? hits.map(x=>x.path.split("/").pop()).join(", ") : "(empty)"}`);
+}
+
+// ---------- api ----------
+async function api(method, path, body) {
+  const opt = { method };
+  if (body) { opt.headers = {"Content-Type":"application/json"}; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  return r.json();
+}
+function status(msg) { document.getElementById("status").textContent = msg; }
+
+// ---------- form ----------
+document.getElementById("btnAdd").onclick = async () => {
+  const payload = {
+    path: document.getElementById("fPath").value,
+    type: document.getElementById("fType").value,
+    hex: document.getElementById("fHex").value,
+    tags: document.getElementById("fTags").value,
+    content: document.getElementById("fContent").value,
+  };
+  const r = await api("POST","/api/node", payload);
+  status(r.created ? `created ${r.path}` : `updated ${r.path}`);
+  await load();
+};
+document.getElementById("btnMove").onclick = async () => {
+  const hex = document.getElementById("fHex").value;
+  await api("POST","/api/move", {path: document.getElementById("fPath").value, hex});
+  status(`moved to ${hex}`);
+  await load();
+};
+document.getElementById("btnDel").onclick = async () => {
+  await api("POST","/api/remove", {path: document.getElementById("fPath").value});
+  status("removed");
+  selPath = null;
+  await load();
+};
+document.getElementById("btnRefresh").onclick = load;
+document.getElementById("search").oninput = renderTree;
+
+async function load() {
+  TREE = await api("GET","/api/tree");
+  render();
+}
+load();
+</script>
+</body>
+</html>

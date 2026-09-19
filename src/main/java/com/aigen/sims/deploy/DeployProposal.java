@@ -33,6 +33,12 @@ public class DeployProposal {
         return new DeployProposal(id,repoName,filePath,originalContent,newContent,
             diff,modelName,suggestionId,timestamp,s,hexQ,hexR,description);
     }
+    // 2026-07-31 (NyxGate, Architect gist 3.3): AlgebraicCorrector needs to replace newContent with
+    // a repaired version WITHOUT minting a new id -- GateKeeper tracks proposals by id.
+    public DeployProposal withNewContent(String repairedContent) {
+        return new DeployProposal(id,repoName,filePath,originalContent,repairedContent,
+            diff,modelName,suggestionId,timestamp,status,hexQ,hexR,description);
+    }
     public boolean isApproved() { return status.equals("APPROVED"); }
     public boolean isRejected() { return status.equals("REJECTED"); }
     public boolean isMerged() { return status.equals("MERGED"); }

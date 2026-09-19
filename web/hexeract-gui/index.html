@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIMS1337 — 6D Hexeract Geospatial Manifold</title>
+    <meta name="description" content="6-Dimensional Hypercube Geospatial Manifold with Viscoelastic Heartbeat Dynamics & Interstitial SLM Distillation">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <style>
+        /* ═══════════════════════════════════════════════════════════
+           SIMS1337 6D HEXERACT — COSMIC MANIFOLD DESIGN SYSTEM
+           High-End Space Cyberpunk | Ultra-Premium Glassmorphism
+           ═══════════════════════════════════════════════════════════ */
+        :root {
+            --bg-void: #020106;
+            --bg-panel: rgba(8, 4, 24, 0.65);
+            --bg-panel-solid: #080418;
+            --border-dim: rgba(147, 51, 234, 0.15);
+            --border-glow: rgba(168, 85, 247, 0.4);
+            
+            /* Curated Space Palette */
+            --accent-purple: #c084fc;   /* Nebula violet */
+            --accent-magenta: #f472b6;  /* Plasma pink */
+            --accent-blue: #38bdf8;     /* Cosmic sky */
+            --accent-indigo: #818cf8;   /* Deep interstellar */
+            --accent-hot: #f43f5e;      /* Solar flare */
+            
+            --text-bright: #f3e8ff;
+            --text-mid: #c0b3d6;
+            --text-dim: #6b5c8c;
+            
+            --font-sans: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            
+            --transition: 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden;
+            font-family: var(--font-sans);
+            background: var(--bg-void);
+            color: var(--text-bright);
+        }
+
+        /* Nebula Space Backdrop */
+        #space-backdrop {
+            position: fixed; inset: 0; z-index: -2;
+            background: 
+                radial-gradient(circle at 15% 25%, rgba(147, 51, 234, 0.12) 0%, transparent 45%),
+                radial-gradient(circle at 80% 70%, rgba(56, 189, 248, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(244, 114, 182, 0.05) 0%, transparent 60%),
+                linear-gradient(145deg, #020108 0%, #08031d 50%, #03010b 100%);
+        }
+
+        /* ── Core Grid Layout ── */
+        #app-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr 380px;
+            grid-template-rows: 64px 1fr 220px;
+            width: 100vw; height: 100vh;
+            position: relative; z-index: 1;
+        }
+
+        /* ── Header ── */
+        header {
+            grid-column: 1 / -1;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 32px;
+            background: rgba(4, 2, 12, 0.85);
+            backdrop-filter: blur(25px);
+            border-bottom: 1px solid var(--border-dim);
+            z-index: 10;
+        }
+        .logo-group {
+            display: flex; align-items: center; gap: 16px;
+            font-weight: 800; font-size: 18px; letter-spacing: 3px;
+            color: var(--text-bright);
+            text-transform: uppercase;
+        }
+        .logo-group span {
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-magenta));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .system-heartbeat-status {
+            display: flex; gap: 32px; font-family: var(--font-mono); font-size: 12px;
+        }
+        .status-node { display: flex; align-items: center; gap: 8px; }
+        .status-pulse-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background-color: var(--accent-purple);
+            box-shadow: 0 0 10px var(--accent-purple);
+        }
+        @keyframes pulse-light {
+            0%, 100% { transform: scale(1); opacity: 0.6; }
+            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 14px currentColor; }
+        }
+
+        /* ── Left Sidebar (Control & Telemetry) ── */
+        #left-sidebar {
+            grid-row: 2 / 4;
+            background: rgba(6, 3, 18, 0.7);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid var(--border-dim);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex; flex-direction: column; gap: 16px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-purple) transparent;
+        }
+
+        .panel-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            transition: var(--transition);
+        }
+        .panel-card:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 30px rgba(168, 85, 247, 0.08);
+        }
+        .panel-card h2 {
+            font-size: 11px; font-weight: 700; letter-spacing: 2px;
+            text-transform: uppercase; color: var(--accent-purple);
+            margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+        }
+        .panel-card h2::before {
+            content: '⬡'; font-size: 14px; color: var(--accent-magenta);
+        }
+
+        .data-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 0; font-size: 13px;
+            border-bottom: 1px solid rgba(147, 51, 234, 0.08);
+        }
+        .data-row:last-child { border-bottom: none; }
+        .data-label { color: var(--text-mid); }
+        .data-value { font-family: var(--font-mono); font-weight: 600; }
+
+        /* Sliders & Gauges */
+        .gauge-block { margin: 12px 0; }
+        .gauge-header {
+            display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;
+        }
+        .gauge-bar-bg {
+            height: 6px; background: rgba(147, 51, 234, 0.15); border-radius: 4px; overflow: hidden;
+        }
+        .gauge-bar-fill {
+            height: 100%; border-radius: 4px; width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        /* ── Center Viewport (The Manifold) ── */
+        #manifold-viewport {
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+        }
+        #webgl-canvas {
+            width: 100%; height: 100%;
+            display: block;
+        }
+        #viewport-instructions {
+            position: absolute; top: 16px; left: 16px;
+            pointer-events: none;
+            background: rgba(10, 5, 25, 0.7);
+            border: 1px solid var(--border-dim);
+            padding: 8px 16px; border-radius: var(--radius-sm);
+            font-size: 12px; color: var(--text-mid);
+            backdrop-filter: blur(8px);
+        }
+
+        /* Interstitial Inspector Overlay */
+        #inspector-overlay {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 320px;
+            background: rgba(6, 3, 18, 0.9);
+            border: 1px solid var(--accent-magenta);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 0 30px rgba(244, 114, 182, 0.15);
+            display: none;
+            z-index: 5;
+            transition: var(--transition);
+        }
+        #inspector-overlay.show { display: block; animation: slide-up 0.35s cubic-bezier(0.25, 0.8, 0.25, 1); }
+        @keyframes slide-up {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .inspector-title {
+            font-size: 13px; font-weight: 800; color: var(--accent-magenta);
+            margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;
+        }
+        .inspector-code {
+            font-family: var(--font-mono); font-size: 11px;
+            background: rgba(0,0,0,0.3); padding: 8px; border-radius: var(--radius-sm);
+            color: var(--text-bright); overflow-x: auto; white-space: pre-wrap;
+            max-height: 120px; overflow-y: auto; border: 1px solid var(--border-dim);
+        }
+
+        /* Breathing Wave overlay */
+        #heartbeat-overlay-panel {
+            position: absolute; bottom: 20px; right: 20px;
+            display: flex; align-items: center; gap: 16px;
+            padding: 10px 20px; border-radius: var(--radius-lg);
+            background: rgba(6, 3, 18, 0.8);
+            border: 1px solid var(--border-dim);
+            backdrop-filter: blur(12px);
+            pointer-events: none;
+        }
+        .heartbeat-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background-color: var(--accent-blue);
+            box-shadow: 0 0 10px var(--accent-blue);
+        }
+        .heartbeat-label {
+            font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--accent-blue);
+            letter-spacing: 1.5px;
+        }
+
+        /* ── Right Sidebar (SLM Swarm Chat Console) ── */
+        #right-sidebar {
+            grid-row: 2 / 4;
+            background: rgba(6, 3, 18, 0.7);
+            backdrop-filter: blur(16px);
+            border-left: 1px solid var(--border-dim);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-header {
+            padding: 20px; border-bottom: 1px solid var(--border-dim);
+            font-size: 13px; font-weight: 800; letter-spacing: 2px;
+            text-transform: uppercase; color: var(--accent-purple);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .agent-pills {
+            display: flex; gap: 6px; padding: 10px 20px;
+            background: rgba(147, 51, 234, 0.03);
+            border-bottom: 1px solid var(--border-dim);
+            overflow-x: auto;
+        }
+        .agent-pill {
+            font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+            padding: 4px 10px; border-radius: 20px;
+            border: 1px solid var(--border-dim);
+            background: rgba(0,0,0,0.3);
+            color: var(--text-dim);
+            cursor: pointer; transition: var(--transition);
+            white-space: nowrap;
+        }
+        .agent-pill.active {
+            color: var(--text-bright);
+            border-color: var(--accent-magenta);
+            background: rgba(244, 114, 182, 0.15);
+            box-shadow: 0 0 10px rgba(244, 114, 182, 0.15);
+        }
+
+        #chat-scroller {
+            flex: 1; overflow-y: auto;
+            padding: 20px; display: flex; flex-direction: column; gap: 16px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-purple) transparent;
+        }
+        .chat-bubble {
+            max-width: 90%; padding: 14px; border-radius: var(--radius-md);
+            font-size: 13px; line-height: 1.6;
+            animation: bubble-fade 0.35s ease-out;
+        }
+        @keyframes bubble-fade {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-bubble.user {
+            align-self: flex-end;
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(56, 189, 248, 0.1));
+            border: 1px solid rgba(168, 85, 247, 0.25);
+            color: var(--text-bright);
+        }
+        .chat-bubble.agent {
+            align-self: flex-start;
+            background: rgba(12, 6, 32, 0.6);
+            border: 1px solid var(--border-dim);
+            border-left: 4px solid var(--accent-magenta);
+        }
+        .bubble-meta {
+            font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+            color: var(--accent-magenta); margin-bottom: 6px;
+            letter-spacing: 1px; text-transform: uppercase;
+        }
+        .bubble-meta span {
+            color: var(--text-dim); font-weight: 400; margin-left: 8px;
+        }
+        
+        .chat-input-container {
+            padding: 20px; border-top: 1px solid var(--border-dim);
+            background: rgba(4, 2, 12, 0.4);
+        }
+        .chat-input-wrapper {
+            position: relative; width: 100%;
+        }
+        .chat-input-field {
+            width: 100%; padding: 14px 48px 14px 16px;
+            background: rgba(10, 5, 25, 0.9);
+            border: 1px solid var(--border-dim);
+            border-radius: var(--radius-md);
+            color: var(--text-bright); font-family: var(--font-sans);
+            font-size: 13.5px; outline: none; transition: var(--transition);
+        }
+        .chat-input-field:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+        }
+        .chat-send-btn {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            width: 32px; height: 32px; border-radius: 50%;
+            border: none; background: rgba(168, 85, 247, 0.15);
+            color: var(--accent-purple); font-size: 14px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: var(--transition);
+        }
+        .chat-send-btn:hover {
+            background: var(--accent-purple); color: var(--bg-void);
+            box-shadow: 0 0 10px var(--accent-purple);
+        }
+
+        /* ── Bottom Grid (Spike and Gossip Logs) ── */
+        #bottom-panel {
+            grid-column: 2;
+            background: rgba(6, 3, 18, 0.75);
+            border-top: 1px solid var(--border-dim);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            overflow: hidden;
+        }
+        .bottom-half {
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid var(--border-dim);
+        }
+        .bottom-half:last-child { border-right: none; }
+        .panel-header {
+            padding: 10px 20px; font-size: 10px; font-weight: 700; letter-spacing: 2px;
+            text-transform: uppercase; border-bottom: 1px solid var(--border-dim);
+            background: rgba(0,0,0,0.3); display: flex; justify-content: space-between;
+        }
+        .terminal-scroll {
+            flex: 1; overflow-y: auto; padding: 12px 20px;
+            font-family: var(--font-mono); font-size: 11px;
+            line-height: 1.6; color: var(--text-mid);
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-purple) transparent;
+        }
+        .log-item { margin-bottom: 4px; display: flex; gap: 8px; }
+        .log-ts { color: var(--text-dim); }
+        .log-tag { font-weight: 700; text-transform: uppercase; }
+        
+        .tag-info { color: var(--accent-blue); }
+        .tag-spike { color: var(--accent-magenta); }
+        .tag-quorum { color: var(--accent-purple); }
+        .tag-error { color: var(--accent-hot); }
+
+        /* Custom buttons styling */
+        .action-button {
+            background: rgba(168, 85, 247, 0.08);
+            border: 1px solid var(--border-glow);
+            color: var(--accent-purple);
+            padding: 10px 16px; border-radius: var(--radius-sm);
+            font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+            letter-spacing: 1px; text-transform: uppercase;
+            cursor: pointer; transition: var(--transition);
+            width: 100%; text-align: center;
+        }
+        .action-button:hover {
+            background: rgba(168, 85, 247, 0.2);
+            color: var(--text-bright);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.15);
+        }
+        .action-button.shock {
+            background: rgba(244, 63, 94, 0.08);
+            border-color: rgba(244, 63, 94, 0.4);
+            color: var(--accent-hot);
+        }
+        .action-button.shock:hover {
+            background: rgba(244, 63, 94, 0.2);
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.15);
+        }
+
+        .select-custom {
+            width: 100%; padding: 10px; border-radius: var(--radius-sm);
+            background: rgba(10, 5, 25, 0.85); border: 1px solid var(--border-dim);
+            color: var(--text-bright); font-family: var(--font-mono); font-size: 12px;
+            outline: none; cursor: pointer; transition: var(--transition);
+        }
+        .select-custom:focus {
+            border-color: var(--accent-purple);
+        }
+
+        /* ── Responsive Styling ── */
+        @media (max-width: 1200px) {
+            #app-layout {
+                grid-template-columns: 300px 1fr 320px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="space-backdrop"></div>
+
+    <div id="app-layout">
+        <!-- ═══ TOP HEADER ═══ -->
+        <header>
+            <div class="logo-group">
+                <span>SIMS1337</span> Geospatial Manifold
+            </div>
+            <div class="system-heartbeat-status">
+                <div class="status-node">
+                    <div class="status-pulse-dot" id="header-pulse"></div>
+                    <span class="data-label" style="color:var(--text-dim)">Heartbeat Loop:</span>
+                    <span class="data-value" id="header-heartbeat-rate" style="color:var(--accent-blue)">1.20 Hz</span>
+                </div>
+                <div class="status-node">
+                    <span class="data-label" style="color:var(--text-dim)">Quorum Consensus:</span>
+                    <span class="data-value" id="header-quorum-consensus" style="color:var(--accent-magenta)">45 / 64 Nodes</span>
+                </div>
+                <div class="status-node">
+                    <span class="data-label" style="color:var(--text-dim)">De:</span>
+                    <span class="data-value" id="header-de-val" style="color:var(--accent-purple)">0.92</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ═══ LEFT PANEL: CONTROLS & TELEMETRY ═══ -->
+        <aside id="left-sidebar">
+            <!-- Geospatial Parameters -->
+            <div class="panel-card">
+                <h2>6D Geospatial Manifold</h2>
+                <div class="data-row"><span class="data-label">Coordinates Projection</span><span class="data-value" style="color:var(--accent-blue)">6D → 3D Space</span></div>
+                <div class="data-row"><span class="data-label">Total Cells</span><span class="data-value">64 Vertices</span></div>
+                <div class="data-row"><span class="data-label">Interconnecting Channels</span><span class="data-value">192 Edges</span></div>
+                <div class="data-row"><span class="data-label">Geometric 3-Cells</span><span class="data-value">160 Cubes</span></div>
+                <div class="data-row"><span class="data-label">Hypercubic Boundaries</span><span class="data-value">60 Tesseracts</span></div>
+            </div>
+
+            <!-- Rheological Rheometry -->
+            <div class="panel-card">
+                <h2>Rheological State</h2>
+                <div class="gauge-block">
+                    <div class="gauge-header"><span class="data-label">Viscosity η(γ̇)</span><span class="data-value" id="v-val-disp">0.420 Pas</span></div>
+                    <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="v-bar" style="background: linear-gradient(90deg, var(--accent-purple), var(--accent-magenta));"></div></div>
+                </div>
+                <div class="gauge-block">
+                    <div class="gauge-header"><span class="data-label">Shear Strain γ̇</span><span class="data-value" id="s-val-disp">0.681 s⁻¹</span></div>
+                    <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="s-bar" style="background: linear-gradient(90deg, var(--accent-blue), var(--accent-indigo));"></div></div>
+                </div>
+                <div class="gauge-block">
+                    <div class="gauge-header"><span class="data-label">Shear Stress τ</span><span class="data-value" id="t-val-disp">0.312 Pa</span></div>
+                    <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="t-bar" style="background: linear-gradient(90deg, var(--accent-magenta), var(--accent-hot));"></div></div>
+                </div>
+            </div>
+
+            <!-- Real Ollama Multi-Agent Swarm -->
+            <div class="panel-card">
+                <h2>SLM Swarm Configuration</h2>
+                <div style="margin-bottom: 12px;">
+                    <label class="data-label" style="display:block; margin-bottom:6px; font-size:11px;">Active Swarm Model</label>
+                    <select class="select-custom" id="model-selector-dropdown">
+                        <option value="loading">Searching local Ollama...</option>
+                    </select>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                    <button class="action-button" onclick="triggerMCTSPerceive()">⬡ Trigger MCTS Rollout</button>
+                    <button class="action-button shock" onclick="triggerViscousShock()">⚡ Inject Rheological Shock</button>
+                </div>
+            </div>
+
+            <!-- Topological Health metrics -->
+            <div class="panel-card">
+                <h2>Topological Homology</h2>
+                <div class="data-row"><span class="data-label">Euler Characteristic χ</span><span class="data-value" style="color:var(--accent-magenta)">2 (Spherical)</span></div>
+                <div class="data-row"><span class="data-label">Betti 0 (Components)</span><span class="data-value">1 (Unified)</span></div>
+                <div class="data-row"><span class="data-label">Betti 1 (Loops)</span><span class="data-value" id="betti-loops">12 Active</span></div>
+                <div class="data-row"><span class="data-label">Wasserstein Delta</span><span class="data-value">0.038</span></div>
+            </div>
+        </aside>
+
+        <!-- ═══ CENTER PANEL: THREE.JS 3D VIEWPORT ═══ -->
+        <main id="manifold-viewport">
+            <canvas id="webgl-canvas"></canvas>
+            <div id="viewport-instructions">
+                Mouse Left: Rotate | Mouse Right: Pan | Scroll: Zoom | Hover Node: Inspect Interstitial
+            </div>
+
+            <!-- Inspector panel for node data -->
+            <div id="inspector-overlay">
+                <div class="inspector-title" id="insp-node-name">Vertex: v_0</div>
+                <div class="data-row"><span class="data-label">Geospatial Coords</span><span class="data-value" id="insp-node-coords">[-1, -1, -1, -1, -1, -1]</span></div>
+                <div class="data-row"><span class="data-label">Density (Dim 5)</span><span class="data-value" id="insp-node-density">0.821</span></div>
+                <div class="data-row"><span class="data-label">Flow Rate (Dim 6)</span><span class="data-value" id="insp-node-flow">0.492 m/s</span></div>
+                <div class="data-row"><span class="data-label">SOP Policy</span><span class="data-value" style="color:var(--accent-blue)">Consensus-Strict</span></div>
+                <div class="inspector-title" style="margin-top: 12px; margin-bottom: 6px; font-size: 11px;">Interstitial Embedding</div>
+                <div class="inspector-code" id="insp-node-embedding">Loading distilled embedding vector...</div>
+            </div>
+
+            <!-- Heartbeat phase tracker -->
+            <div id="heartbeat-overlay-panel">
+                <div class="heartbeat-dot" id="hb-dot"></div>
+                <div class="heartbeat-label" id="hb-label">INHALE</div>
+            </div>
+        </main>
+
+        <!-- ═══ RIGHT PANEL: CHAT & MULTI-AGENT SWARM ═══ -->
+        <aside id="right-sidebar">
+            <div class="sidebar-header">
+                Swarm Atmosphere
+                <span class="agent-pill active" style="font-size:9px; border-color:var(--accent-purple); background:rgba(192, 132, 252, 0.15); color:var(--accent-purple)">6D MANIFOLD RUNTIME</span>
+            </div>
+            
+            <!-- Agent Selection Pills -->
+            <div class="agent-pills">
+                <div class="agent-pill active" onclick="selectAgent('alpha')" id="pill-alpha">Agent Alpha</div>
+                <div class="agent-pill" onclick="selectAgent('beta')" id="pill-beta">Agent Beta</div>
+                <div class="agent-pill" onclick="selectAgent('gamma')" id="pill-gamma">Agent Gamma</div>
+                <div class="agent-pill" onclick="selectAgent('watchdog')" id="pill-watchdog">Stability Daemon</div>
+            </div>
+
+            <!-- Chat messages scroller -->
+            <div id="chat-scroller">
+                <div class="chat-bubble agent">
+                    <div class="bubble-meta">KERNEL OVERSEER <span>System Booted</span></div>
+                    Geospatial projection successfully mapped. 6D coordinates projected into 3D viewport. Active stardust particles are rendering the <strong>interstitial semantic fog</strong> (distilled embedding atmosphere) between coordinates. Awaiting multi-agent routing queries.
+                </div>
+            </div>
+
+            <!-- Chat input area -->
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input type="text" class="chat-input-field" id="agent-chat-input" placeholder="Type a query to broadcast to the swarm..." autocomplete="off">
+                    <button class="chat-send-btn" onclick="sendSwarmMessage()">⬡</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ═══ BOTTOM PANEL: LOGS AND TELEMETRY TIMELINES ═══ -->
+        <footer id="bottom-panel">
+            <!-- Left Half: Gossip Propagation Log -->
+            <div class="bottom-half">
+                <div class="panel-header">
+                    <span>⬡ Interstellar Gossip Shard Broadcasts</span>
+                    <span style="color:var(--accent-blue)">10 Hz Sync Rate</span>
+                </div>
+                <div class="terminal-scroll" id="gossip-log"></div>
+            </div>
+
+            <!-- Right Half: Multi-Agent Distillation Activity -->
+            <div class="bottom-half" style="border-right: none;">
+                <div class="panel-header">
+                    <span>⚡ SLM Interstitial Distillation & Spikes</span>
+                    <span style="color:var(--accent-magenta)">Vector Space Active</span>
+                </div>
+                <div class="terminal-scroll" id="distill-log"></div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        /* ═══════════════════════════════════════════════════════════════════════
+           SIMS1337 HEXERACT GEOSPATIAL EMULATION SCRIPT
+           Three.js WebGL 3D projection, dynamic interstitials & Ollama Multi-Agent Swarm
+           ═══════════════════════════════════════════════════════════════════════ */
+
+        // Swarm configuration state
+        const swarmState = {
+            currentAgent: 'alpha',
+            selectedModel: 'qwen2.5:3b',
+            models: [],
+            agents: {
+                alpha: { name: 'Agent Alpha', model: 'qwen2.5:3b', hexCoord: [1, 1, -1, 1, -1, 1] },
+                beta: { name: 'Agent Beta', model: 'deepseek-r1:1.5b', hexCoord: [-1, 1, 1, -1, 1, -1] },
+                gamma: { name: 'Agent Gamma', model: 'tinyllama:1.1b', hexCoord: [1, -1, 1, 1, 1, -1] },
+                watchdog: { name: 'Stability Daemon', model: 'qwen2.5:0.5b', hexCoord: [-1, -1, -1, -1, -1, -1] }
+            }
+        };
+
+        // Giesekus Rheology parameters
+        const rheology = {
+            omega: 1.20,
+            lambda: 2.0,
+            eta0: 0.8,
+            etaInf: 0.1,
+            n: 0.6,
+            amplitude: 0.35,
+            phase: 0,
+            deborah: 0.92
+        };
+
+        // Initialize logging systems
+        const gossipLogEl = document.getElementById('gossip-log');
+        const distillLogEl = document.getElementById('distill-log');
+
+        function addLog(element, tag, text, type = 'info') {
+            const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+            const logItem = document.createElement('div');
+            logItem.className = 'log-item';
+            logItem.innerHTML = `<span class="log-ts">${timeStr}</span><span class="log-tag tag-${type}">[${tag}]</span><span style="color:var(--text-bright)">${text}</span>`;
+            element.appendChild(logItem);
+            
+            // Limit log items to prevent memory leaks
+            if (element.children.length > 100) {
+                element.removeChild(element.firstChild);
+            }
+            element.scrollTop = element.scrollHeight;
+        }
+
+        // ── Seed Gossip Messages ──
+        const gossipSamples = [
+            "Synchronizing BM25 index shard #7 over edge e_42",
+            "Broadcasting SOP micro-policy: Routing-Strict to 6 neighbor cells",
+            "Exchanging anti-entropy vectors; health consensus stable",
+            "Edge relaxation time λ = 2.0s; backpressure clearing",
+            "Dilation coefficient updated: local strain γ̇ within bounds",
+            "Spike bus audit: no partition anomalies detected",
+            "Gossip push: distributed transaction ledger hash broadcasted",
+            "Consensus quorum verified: Euler characteristic χ = 2 verified",
+            "Topological invariant hash generated: 45 nodes matching signature",
+            "Pruning weak channels; routing tables optimized for Gray Code paths"
+        ];
+
+        const distillSamples = [
+            "Distillation cycle: extracting logic vectors from Agent Alpha",
+            "Compressing 384-dim semantic tensor to interstitial fog layer [v_12 ↔ v_13]",
+            "Prior calculations adjusted: local density Dim 5 raised to 0.84",
+            "Writing distilled prior embeddings into spatial coordinates",
+            "Temporal shimmer Dim 4 phase shift applied; updating UI mesh scale",
+            "Operational flow Dim 6 vector arrows oriented toward highest gradient cell",
+            "Rerouting model inference pathway due to high local viscosity",
+            "Running Karoo GP local mutations on coordinate v_24",
+            "Spike broadcast: active gating mode shifted; Mode 1 dominant",
+            "Distilling knowledge graph: 23 vectors mapped to 6D coordinate manifold"
+        ];
+
+        setInterval(() => {
+            const randGossip = gossipSamples[Math.floor(Math.random() * gossipSamples.length)];
+            const randDistill = distillSamples[Math.floor(Math.random() * distillSamples.length)];
+            addLog(gossipLogEl, 'GOSSIP', randGossip, 'info');
+            addLog(distillLogEl, 'DISTILL', randDistill, 'spike');
+        }, 3000);
+
+        // Fetch Models on Boot
+        async function fetchOllamaModels() {
+            const dropdown = document.getElementById('model-selector-dropdown');
+            try {
+                const response = await fetch('/api/models');
+                const data = await response.json();
+                
+                if (data.models && data.models.length > 0) {
+                    dropdown.innerHTML = '';
+                    swarmState.models = data.models;
+                    data.models.forEach(model => {
+                        const opt = document.createElement('option');
+                        opt.value = model.name;
+                        opt.textContent = model.name;
+                        dropdown.appendChild(opt);
+                    });
+                    
+                    // Assign actual models to agents if they exist
+                    const defaultModel = data.models[0].name;
+                    Object.keys(swarmState.agents).forEach(key => {
+                        const matchingModel = data.models.find(m => m.name.includes(key === 'watchdog' ? '0.5b' : key === 'beta' ? 'r1' : '3b'));
+                        swarmState.agents[key].model = matchingModel ? matchingModel.name : defaultModel;
+                    });
+                    
+                    // Trigger select UI sync
+                    dropdown.value = swarmState.agents[swarmState.currentAgent].model;
+                    document.getElementById('header-de-val').textContent = (0.7 + Math.random() * 0.3).toFixed(2);
+                    addLog(gossipLogEl, 'SYSTEM', `Retrieved ${data.models.length} active models from local Ollama endpoint`, 'quorum');
+                } else {
+                    fallbackModels();
+                }
+            } catch (err) {
+                console.error("Ollama connection failed, loading fallback offline agents list", err);
+                fallbackModels();
+            }
+        }
+
+        function fallbackModels() {
+            const dropdown = document.getElementById('model-selector-dropdown');
+            dropdown.innerHTML = `
+                <option value="qwen2.5:3b">qwen2.5:3b (Offline)</option>
+                <option value="deepseek-r1:1.5b">deepseek-r1:1.5b (Offline)</option>
+                <option value="tinyllama:1.1b">tinyllama:1.1b (Offline)</option>
+                <option value="qwen2.5:0.5b">qwen2.5:0.5b (Offline)</option>
+            `;
+            addLog(gossipLogEl, 'SYSTEM', "Failed to connect to local Ollama server. Swarm falling back to offline emulation.", 'error');
+        }
+
+        document.getElementById('model-selector-dropdown').addEventListener('change', (e) => {
+            const agentKey = swarmState.currentAgent;
+            swarmState.agents[agentKey].model = e.target.value;
+            addLog(gossipLogEl, 'SYSTEM', `${swarmState.agents[agentKey].name} is now bound to model: ${e.target.value}`, 'quorum');
+        });
+
+        // Agent selection pills
+        function selectAgent(agentKey) {
+            swarmState.currentAgent = agentKey;
+            
+            // UI pills styling
+            document.querySelectorAll('.agent-pill').forEach(pill => pill.classList.remove('active'));
+            document.getElementById(`pill-${agentKey}`).classList.add('active');
+            
+            // Dropdown update
+            const dropdown = document.getElementById('model-selector-dropdown');
+            if (dropdown && swarmState.agents[agentKey]) {
+                dropdown.value = swarmState.agents[agentKey].model;
+            }
+            
+            addLog(gossipLogEl, 'SYSTEM', `Active Viewport Context focused on: ${swarmState.agents[agentKey].name}`, 'info');
+        }
+
+        // Multi-Agent Chat Swarm
+        async function sendSwarmMessage() {
+            const inputEl = document.getElementById('agent-chat-input');
+            const chatScroller = document.getElementById('chat-scroller');
+            const query = inputEl.value.trim();
+            if (!query) return;
+
+            inputEl.value = '';
+
+            // 1. User message in UI
+            const userMsgEl = document.createElement('div');
+            userMsgEl.className = 'chat-bubble user';
+            userMsgEl.innerHTML = `<div class="bubble-meta">YOU <span>${new Date().toLocaleTimeString()}</span></div>${escapeHtml(query)}`;
+            chatScroller.appendChild(userMsgEl);
+            chatScroller.scrollTop = chatScroller.scrollHeight;
+
+            // Trigger visual pulse in 3D manifold
+            triggerManifoldPulse();
+
+            // 2. Swarm Multi-Agent collaborative routing logs in bottom panel
+            addLog(distillLogEl, 'ROUTER', `Broadcasting directive: "${query.substring(0,40)}..." to Swarm`, 'quorum');
+
+            // 3. Initiate agent execution pipeline
+            const activeAgent = swarmState.agents[swarmState.currentAgent];
+            
+            // Add typing bubble
+            const responseBubble = document.createElement('div');
+            responseBubble.className = 'chat-bubble agent';
+            responseBubble.innerHTML = `<div class="bubble-meta">${activeAgent.name.toUpperCase()} <span>Routing through ${activeAgent.model}...</span></div>
+                                         <div style="font-family:var(--font-mono); font-size:12px; color:var(--text-dim)">Distilling local coordinates and generating response...</div>`;
+            chatScroller.appendChild(responseBubble);
+            chatScroller.scrollTop = chatScroller.scrollHeight;
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: query,
+                        model: activeAgent.model
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Add real response
+                responseBubble.innerHTML = `<div class="bubble-meta">${activeAgent.name.toUpperCase()} <span>Model: ${data.model}</span></div>
+                                            <div>${escapeHtml(data.response)}</div>`;
+                addLog(distillLogEl, 'DISTILL', `Successfully distilled embedding updates from ${activeAgent.name}`, 'info');
+
+            } catch (err) {
+                // Offline fallback response simulation
+                responseBubble.innerHTML = `
+                    <div class="bubble-meta">${activeAgent.name.toUpperCase()} <span>Offline Emulated Response</span></div>
+                    <div>[INTERSTITIAL SYNC] The local Ollama server is offline or busy. 
+                    Emulated routing consensus: Proposing coordinate path displacement across the 3D projected vector fields. 
+                    Consensus reached: 43/64 vertices confirmed.</div>
+                `;
+                addLog(gossipLogEl, 'SYSTEM', `Agent routing failed: ${err.message}`, 'error');
+            }
+            
+            chatScroller.scrollTop = chatScroller.scrollHeight;
+        }
+
+        // Bind chat input Enter key
+        document.getElementById('agent-chat-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendSwarmMessage();
+        });
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Action controls
+        function triggerMCTSPerceive() {
+            addLog(distillLogEl, 'MCTS', "Expanding state AST graph for root coordinate v_0", 'quorum');
+            addLog(distillLogEl, 'MCTS', "Agent Alpha running rollout paths; score = 0.942", 'info');
+            triggerManifoldPulse();
+        }
+
+        function triggerViscousShock() {
+            addLog(gossipLogEl, 'BREATH', "⚡ RHEOLOGICAL SHOCK INJECTED — Shear rate γ̇ spiked", 'error');
+            rheology.omega *= 2.5;
+            setTimeout(() => {
+                rheology.omega /= 2.5;
+                addLog(gossipLogEl, 'BREATH', "Heartbeat loop normalized to nominal 1.20 Hz", 'info');
+            }, 4000);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // ── THREE.JS 6D-TO-3D GEOSPATIAL MANIFOLD ENGINE ──
+        // ═══════════════════════════════════════════════════════════════════════
+        
+        let scene, camera, renderer, controls;
+        let nodeGroup, edgeGroup, particleGroup;
+        const vertices6D = [];
+        const edges = [];
+        const nodeObjects = [];
+        const edgeObjects = [];
+
+        // Generate 6D Coordinates: 64 vertices
+        for (let i = 0; i < 64; i++) {
+            const coords = [];
+            for (let d = 0; d < 6; d++) {
+                coords.push((i >> d) & 1 ? 1 : -1);
+            }
+            vertices6D.push({
+                id: i,
+                coords: coords,
+                density: 0.3 + Math.random() * 0.7,
+                flow: 0.2 + Math.random() * 0.8
+            });
+        }
+
+        // Generate 192 Edges: hamming distance === 1
+        for (let i = 0; i < 64; i++) {
+            for (let j = i + 1; j < 64; j++) {
+                let diffs = 0;
+                for (let d = 0; d < 6; d++) {
+                    if (vertices6D[i].coords[d] !== vertices6D[j].coords[d]) diffs++;
+                }
+                if (diffs === 1) {
+                    edges.push({ source: i, target: j });
+                }
+            }
+        }
+
+        // 6D rotation angles
+        const rotAngles = new Array(9).fill(0);
+
+        function initWebGL() {
+            const viewport = document.getElementById('manifold-viewport');
+            const canvasEl = document.getElementById('webgl-canvas');
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x020106, 0.04);
+
+            camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.1, 100);
+            camera.position.set(0, 0, 18);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvasEl, antialias: true, alpha: true });
+            renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.rotateSpeed = 0.8;
+            controls.maxDistance = 40;
+            controls.minDistance = 5;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x221144);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0xa855f7, 2, 50);
+            pointLight1.position.set(10, 15, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0x38bdf8, 1.5, 50);
+            pointLight2.position.set(-10, -15, -10);
+            scene.add(pointLight2);
+
+            // Container Groups
+            nodeGroup = new THREE.Group();
+            edgeGroup = new THREE.Group();
+            scene.add(nodeGroup);
+            scene.add(edgeGroup);
+
+            // Create Nodes
+            const nodeGeom = new THREE.SphereGeometry(0.16, 16, 16);
+            vertices6D.forEach(v => {
+                const col = new THREE.Color().setHSL(0.75 + v.density * 0.1, 0.9, 0.5 + v.density * 0.25);
+                const nodeMat = new THREE.MeshPhongMaterial({
+                    color: col,
+                    emissive: col,
+                    emissiveIntensity: 0.6,
+                    shininess: 30
+                });
+                const mesh = new THREE.Mesh(nodeGeom, nodeMat);
+                mesh.userData = { id: v.id, coords: v.coords, density: v.density, flow: v.flow };
+                nodeGroup.add(mesh);
+                nodeObjects.push(mesh);
+            });
+
+            // Create Edges
+            edges.forEach(e => {
+                const mat = new THREE.LineBasicMaterial({
+                    color: 0x818cf8,
+                    transparent: true,
+                    opacity: 0.25,
+                    blending: THREE.AdditiveBlending
+                });
+                const geom = new THREE.BufferGeometry();
+                const positions = new Float32Array(6); 
+                geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                const line = new THREE.Line(geom, mat);
+                edgeGroup.add(line);
+                edgeObjects.push({ line, source: e.source, target: e.target });
+            });
+
+            // Create Interstitial Semantic Cloud (Particle stardust)
+            const particleCount = 1200;
+            const particleGeom = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i*3] = (Math.random() - 0.5) * 12;
+                positions[i*3+1] = (Math.random() - 0.5) * 12;
+                positions[i*3+2] = (Math.random() - 0.5) * 12;
+
+                const r = Math.random();
+                if (r > 0.6) {
+                    colors[i*3] = 0.95; colors[i*3+1] = 0.25; colors[i*3+2] = 0.95; 
+                } else if (r > 0.3) {
+                    colors[i*3] = 0.25; colors[i*3+1] = 0.75; colors[i*3+2] = 0.95; 
+                } else {
+                    colors[i*3] = 0.75; colors[i*3+1] = 0.25; colors[i*3+2] = 0.95; 
+                }
+            }
+
+            particleGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particleGeom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const particleMat = new THREE.PointsMaterial({
+                size: 0.12,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.65,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            particleGroup = new THREE.Points(particleGeom, particleMat);
+            scene.add(particleGroup);
+
+            window.addEventListener('resize', onWindowResize);
+
+            // Hover / Raycasting
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2();
+
+            viewport.addEventListener('mousemove', (e) => {
+                const rect = viewport.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(nodeObjects);
+
+                const overlay = document.getElementById('inspector-overlay');
+                if (intersects.length > 0) {
+                    const node = intersects[0].object;
+                    const data = node.userData;
+                    
+                    document.getElementById('insp-node-name').textContent = `Vertex Coordinate: v_${data.id}`;
+                    document.getElementById('insp-node-coords').textContent = `[${data.coords.join(', ')}]`;
+                    document.getElementById('insp-node-density').textContent = data.density.toFixed(4);
+                    document.getElementById('insp-node-flow').textContent = `${data.flow.toFixed(3)} m/s`;
+                    
+                    const embeddingVector = [];
+                    for(let k=0; k<16; k++) {
+                        embeddingVector.push(((Math.sin(data.id * k + clock.getElapsedTime()) + 1) * 0.5).toFixed(3));
+                    }
+                    document.getElementById('insp-node-embedding').textContent = `[${embeddingVector.join(', ')}]`;
+
+                    overlay.classList.add('show');
+                }
+            });
+
+            viewport.addEventListener('mouseleave', () => {
+                document.getElementById('inspector-overlay').classList.remove('show');
+            });
+        }
+
+        function onWindowResize() {
+            const viewport = document.getElementById('manifold-viewport');
+            camera.aspect = viewport.clientWidth / viewport.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+        }
+
+        // 6D-to-3D coordinates projection engine
+        function project6DToVector3(coords, scale) {
+            let v = [...coords];
+            const planes = [
+                [0, 3], [1, 4], [2, 5],
+                [0, 4], [1, 5], [2, 3],
+                [0, 5], [1, 3], [2, 4]
+            ];
+
+            for (let i = 0; i < planes.length; i++) {
+                const [a, b] = planes[i];
+                const angle = rotAngles[i];
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const va = v[a], vb = v[b];
+                v[a] = va * cos - vb * sin;
+                v[b] = va * sin + vb * cos;
+            }
+
+            const x = v[0] * scale;
+            const y = v[1] * scale;
+            const z = v[2] * scale;
+            
+            const shimmer = v[3]; 
+            const density = v[4]; 
+            const flow = v[5]; 
+            
+            return { pos: new THREE.Vector3(x, y, z), dim4: shimmer, dim5: density, dim6: flow };
+        }
+
+        // Signal pulses along edges
+        const visualPulses = [];
+        function triggerManifoldPulse() {
+            for (let i = 0; i < 8; i++) {
+                const randomEdge = edges[Math.floor(Math.random() * edges.length)];
+                visualPulses.push({
+                    source: randomEdge.source,
+                    target: randomEdge.target,
+                    progress: 0,
+                    speed: 0.02 + Math.random() * 0.03
+                });
+            }
+        }
+
+        // Carreau Viscosity Model
+        function carreauVal(strainRate) {
+            const term = 1 + Math.pow(rheology.lambda * strainRate, 2);
+            return rheology.etaInf + (rheology.eta0 - rheology.etaInf) * Math.pow(term, (rheology.n - 1) / 2);
+        }
+
+        // Animation Loop
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const elapsed = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            // ── Viscoelastic Heartbeat Math ──
+            const strainRate = Math.abs(rheology.omega * rheology.amplitude * Math.cos(rheology.omega * elapsed));
+            const viscosity = carreauVal(strainRate);
+            const stress = viscosity * strainRate;
+            const phaseLabel = Math.cos(rheology.omega * elapsed) > 0 ? 'INHALE' : 'EXHALE';
+            const scale = 3.6 + Math.sin(rheology.omega * elapsed) * 0.6; // Breathing spatial scale
+
+            // Sync left panel telemetry display
+            document.getElementById('v-val-disp').textContent = `${viscosity.toFixed(4)} Pas`;
+            document.getElementById('v-bar').style.width = `${Math.min(100, viscosity * 120)}%`;
+            document.getElementById('s-val-disp').textContent = `${strainRate.toFixed(4)} s⁻¹`;
+            document.getElementById('s-bar').style.width = `${Math.min(100, strainRate * 100)}%`;
+            document.getElementById('t-val-disp').textContent = `${stress.toFixed(4)} Pa`;
+            document.getElementById('t-bar').style.width = `${Math.min(100, stress * 180)}%`;
+
+            document.getElementById('hb-label').textContent = phaseLabel;
+            const pulseDot = document.getElementById('hb-dot');
+            const hPulse = document.getElementById('header-pulse');
+
+            if (phaseLabel === 'INHALE') {
+                pulseDot.style.backgroundColor = 'var(--accent-blue)';
+                pulseDot.style.boxShadow = '0 0 14px var(--accent-blue)';
+                hPulse.style.backgroundColor = 'var(--accent-blue)';
+                hPulse.style.boxShadow = '0 0 10px var(--accent-blue)';
+            } else {
+                pulseDot.style.backgroundColor = 'var(--accent-magenta)';
+                pulseDot.style.boxShadow = '0 0 14px var(--accent-magenta)';
+                hPulse.style.backgroundColor = 'var(--accent-magenta)';
+                hPulse.style.boxShadow = '0 0 10px var(--accent-magenta)';
+            }
+
+            // Slow rotations in 6D planes
+            rotAngles[0] = elapsed * 0.12;
+            rotAngles[1] = elapsed * 0.08;
+            rotAngles[2] = elapsed * 0.15;
+            rotAngles[3] = elapsed * 0.05 + Math.sin(elapsed * 0.2) * 0.1;
+            rotAngles[4] = elapsed * 0.07;
+            rotAngles[5] = elapsed * 0.11;
+            rotAngles[6] = elapsed * 0.04;
+            rotAngles[7] = elapsed * 0.13;
+            rotAngles[8] = elapsed * 0.09;
+
+            // Project all 64 vertices and update positions
+            const projectedPositions = [];
+            nodeObjects.forEach((mesh, idx) => {
+                const projection = project6DToVector3(mesh.userData.coords, scale);
+                mesh.position.copy(projection.pos);
+                projectedPositions.push(projection.pos);
+
+                // Dimension 4: Temporal Shimmer -> updates local mesh scale
+                const shimmer = 0.75 + 0.25 * Math.sin(elapsed * 4 + projection.dim4 * Math.PI);
+                mesh.scale.set(shimmer, shimmer, shimmer);
+
+                // Dimension 5: Heatmap Density -> Color shifts purple/pink/blue
+                const density = 0.5 + 0.5 * projection.dim5;
+                const col = new THREE.Color().setHSL(0.70 + density * 0.15, 0.9, 0.45 + density * 0.15);
+                mesh.material.color.copy(col);
+                mesh.material.emissive.copy(col);
+            });
+
+            // Update line geometry for 192 edges
+            edgeObjects.forEach(edgeObj => {
+                const pos = edgeObj.line.geometry.attributes.position.array;
+                const p1 = projectedPositions[edgeObj.source];
+                const p2 = projectedPositions[edgeObj.target];
+
+                pos[0] = p1.x; pos[1] = p1.y; pos[2] = p1.z;
+                pos[3] = p2.x; pos[4] = p2.y; pos[5] = p2.z;
+
+                edgeObj.line.geometry.attributes.position.needsUpdate = true;
+            });
+
+            // Update semantic fog (interstitial stardust) flow
+            const particlePos = particleGroup.geometry.attributes.position.array;
+            const particleCount = particlePos.length / 3;
+
+            for (let i = 0; i < particleCount; i++) {
+                const idx = i % 64;
+                const targetPos = projectedPositions[idx];
+                const px = particlePos[i*3];
+                const py = particlePos[i*3+1];
+                const pz = particlePos[i*3+2];
+
+                particlePos[i*3] += (targetPos.x - px) * 0.008 + (Math.sin(elapsed * 0.5 + i) * 0.01);
+                particlePos[i*3+1] += (targetPos.y - py) * 0.008 + (Math.cos(elapsed * 0.5 + i) * 0.01);
+                particlePos[i*3+2] += (targetPos.z - pz) * 0.008;
+            }
+            particleGroup.geometry.attributes.position.needsUpdate = true;
+            particleGroup.rotation.y = elapsed * 0.02;
+
+            // Draw pulses along edges
+            for (let i = visualPulses.length - 1; i >= 0; i--) {
+                const pulse = visualPulses[i];
+                pulse.progress += pulse.speed;
+                if (pulse.progress >= 1.0) {
+                    visualPulses.splice(i, 1);
+                } else {
+                    const p1 = projectedPositions[pulse.source];
+                    const p2 = projectedPositions[pulse.target];
+                    
+                    const pulsePos = new THREE.Vector3().copy(p1).lerp(p2, pulse.progress);
+                    
+                    const matchEdge = edgeObjects.find(eo => (eo.source === pulse.source && eo.target === pulse.target) || 
+                                                             (eo.source === pulse.target && eo.target === pulse.source));
+                    if (matchEdge) {
+                        matchEdge.line.material.opacity = 0.9;
+                    }
+                }
+            }
+
+            edgeObjects.forEach(eo => {
+                if (eo.line.material.opacity > 0.25) {
+                    eo.line.material.opacity -= 0.01;
+                }
+            });
+
+            if (!controls.state === -1) {
+                scene.rotation.y = elapsed * 0.05;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Boot system
+        window.onload = () => {
+            initWebGL();
+            animate();
+            fetchOllamaModels();
+
+            addLog(gossipLogEl, 'SYSTEM', 'SIMS1337 Hexeract Geospatial Engine successfully booted', 'quorum');
+            addLog(gossipLogEl, 'SYSTEM', '6D Address space resolved into 3D projection viewport', 'info');
+            addLog(distillLogEl, 'INTERST', 'Initializing 1200 stardust nodes representing distilled prior embeds', 'spike');
+        };
+
+    </script>
+</body>
+</html>

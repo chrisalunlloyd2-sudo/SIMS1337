@@ -1,537 +1,358 @@
-# ⚙️ SIMS1337 — GodHand Agent Orchestration Dashboard
+# SIMS1337
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-v0.18.0-00d9ff?style=for-the-badge" alt="Version">
-  <img src="https://img.shields.io/badge/Java-17%2B-ed8b00?style=for-the-badge&logo=openjdk" alt="Java">
-  <img src="https://img.shields.io/badge/JavaFX-pure%20programmatic-5382a1?style=for-the-badge" alt="JavaFX">
-  <img src="https://img.shields.io/badge/Ollama-8%20models-ffffff?style=for-the-badge&logo=ollama" alt="Ollama">
-  <img src="https://img.shields.io/badge/systems-22%2F22%20verified-00ff88?style=for-the-badge" alt="Systems">
-  <img src="https://img.shields.io/badge/gists-8%20live-6e5494?style=for-the-badge&logo=github" alt="Gists">
-  <img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License">
-</p>
+> hessian_learning.py — CURVATURE-AWARE LoRA LEARNING (Hessian/Fisher) ==================================================================== "Hessian learning" for local SLMs on constrained hardware (Termux/MatrixWinCE):
 
-<p align="center">
-  <b>A self-growing, self-voting, self-deploying SLM agent grid.</b><br>
-  8 models dream up game mechanics at midnight, vote on them at 6pm,<br>
-  build the winners at 8pm, and email the brief at 10pm.<br>
-  <i>Every night. Forever. No human needed.</i>
-</p>
+*Auto-generated 2026-08-14 12:43 from source — branch `HEAD`, 15 Python modules, 184 other files.*
 
----
-
-## 📡 DATAFLOW — How the Models Talk
+## Architecture
 
 ```
-                              ┌─────────────────────────────────────────────────────┐
-                              │                 GODHAND DASHBOARD                    │
-                              │              http://localhost:8899                   │
-                              └──────┬──────────────────────────────────┬───────────┘
-                                     │                                  │
-              ┌──────────────────────┼──────────────────────────────────┼──────────────────────┐
-              │                      │                                  │                      │
-              ▼                      ▼                                  ▼                      ▼
-     ┌────────────────┐    ┌────────────────┐    ┌────────────────┐    ┌────────────────┐
-     │  qwen2.5:0.5b  │    │  tinyllama:1.1b│    │  llama3.2:1b   │    │ deepseek-r1:1.5b│
-     │  Fast Responder│    │ Balanced Writer│    │   Tool User    │    │  Deep Thinker   │
-     │  grid,ability, │    │ ability,grid,  │    │ tool,ability,  │    │ logic,backend,  │
-     │  tool          │    │ node           │    │ grid           │    │ tool            │
-     └───────┬────────┘    └───────┬────────┘    └───────┬────────┘    └───────┬────────┘
-             │                     │                     │                     │
-             │    ┌────────────────┼─────────────────────┼─────────────────────┤
-             │    │                │                     │                     │
-             ▼    ▼                ▼                     ▼                     ▼
-     ┌────────────────┐    ┌────────────────┐    ┌────────────────┐    ┌────────────────┐
-     │   phi:latest   │    │   phi3:mini    │    │   gemma2:2b    │    │  codellama:7b  │
-     │   Reasoning    │    │  Deep Reason   │    │   Balanced     │    │  Code Gen      │
-     │ logic,tool,    │    │ logic,backend, │    │ node,grid,     │    │ tool,backend,  │
-     │ ability        │    │ node           │    │ backend        │    │ node           │
-     └───────┬────────┘    └───────┬────────┘    └───────┬────────┘    └───────┬────────┘
-             │                     │                     │                     │
-             └─────────────────────┼─────────────────────┼─────────────────────┘
-                                   │                     │
-                                   ▼                     ▼
-                          ┌─────────────────────────────────────────────┐
-                          │           MULTI-AGENT TOPOLOGY               │
-                          │                                             │
-                          │   Agent Alpha (Orchestrator) ⬡(0,0)         │
-                          │        │                  │                 │
-                          │        ▼                  ▼                 │
-                          │   Agent Beta (Builder)   Agent Gamma (Analyst)│
-                          │   ⬡(3,-2)               ⬡(-3,2)             │
-                          │        │                  │                 │
-                          │        └────────┬─────────┘                 │
-                          │                 ▼                           │
-                          │         Cross-Correlation                   │
-                          │         (Dream Phase)                       │
-                          └─────────────────────────────────────────────┘
+  .gitignore
+  BLUEPRINT.md
+  BUILD_BLOCKER.md
+  CHANGELOG.md
+  CHRISSTEPS_QUICK_REF.md
+  DEPENDENCIES.md
+  HOW_TO_OPEN_GUI.md
+  INSTALL_JAVA_MAVEN.bat
+  LAUNCH_BOTH.bat
+  LAUNCH_GODHAND.bat
+  LAUNCH_GUI.ps1
+  PHASES.md
+  bin/
+    com/
+      aigen/
+  code_registry/
+    code_registry.db
+    scan_and_register.py
+  docs/
+    ARCHITECTURE.md
+    BACKUP_DOCTRINE.md
+    BLUEPRINT.md
+    CORE_ROUTING_VALIDATION.md
+    CREW_PROCEDURE.md
+    FLEXIBLE_MODEL_STRATEGY.md
+    LEARNINGS.md
+    MARKOV_LOGIC_REVIEW_SYSTEM.md
+    MASTER_STATUS_DASHBOARD.md
+    MASTER_STATUS_UPDATED.md
+    OLLAMA_DOWNLOAD_STATUS.md
+    OLLAMA_MODEL_STATUS.md
+    screenshots/
+      real_gui.jpg
+      swarm_hub.jpg
+  logs/
+    change_log_20260722_162505.md
+    checkpoint_20260722_171210.md
+    guardian.log
+    headless.log
+    milestone_20260722_172002.md
+    release_20260722_172546.md
+    release_20260722_172812.md
+    release_20260722_173243.md
+  lora/
+    hessian_learning.py
+    test_hessian_learning.py
+  modelfiles/
+    codellama-16k.Modelfile
+    gemma2-16k.Modelfile
+    phi-8k.Modelfile
+    phi3-16k.Modelfile
+    tinyllama-8k.Modelfile
+  reports/
+    heartbeat_votes.md
+    model_needs_votes.md
+  root-scripts/
+    heartbeat_harvester.py
+  scripts/
+    backup.sh
+    build_llamacpp.py
+    chat_server.py
+    download_gguf.py
+    lstm_refractor.py
+    mmf_reader.ps1
+    mmf_writer.ps1
+    pipe_listener.ps1
+    service.bat
+    setup_deps.sh
+    train_lora.py
+    tts_readout.py
+    agents/
+      agent_messenger.py
+      crew_loop.py
+      ...
 ```
 
----
+## Dependencies
 
-## 🌙 NIGHT CYCLE — Autonomous Operation
+External packages imported by this project:
 
+`node_kv_sync`, `numpy`
+
+## How to run
+
+Executable entry points (have a `__main__` block):
+
+- `python code_registry/scan_and_register.py`
+- `python lora/hessian_learning.py`
+- `python root-scripts/heartbeat_harvester.py`
+- `python scripts/build_llamacpp.py`
+- `python scripts/chat_server.py`
+- `python scripts/download_gguf.py`
+- `python scripts/lstm_refractor.py`
+- `python scripts/toc_tok/editor.py`
+- `python scripts/toc_tok/onboard.py`
+- `python scripts/toc_tok/toc_tok.py`
+- `python scripts/train_lora.py`
+- `python scripts/tts_readout.py`
+
+## Modules
+
+### `code_registry/scan_and_register.py`
+
+- `init_db()`
+- `get_language(filepath)`
+- `scan_and_register(conn)`
+
+### `lora/hessian_learning.py`
+
+hessian_learning.py — CURVATURE-AWARE LoRA LEARNING (Hessian/Fisher)
+====================================================================
+"Hessian learning" for local SLMs on constrained hardware (Termux/MatrixWinCE):
+
+- **class `MLP`** — Minimal numpy MLP — the adapter's effective function. Layers = [in, h1, ..., out].
+  - methods: `params`, `forward`, `grads`, `_finite_diff_grads`
+- `fisher_diagonal(model, X, Y, n_samples)` — Empirical Fisher diagonal: average of squared per-sample gradients.
+- `fisher_to_dict(fisher, prefix)` — Serialize fisher (list of arrays) to a dict for np.savez.
+- `ewc_cost(fisher, prev_params, new_params)` — EWC consolidation cost: Σ 0.5·F_i·(θ_i − θ*_i)². High = forgetting.
+- `curvature_scaled_delta(delta, fisher, lam)` — Δθ_i ← Δθ_i / (1 + F_i/λ). High-curvature params move slowly.
+- `adaptive_rank_allocation(fisher, layers, budget)` — Allocate LoRA rank across layers ∝ curvature mass. Budget = total rank.
+- `curvature_gate(fisher, prev_params, proposed_delta, threshold)` — Gate a proposed adapter delta: if EWC cost of applying it exceeds
+- `demo()`
+- `main()`
+
+### `lora/test_hessian_learning.py`
+
+Tests for hessian_learning.py — verify the math is real, not vibes.
+
+- `check(name, cond)`
+- `locate(idx)`
+
+### `root-scripts/heartbeat_harvester.py`
+
+Heartbeat Harvester — correlates old project ideas to current active projects.
+
+- `load_kv()`
+- `load_kg()`
+- `get_keywords()`
+- `get_insights()`
+- `correlate()`
+- `main()`
+
+### `scripts/agents/agent_messenger.py`
+
+agent_messenger.py — REAL inter-agent messaging via the house GGUF server
+==========================================================================
+No mocks. No simulations. Agents talk through the real GGUF server
+(:5000, house format) backed by a real llama.cpp model.
+
+- **class `AgentMemory`** — Real append-only memory per agent: memory/agent_<name>.jsonl
+  - methods: `append`, `recent`, `count`
+- `healthz()`
+- `generate(prompt, max_tokens)` — Real call to the GGUF server. Raises on any failure — never fabricates.
+- `build_prompt(agent_name, role, task, memory)` — Real context: role + last memory turns + task. No hallucinated history.
+- `extract_java(text)` — Pull the first ```java ... ``` block; return None if absent.
+
+### `scripts/agents/crew_loop.py`
+
+crew_loop.py — REAL 4-agent crew through the house GGUF server
+================================================================
+4 tiny models (one shared server, relayed — never parallel, doctrine).
+Each agent: real memory (disk) → real prompt → real POST :5000 →
+real tokens → memory append. If the server is down, we STOP. No mocks.
+
+- `run_round(memories, round_no)`
+- `main()`
+
+### `scripts/build_llamacpp.py`
+
+PHASE 22: Native llama.cpp build + SmolLM-135M fallback
+Builds llama.cpp from source on Windows (no prebuilt bionic binary).
+Downloads SmolLM-135M Q4_K_M GGUF as fallback model.
+
+- `run(cmd, cwd)`
+- `build_llamacpp()` — Build llama.cpp from source using cmake + MSVC or MinGW.
+- `download_smollm()` — Download SmolLM-135M Q4_K_M GGUF (~105MB).
+
+### `scripts/chat_server.py`
+
+chat_server.py — minimal HTTP chat server for the fleet.
+Exposes local models (Ollama :11434 or GGUF :5000) as an OpenAI-style
+/v1/chat/completions endpoint so the desktop/web UI can talk to SLMs.
+
+- **class `ChatHandler`**
+  - methods: `log_message`, `_send`, `do_GET`, `do_POST`
+- `main()`
+
+### `scripts/download_gguf.py`
+
+PHASE 13: Q4_K_M GGUF Downloader from HuggingFace
+Downloads quantized GGUF models for Ollama — Q4_K_M is the sweet spot:
+~4-bit quantization, 4-5 tok/s on CPU, 4-6GB RAM for 7B models.
+
+- `check_ollama()`
+- `download_gguf(model_key)`
+- `main()`
+
+### `scripts/lstm_refractor.py`
+
+lstm_refractor.py — sequence-pattern refractor for the fleet's decision logs.
+Reads call/decision logs (JSONL), converts them into fixed-length token
+sequences, and (if numpy is available) trains a tiny LSTM-ish transition model
+so the Markov chain can learn temporal patterns beyond first-order.
+
+- `tokenize_entry(e)` — Map a log entry to discrete tokens for sequence learning.
+- `main()` — Main (function).
+
+### `scripts/toc_tok/editor.py`
+
+editor.py — TOC-TOK GUI editor (hex map + tree panel)
+
+- **class `Handler`**
+  - methods: `log_message`, `_send`, `_body`, `do_GET`, `do_POST`
+- `main()`
+
+### `scripts/toc_tok/onboard.py`
+
+onboard.py — SLM ONBOARDING BOARDING PASS
+
+- `hex_distance(a, b)`
+- `one_hop(q, r)`
+- `read_continuity(path, limit)`
+- `claim_hex(hex_str, agent, model)` — Record who is occupying a hex (prevents two agents working same cell).
+- `release_hex(hex_str)`
+- `verify_pass(board_id)` — Onboarding verification poll: agent confirms it received the pass.
+- `sync_tree(toc_file)` — Auto-update the tree's 'last_onboarded' field after onboarding.
+- `build_pass(model, hex_str, role, mission, toc_file, continuity_file, board_id)`
+- `main()`
+
+### `scripts/toc_tok/toc_tok.py`
+
+toc_tok.py — TOC-TOK Tree (Table of Contents → Tree of Knowledge)
+
+- `load(path)`
+- `save(tree, path)` — Persist tree, then auto-sync to SOV KV (gist/KV updates from nodes).
+- `add_node(tree, path, meta)`
+- `find_by_hex(tree, target_hex)` — Return nodes anchored at or within 1-hop of a hex.
+- `search(tree, query)`
+- `get_path(tree, path)`
+- `subtree(node, depth, buf)`
+- `cmd_init(a)`
+- `cmd_add(a)`
+- `cmd_tree(a)`
+- `cmd_at(a)`
+- `cmd_search(a)`
+- `cmd_path(a)`
+- `main()`
+
+### `scripts/train_lora.py`
+
+train_lora.py — LoRA adapter training for local SLMs (Ollama + llama.cpp style).
+Takes a JSONL dataset of {instruction, output} pairs, builds a Modelfile with
+a LoRA adapter, and registers it with Ollama as <base>-lora-<tag>.
+
+- `check_ollama()`
+- `build_modelfile(base_model, adapter_path)`
+- `main()`
+
+### `scripts/tts_readout.py`
+
+TTS readout — speaks text via Windows SAPI (no API key needed).
+
+- `speak(text)`
+
+## Public API index
+
+| Module | Function | Signature |
+|--------|----------|-----------|
+| `agent_messenger` | `build_prompt` | `build_prompt(agent_name, role, task, memory)` |
+| `agent_messenger` | `extract_java` | `extract_java(text)` |
+| `agent_messenger` | `generate` | `generate(prompt, max_tokens)` |
+| `agent_messenger` | `healthz` | `healthz()` |
+| `build_llamacpp` | `build_llamacpp` | `build_llamacpp()` |
+| `build_llamacpp` | `download_smollm` | `download_smollm()` |
+| `build_llamacpp` | `run` | `run(cmd, cwd)` |
+| `chat_server` | `main` | `main()` |
+| `crew_loop` | `main` | `main()` |
+| `crew_loop` | `run_round` | `run_round(memories, round_no)` |
+| `download_gguf` | `check_ollama` | `check_ollama()` |
+| `download_gguf` | `download_gguf` | `download_gguf(model_key)` |
+| `download_gguf` | `main` | `main()` |
+| `editor` | `main` | `main()` |
+| `heartbeat_harvester` | `correlate` | `correlate()` |
+| `heartbeat_harvester` | `get_insights` | `get_insights()` |
+| `heartbeat_harvester` | `get_keywords` | `get_keywords()` |
+| `heartbeat_harvester` | `load_kg` | `load_kg()` |
+| `heartbeat_harvester` | `load_kv` | `load_kv()` |
+| `heartbeat_harvester` | `main` | `main()` |
+| `hessian_learning` | `adaptive_rank_allocation` | `adaptive_rank_allocation(fisher, layers, budget)` |
+| `hessian_learning` | `curvature_gate` | `curvature_gate(fisher, prev_params, proposed_delta, threshold)` |
+| `hessian_learning` | `curvature_scaled_delta` | `curvature_scaled_delta(delta, fisher, lam)` |
+| `hessian_learning` | `demo` | `demo()` |
+| `hessian_learning` | `ewc_cost` | `ewc_cost(fisher, prev_params, new_params)` |
+| `hessian_learning` | `fisher_diagonal` | `fisher_diagonal(model, X, Y, n_samples)` |
+| `hessian_learning` | `fisher_to_dict` | `fisher_to_dict(fisher, prefix)` |
+| `hessian_learning` | `main` | `main()` |
+| `lstm_refractor` | `main` | `main()` |
+| `lstm_refractor` | `tokenize_entry` | `tokenize_entry(e)` |
+| `onboard` | `build_pass` | `build_pass(model, hex_str, role, mission, toc_file, continuity_file, board_id)` |
+| `onboard` | `claim_hex` | `claim_hex(hex_str, agent, model)` |
+| `onboard` | `hex_distance` | `hex_distance(a, b)` |
+| `onboard` | `main` | `main()` |
+| `onboard` | `one_hop` | `one_hop(q, r)` |
+| `onboard` | `read_continuity` | `read_continuity(path, limit)` |
+| `onboard` | `release_hex` | `release_hex(hex_str)` |
+| `onboard` | `sync_tree` | `sync_tree(toc_file)` |
+| `onboard` | `verify_pass` | `verify_pass(board_id)` |
+| `scan_and_register` | `get_language` | `get_language(filepath)` |
+| `scan_and_register` | `init_db` | `init_db()` |
+| `scan_and_register` | `scan_and_register` | `scan_and_register(conn)` |
+| `test_hessian_learning` | `check` | `check(name, cond)` |
+| `test_hessian_learning` | `locate` | `locate(idx)` |
+| `toc_tok` | `add_node` | `add_node(tree, path, meta)` |
+| `toc_tok` | `cmd_add` | `cmd_add(a)` |
+| `toc_tok` | `cmd_at` | `cmd_at(a)` |
+| `toc_tok` | `cmd_init` | `cmd_init(a)` |
+| `toc_tok` | `cmd_path` | `cmd_path(a)` |
+| `toc_tok` | `cmd_search` | `cmd_search(a)` |
+| `toc_tok` | `cmd_tree` | `cmd_tree(a)` |
+| `toc_tok` | `find_by_hex` | `find_by_hex(tree, target_hex)` |
+| `toc_tok` | `get_path` | `get_path(tree, path)` |
+| `toc_tok` | `load` | `load(path)` |
+| `toc_tok` | `main` | `main()` |
+| `toc_tok` | `save` | `save(tree, path)` |
+| `toc_tok` | `search` | `search(tree, query)` |
+| `toc_tok` | `subtree` | `subtree(node, depth, buf)` |
+| `train_lora` | `build_modelfile` | `build_modelfile(base_model, adapter_path)` |
+| `train_lora` | `check_ollama` | `check_ollama()` |
+
+## Status
+
+- Branch: `HEAD`
+- Last commit: 2026-08-14 11:12:26 -0600
+- File types: .java ×86, .md ×45, .bat ×11, .fxml ×7, .class ×6, .ps1 ×5, .modelfile ×5, .html ×4
+
+### Recent commits
 ```
-                         ┌──────────────────────────────────────────┐
-                         │         NIGHT CYCLE (every 24h)          │
-                         └──────────────────────────────────────────┘
-
-    00:00 💤 DREAM                    18:00 🗳️ VOTE
-    ┌─────────────────────┐          ┌─────────────────────────────┐
-    │ 8 models cross-      │          │ Each model votes by role:   │
-    │ correlate memories   │          │                             │
-    │                      │          │ deepseek → logic,backend    │
-    │ 8 game mechanics     │          │ codellama → tool,backend    │
-    │ generated:           │          │ qwen → grid,ability         │
-    │  • Logic Systems     │          │ phi3 → logic,node           │
-    │  • Node Types        │          │ llama3.2 → tool,ability     │
-    │  • Tools             │          │ tinyllama → ability,grid    │
-    │  • Backend Systems   │          │ gemma2 → node,grid          │
-    │  • Agent Abilities   │          │ phi → logic,tool            │
-    │  • Grid Mechanics    │          │                             │
-    │                      │          │ 5+ yes = APPROVED           │
-    │ 4 → proposals        │          │ 5+ no  = REJECTED           │
-    └─────────┬────────────┘          └──────────┬──────────────────┘
-              │                                  │
-              │                                  ▼
-              │                       ┌─────────────────────────────┐
-              │                       │ 20:00 🚀 DEPLOY              │
-              │                       │                             │
-              │                       │ implementApprovedProposals() │
-              │                       │                             │
-              │                       │ tool → addTool()             │
-              │                       │ node → addStation()          │
-              │                       │ backend → addStation()       │
-              │                       │ logic → addTool()            │
-              │                       │ ability → addTool()         │
-              │                       │ grid → addTool()             │
-              │                       │                             │
-              │                       │ Push manifest to gist        │
-              │                       └──────────┬──────────────────┘
-              │                                  │
-              └──────────────────────────────────┤
-                                                 ▼
-                                      ┌─────────────────────────────┐
-                                      │ 22:00 📧 EMAIL              │
-                                      │                             │
-                                      │ Brief → chrisalunlloyd2@     │
-                                      │ gmail.com                   │
-                                      └─────────────────────────────┘
-```
-
----
-
-## 🧬 NEUROMORPHIC LINEAGE — The Full Evolutionary Chain
-
-```
-Boolean Logic (1854)
-    │
-    ▼
-Turing Computation (1936)
-    │
-    ▼
-McCulloch-Pitts Neuron (1943) ─── First formal neuron model
-    │
-    ▼
-Hebbian Learning (1949) ─── "Cells that fire together wire together"
-    │
-    ▼
-Perceptron (1957) ─── First trainable neuron
-    │
-    ▼
-Analog Neural Machines (1960s-70s) ─── Physical circuits mimicking neurons
-    │
-    ▼
-Atari Deterministic Engines (1980s) ─── Fixed-step loops, perfect reproducibility
-    │
-    ▼
-Procedural Generation ─── Rule-driven world creation
-    │
-    ▼
-Automated 3D Design (1990-94) ─── Constraint-based geometry
-    │
-    ▼
-Voodoo/Glide Bare-Metal Pipelines (1995-99) ─── Direct-to-silicon execution
-    │
-    ▼
-CERN Grid AI (1990s) ─── Distributed job scheduling, particle classification
-    │
-    ▼
-Agent-Based Systems (1990s) ─── Autonomous rule-driven agents, message passing
-    │
-    ▼
-LSTM (1995) ─── Memory cell = biological dendrite
-    │
-    ▼
-GRU (2014) ─── Simplified gating, more biologically plausible
-    │
-    ▼
-Attention Mechanism (2014) ─── Synaptic weighting, dynamic routing
-    │
-    ▼
-Transformers (2017) ─── Massive parallel synaptic routing
-    │
-    ▼
-MoE — Mixture of Experts ─── Neurons as specialized cortical columns
-    │
-    ▼
-SSMs — State-Space Models ─── Continuous-time neural dynamics
-    │
-    ▼
-Retrieval-Augmented Systems ─── External memory, hippocampal simulation
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────┐
-│  SIMS1337 — Neuromorphic Local Agent Grids (2026)            │
-│                                                              │
-│  BM25 = lexical hippocampus                                  │
-│  SOP DB = procedural memory                                  │
-│  Logic predictor = prefrontal cortex                         │
-│  Router = brainstem                                          │
-│  R/P/L/E/F/C nodes = cortical microcircuits                  │
-│  Stateless agents = spiking neurons                          │
-│  Dependency graph = motor cortex                             │
-│  Performatives = neurotransmitter signals                   │
-│                                                              │
-│  PRINCIPLE: A cognitive engine is a distributed,            │
-│            stateless, message-passing organism.              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🗺️ HEX GRID — 4D Map (Q,R,Z + Time Pulse)
-
-```
-                         ⬡(-4,4) Hospital
-                      ⬡(-3,3)    ⬡(-4,3)
-                   ⬡(-2,3)    ⬡(-3,2) Agent Gamma
-                ⬡(-1,3)    ⬡(-2,2)    ⬡(-3,1)
-             ⬡(0,3)     ⬡(-1,2)    ⬡(-2,1)    ⬡(-3,0)
-          ⬡(1,3)     ⬡(0,2)     ⬡(-1,1)    ⬡(-2,0)    ⬡(-3,-1)
-       ⬡(2,3)     ⬡(1,2)     ⬡(0,1)     ⬡(-1,0)    ⬡(-2,-1)    ⬡(-3,-2)
-     ⬡(3,3)     ⬡(2,2)     ⬡(1,1)     ⬡(0,0) HUB  ⬡(-1,-1)    ⬡(-2,-2)    ⬡(-3,-3)
-       ⬡(3,2)     ⬡(2,1)     ⬡(1,0)     ⬡(0,-1)    ⬡(-1,-2)    ⬡(-2,-3)
-          ⬡(3,1)     ⬡(2,0)     ⬡(1,-1)    ⬡(0,-2)    ⬡(-1,-3)
-             ⬡(3,0)     ⬡(2,-1)    ⬡(1,-2)    ⬡(0,-3)
-                ⬡(3,-1)    ⬡(2,-2)    ⬡(1,-3)
-                   ⬡(3,-2) Agent Beta  ⬡(2,-3)
-                      ⬡(3,-3)    ⬡(4,-3)
-                         ⬡(4,-4) Brute Foundry
-
-    61 hexes | Axial Q,R coordinates | Z-axis elevation (scroll wheel)
-    4D time pulse: sin-wave opacity + scale breathing (50ms animation)
-    FOW: 1-hop visibility — hexes outside agent range dim to 15%
-    Hover glow (green stroke) | Left-click: move agent | Right-click: pipeline
-```
-
----
-
-## 🔧 TOOLS — 10 Base + Dynamic Growth
-
-| Tool | Description | Category |
-|------|-------------|----------|
-| `terminal` | Execute shell commands | base |
-| `file_read` | Read files from disk | base |
-| `file_write` | Write files to disk | base |
-| `web_search` | Search the internet | base |
-| `web_fetch` | Fetch URL content | base |
-| `git` | Git operations (commit, push, pull) | base |
-| `ollama` | Query other models | base |
-| `memory` | Read/write persistent memory | base |
-| `vote` | Cast votes on proposals | base |
-| `pipeline` | Chain multiple models together | base |
-| *dynamic* | *Added nightly by approved proposals* | dream |
-
-**New tools are added automatically at 20:00 deploy when proposals pass 5+ yes votes.**
-
----
-
-## 🏗️ STATIONS — 7 Base + Dynamic Growth
-
-| Station | Description | Handler |
-|---------|-------------|---------|
-| Brute Foundry | Autonomous code generation and review | `bruteFoundryAdmission()` |
-| A/B Lab | Model comparison and evaluation | log |
-| Knowledge Tree | KG nodes + RAG pipeline | `knowledgeGraphInit()` |
-| Research | Self-exploration and analysis | `selfExplorationInit()` |
-| Secrets | Secure credential storage | log |
-| Hospital | Agent diagnostics and memory repair | `hospitalAdmission()` |
-| GitHub | Git sync and backup | `pushToGitHub()` |
-| *dynamic* | *Added nightly by approved proposals* | auto-generated |
-
----
-
-## 🚀 QUICK START
-
-### Prerequisites
-
-| Requirement | Version | Install |
-|-------------|---------|---------|
-| Java JDK | 17+ | `choco install openjdk17` |
-| Ollama | Latest | `choco install ollama` |
-| Git | Any | `choco install git` |
-| GIST_TOKEN | env var | GitHub fine-grained token with `gist` scope |
-
-### Install & Run
-
-```bash
-# 1. Clone
-git clone https://github.com/chrisalunlloyd2-sudo/sims-java-neo-fx.git
-cd sims-java-neo-fx
-
-# 2. Pull models
-ollama pull qwen2.5:0.5b
-ollama pull tinyllama:1.1b
-ollama pull llama3.2:1b
-ollama pull deepseek-r1:1.5b
-ollama pull phi:latest
-ollama pull phi3:mini
-ollama pull gemma2:2b
-ollama pull codellama:7b
-
-# 3. Set GIST_TOKEN
-export GIST_TOKEN="github_pat_..."
-
-# 4. Compile & Run
-export JAVA_HOME="C:/Program Files/Java/jdk-17"
-SRC="src/main/java"
-OUT="target/classes"
-M2="$HOME/.m2/repository"
-JFX="$M2/org/openjfx"
-MP="$JFX/javafx-base/17.0.6/javafx-base-17.0.6-win.jar"
-MP="$MP;$JFX/javafx-controls/17.0.6/javafx-controls-17.0.6-win.jar"
-MP="$MP;$JFX/javafx-graphics/17.0.6/javafx-graphics-17.0.6-win.jar"
-MP="$MP;$JFX/javafx-fxml/17.0.6/javafx-fxml-17.0.6-win.jar"
-CP="$M2/com/fasterxml/jackson/core/jackson-databind/2.15.2/jackson-databind-2.15.2.jar"
-CP="$CP;$M2/com/fasterxml/jackson/core/jackson-core/2.15.2/jackson-core-2.15.2.jar"
-CP="$CP;$M2/com/fasterxml/jackson/core/jackson-annotations/2.15.2/jackson-annotations-2.15.2.jar"
-CP="$CP;$M2/org/apache/httpcomponents/client5/httpclient5/5.2.1/httpclient5-5.2.1.jar"
-CP="$CP;$M2/org/apache/httpcomponents/core5/httpcore5/5.2/httpcore5-5.2.jar"
-CP="$CP;$M2/org/apache/httpcomponents/core5/httpcore5-h2/5.2/httpcore5-h2-5.2.jar"
-CP="$CP;$M2/org/slf4j/slf4j-api/2.0.7/slf4j-api-2.0.7.jar"
-CP="$CP;$M2/org/java-websocket/Java-WebSocket/1.5.3/Java-WebSocket-1.5.3.jar"
-mkdir -p "$OUT"
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -d "$OUT" -cp "$CP" --module-path "$MP" --add-modules javafx.controls,javafx.fxml "$SRC/com/aigen/sims/GodHandApp.java"
-"$JAVA_HOME/bin/java" --module-path "$MP" --add-modules javafx.controls,javafx.fxml -cp "$CP:$OUT" com.aigen.sims.GodHandApp
-```
-
-### Verify
-
-```bash
-# Dashboard
-curl http://localhost:8899/api/status
-# → {"version":"0.18.0","models":8,"kgNodes":23,"errors":0,...}
-
-# Web UI
-open http://localhost:8899
-```
-
----
-
-## 🎮 HOW TO PLAY
-
-### The Grid
-- **61 hexagons** in a radius-4 axial grid
-- **3 agents**: Alpha (0,0), Beta (3,-2), Gamma (-3,2)
-- **Left-click** a hex to move the selected agent there
-- **Right-click** a hex to start a pipeline from that station
-- **Scroll wheel** changes Z-axis elevation (0-4)
-- **Hover** any hex to see its TODOs and coordinates
-- **FOW**: hexes outside 1-hop of any agent are dimmed
-
-### The Models
-- **8 Ollama models** running locally
-- Each has a **role** and **specialty** for voting
-- Models auto-rotate, auto-commit, and auto-heal
-- **God Chat** shows all model conversations color-coded
-
-### The Night Cycle
-- **00:00** — Dream Phase: models cross-correlate, generate 8 game mechanics, 4 become proposals
-- **18:00** — Vote Phase: each model votes by role (specialty match = 90% approval)
-- **20:00** — Deploy Phase: approved proposals become real tools/stations, pushed to gist
-- **22:00** — Email Phase: brief sent
-
-### The Voting System
-- **8 seeded proposals** (terrain, skill trees, economy, FOW, dream journal, consensus, weather, breeding)
-- **+4 new proposals every night** from dream phase
-- **5+ yes votes** = approved → deployed at 20:00
-- **5+ no votes** = rejected
-- Each model votes based on its specialty (not random)
-
-### Growing the Game
-The system grows itself. Every night:
-1. Models dream up new tools, stations, abilities, and grid mechanics
-2. They vote on them by role
-3. Approved proposals are **actually built** — `addTool()` or `addStation()`
-4. The tool/station count increases permanently
-5. Everything is pushed to GitHub and gists
-
----
-
-## 📊 22 BACKEND SYSTEMS
-
-| # | System | Status |
-|---|--------|--------|
-| 1 | Hospital | ✅ Active |
-| 2 | Brute Foundry | ✅ Active |
-| 3 | Knowledge Graph (23 nodes, 19 edges) | ✅ Active |
-| 4 | Server Orchestration | ✅ Active |
-| 5 | Self-Exploration | ✅ Active |
-| 6 | Error Logging | ✅ Active |
-| 7 | Design | ✅ Active |
-| 8 | Real RAG (64-dim vectors) | ✅ Active |
-| 9 | Fine-Tuning (4 datasets) | ✅ Active |
-| 10 | Multi-Agent Topology (7 nodes, 14 edges) | ✅ Active |
-| 11 | Web Dashboard (:8899) | ✅ Active |
-| 12 | Plugin System (5 plugins) | ✅ Active |
-| 13 | Perfect Prompts (8 templates, 89% avg) | ✅ Active |
-| 14 | Map Guidance (61 hex weights) | ✅ Active |
-| 15 | Perfect Patterns (8 routes) | ✅ Active |
-| 16 | Tools System (10+dynamic) | ✅ Active |
-| 17 | Persistent Memory (3 agents) | ✅ Active |
-| 18 | FOW — Fog of War (1-hop) | ✅ Active |
-| 19 | Hex TODO System (16 items) | ✅ Active |
-| 20 | Gist Context (11 fragments) | ✅ Active |
-| 21 | Gist Sync (30min) | ✅ Active |
-| 22 | Night Cycle (Armed) | ✅ Active |
-
----
-
-## 📦 GIST ECOSYSTEM — 8 Live
-
-| Gist | ID | Content |
-|------|----|---------|
-| neuromorphic-lineage | `87a6e878` | Full evolutionary chain, 5 layers, 21 systems, 5 principles |
-| memories-db | `14e94c9d` | SQLite schema, seed data for 3 agents, homeostasis pruning |
-| project-places | `09a19470` | Hex coordinates for all repos, agents, stations |
-| databases | `d0733fb0` | KG schema, seed nodes/edges, export schedule |
-| hex-fow | `a23215d0` | Hex geometry, FOW deployment, Go middleman |
-| topological-memory | `93ef40fd` | H0/H1/H2 persistent homology, simplicial complex |
-| hyper-buffer | `f918a05e` | O(1) bitwise pruning engine |
-| matrix-wince | `c91b5b29` | APK compiler pipeline |
-
----
-
-## 🧪 TESTING
-
-```bash
-# API health
-curl http://localhost:8899/api/status
-
-# Dashboard
-curl http://localhost:8899/
-
-# Ollama models
-curl http://localhost:11434/api/tags
-
-# Java processes
-tasklist /FI "IMAGENAME eq java.exe"
-
-# Git status
-cd C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx && git log --oneline -5
+31f6215 [Moe autonomous] SIMS1337 2026-08-14 11:12
+cd55867 [Moe autonomous] SIMS1337 2026-08-14 08:56
+26d8d42 [Moe autonomous] SIMS1337 2026-08-14 04:10
+90c1b15 [Moe autonomous] SIMS1337 2026-08-14 01:26
+370b37d [Moe autonomous] SIMS1337 2026-08-13 23:24
+49f1b73 [Moe autonomous] SIMS1337 2026-08-13 21:56
+ad830ff [Moe autonomous] SIMS1337 2026-08-13 20:20
+f4322a3 [Moe autonomous] SIMS1337 2026-08-13 19:37
 ```
 
 ---
-
-## 📡 HOURLY HEARTBEAT
-
-A cron job (`701829ee2a9a`) runs every hour:
-1. Checks Java GUI is running — restarts if not
-2. Checks Ollama is running
-3. Checks dashboard health (version, models, errors)
-4. Checks all 8 gists are accessible
-5. Commits and pushes any uncommitted changes
-6. Checks hex TODO state for stale items
-7. Investigates and fixes any errors
-8. Reports summary
-
----
-
-## 🏛️ ARCHITECTURE
-
-```
-SIMS1337 v0.18.0 — GodHandApp.java (~2700 lines, 160KB)
-│
-├── View Management (StackPane switching, NO FXML)
-├── 4D Hex Map (61 hexes, Q/R/Z + time pulse)
-├── FOW Middleware (1-hop visibility)
-├── Hex TODO System (16 items, 15 cells)
-├── Ollama API Integration (8 models)
-├── Model Chat System (color-coded God Chat)
-├── Agent Movement (hex click handling)
-├── Station Pipelines (7 base + dynamic)
-├── Dynamic Tool Registry (10 base + addTool())
-├── Dynamic Station Registry (7 base + addStation())
-├── Voting System (8 proposals + dream-generated)
-├── Role-Based Voting (each model votes by specialty)
-├── Dream Engine (8 mechanics/night, 4→proposals)
-├── Deploy Implementation (approved → real tools/stations)
-├── Night Cycle (00:00 dream → 18:00 vote → 20:00 deploy → 22:00 email)
-├── Knowledge Graph (23 nodes, 19 edges)
-├── Real RAG Pipeline (64-dim vectors, 8 docs)
-├── Gist Sync (30min state push)
-├── Gist Context (11 lineage fragments in all models)
-├── Persistent Memory (3 agents, 12+ memories each)
-├── Entropy Monitor (Laplace smoothing + hex spread)
-├── Web Dashboard (HTTP server on :8899)
-├── Plugin System (5 plugins)
-├── Map Guidance (61 hex weights)
-├── Perfect Prompts (8 templates)
-├── Perfect Patterns (8 routes)
-├── Hourly Heartbeat Cron
-└── GitHub Integration
-```
-
----
-
-## 🔑 ENVIRONMENT VARIABLES
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `JAVA_HOME` | Yes | JDK 17+ path |
-| `GIST_TOKEN` | Yes | GitHub fine-grained token with `gist` scope |
-| `OLLAMA_HOST` | No | Default: `http://localhost:11434` |
-
----
-
-## ⚠️ CRITICAL RULES
-
-1. **NO FXML** — FXML `@FXML` binding silently fails with view switching. Pure programmatic JavaFX only.
-2. **Checkpoint before every change** — `git commit + tag + changelog + blueprint + README`
-3. **Scientific method** — One variable at a time, tracers for evidence
-4. **3-strike rule** — If same fix fails 3×, restore from git and try different architecture
-5. **Never delete from GitHub** — Always add and advance only
-6. **No code duplication** — Databases always uploaded to gist
-
----
-
-## 📜 VERSION HISTORY
-
-| Version | Milestone |
-|---------|-----------|
-| v0.3.0 | Blue grid + nav buttons |
-| v0.6.0 | View switching WORKS (StackPane, no FXML) |
-| v0.7.0 | Models, chats, stations, entropy, Markov, commands |
-| v0.8.0 | Real Ollama API — 4 SLM agents chatting live |
-| v0.9.0 | Agent movement + pipelines + GitHub push |
-| v0.10.0 | Shared God Chat + editable routing + lexical search |
-| v0.11.0 | Web APIs + Model Manager + Voting + Topology + Night Cycle |
-| v0.12.0 | 6 models + Evaluation + LoRA + Prompt Engineering + Stats |
-| v0.13.0 | Gameplay tab + Headless Pipeline in GUI |
-| v0.14.0 | All backend systems (12) |
-| v0.15.0 | Next-gen: Real RAG, Fine-Tuning, Multi-Agent Topology, Web Dashboard, Plugins |
-| v0.16.0 | SLMs ready: Perfect Prompts, Map Guidance, Patterns, Tools, Memory (17 systems) |
-| v0.17.0 | 4D Hex Map: 61 translucent hexes, Q/R/Z + time pulse, FOW-ready |
-| v0.18.0 | Hex TODOs + Gist Context + Gist Sync + Night Cycle + Dream Engine + Role-Based Voting + Dynamic Tool/Station Registry + Deploy Implementation (22 systems) |
-
----
-
-## 💙 CREDITS
-
-Built by the Architect (chrisalunlloyd2) and Hermes Agent.
-Pure JavaFX. No FXML. Everything works.
-The system grows itself. Every night. Forever.
-
-<p align="center">
-  <i>"A cognitive engine is a distributed, stateless, message-passing organism."</i>
-</p>
+*README generated by `readme_generator.py` (Viper). Deterministic — derived from source, not LLM prose.*

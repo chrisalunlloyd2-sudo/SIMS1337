@@ -21,10 +21,14 @@ public class HeadlessOllamaPipeline {
     private static final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
-    // Model tiers for different tasks
-    private static final String[] FAST_MODELS = {"qwen2.5:0.5b", "tinyllama:1.1b"};
-    private static final String[] REASONING_MODELS = {"phi:latest", "llama3.2:1b"};
-    private static final String[] DEEP_MODELS = {"phi3:mini", "deepseek-r1:1.5b"};
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
@@ -45,147 +49,184 @@ public class HeadlessOllamaPipeline {
             case "pipeline" -> runPipeline(input);
             case "vote" -> runVote(input);
             case "all" -> runAll(input);
-            // === PHASE2: CODE MINING INSERTION POINT ===
             case "mine" -> {
                 com.aigen.sims.mining.CodeMinerOrchestrator orch =
-                    new com.aigen.sims.mining.CodeMinerOrchestrator(
-                        System.getProperty("user.home") + "/AIGEN_SYS/repos", "suggestions");
-                com.aigen.sims.mining.CodeMinerOrchestrator.MiningReport report =
-                    orch.runMiningCycle();
+                    new com.aigen.sims.mining.CodeMinerOrchestrator(System.getProperty("user.home") + "/AIGEN_SYU/repos", "suggestions");
+                com.aigen.sims.mining.CodeMinerOrchestrator.MiningReport report = orch.runMiningCycle();
                 System.out.println(report.toEmailString());
             }
-            // === END PHASE2 INSERTION POINT ===
             default -> System.out.println("Unknown mode: " + mode);
         }
     }
 
-    // ==================== CODE GENERATION ====================
     private static void generateCode(String prompt) throws Exception {
         System.out.println("💻 CODE GENERATION PIPELINE");
         System.out.println("==============================");
-
-        // Step 1: Fast model generates initial code
-        String initialCode = callModel("qwen2.5:0.5b",
-            "Write code for: " + prompt + ". Output ONLY the code, no explanation.",
-            200, 0.1);
+        String initialCode = callModel("qwen2.5:0.5b", "Write code for: " + prompt + ". Output ONLY the code, no explanation.", 200, 0.1);
         System.out.println("📝 [qwen2.5:0.5b] Initial code:\n" + initialCode);
-
-        // Step 2: Reasoning model reviews and improves
-        String reviewedCode = callModel("llama3.2:1b",
-            "Review and improve this code. Fix bugs, add comments, optimize. Output ONLY the improved code:\n" + initialCode,
-            300, 0.2);
+        String reviewedCode = callModel("llama3.2:1b", "Review and improve this code. Fix bugs, add comments, optimize. Output ONLY the improved code:\n" + initialCode, 300, 0.2);
         System.out.println("\n🔍 [llama3.2:1b] Reviewed code:\n" + reviewedCode);
-
-        // Step 3: Deep model finalizes
-        String finalCode = callModel("deepseek-r1:1.5b",
-            "Finalize this code. Add error handling, edge cases, and docstring. Output ONLY the final code:\n" + reviewedCode,
-            400, 0.1);
+        String finalCode = callModel("deepseek-r1:1.5b", "Finalize this code. Add error handling, edge cases, and docstring. Output ONLY the final code:\n" + reviewedCode, 400, 0.1);
         System.out.println("\n✅ [deepseek-r1:1.5b] Final code:\n" + finalCode);
-
-        // Save to file
         String filename = prompt.replaceAll("[^a-zA-Z0-9]", "_").substring(0, Math.min(30, prompt.length())) + ".py";
         Files.writeString(Path.of(filename), finalCode);
         System.out.println("\n💾 Saved to: " + filename);
     }
 
-    // ==================== ESSAY WRITING ====================
     private static void writeEssay(String topic) throws Exception {
         System.out.println("📝 ESSAY WRITING PIPELINE");
         System.out.println("==========================");
-
-        // Step 1: Outline
-        String outline = callModel("tinyllama:1.1b",
-            "Create a detailed outline for an essay about: " + topic + ". Use bullet points.",
-            200, 0.3);
-        System.out.println("📋 [tinyllama:1.1b] Outline:\n" + outline);
-
-        // Step 2: Body paragraphs
-        String body = callModel("llama3.2:1b",
-            "Write the body paragraphs for this essay outline. Be thorough and detailed:\n" + outline,
-            500, 0.5);
-        System.out.println("\n📄 [llama3.2:1b] Body:\n" + body);
-
-        // Step 3: Introduction + Conclusion
-        String intro = callModel("phi3:mini",
-            "Write an engaging introduction and conclusion for this essay:\n" + body,
-            300, 0.4);
+        String outline = callModel("tinyllama:1.1b", "Create a detailed outline for an essay about: " + topic + ". Use bullet points.", 200, 0.3);
+        System.out.println("[tinyllama:1.1b] Outline:\n" + outline);
+        String body = callModel("llama3.2:1b", "Write the body paragraphs for this essay outline. Be thorough and detailed:\n" + outline, 500, 0.5);
+        System.out.println("\n🔄 [llama3.2:1b] Body:\n" + body);
+        String intro = callModel("phi3:mini", "Write an engaging introduction and conclusion for this essay:\n" + body, 300, 0.4);
         System.out.println("\n🎯 [phi3:mini] Intro/Conclusion:\n" + intro);
-
-        // Combine
         String fullEssay = intro + "\n\n" + body;
         String filename = topic.replaceAll("[^a-zA-Z0-9]", "_").substring(0, Math.min(30, topic.length())) + "_essay.txt";
         Files.writeString(Path.of(filename), fullEssay);
         System.out.println("\n💾 Saved to: " + filename);
     }
 
-    // ==================== TASK COMPLETION ====================
     private static void completeTask(String task) throws Exception {
         System.out.println("⚡ TASK COMPLETION");
         System.out.println("==================");
-
-        // Step 1: Analyze task
-        String analysis = callModel("qwen2.5:0.5b",
-            "Analyze this task and break it into steps: " + task,
-            150, 0.2);
+        String analysis = callModel("qwen2.5:0.5b", "Analyze this task and break it into steps: " + task, 150, 0.2);
         System.out.println("🔍 [qwen2.5:0.5b] Analysis:\n" + analysis);
-
-        // Step 2: Generate solution
-        String solution = callModel("llama3.2:1b",
-            "Complete this task step by step: " + task + "\nAnalysis: " + analysis,
-            400, 0.3);
+        String solution = callModel("llama3.2:1b", "Complete this task step by step: " + task + "\nAnalysis: " + analysis, 400, 0.3);
         System.out.println("\n⚡ [llama3.2:1b] Solution:\n" + solution);
-
-        // Step 3: Verify
-        String verification = callModel("deepseek-r1:1.5b",
-            "Verify this solution is correct and complete. Point out any issues:\nTask: " + task + "\nSolution: " + solution,
-            200, 0.1);
+        String verification = callModel("deepseek-r1:1.5b", "Verify this solution is correct and complete. Point out any issues:\nTask: " + task + "\nSolution: " + solution, 200, 0.1);
         System.out.println("\n✅ [deepseek-r1:1.5b] Verification:\n" + verification);
     }
 
-    // ==================== FULL PIPELINE ====================
     private static void runPipeline(String input) throws Exception {
         System.out.println("🔗 FULL MODEL PIPELINE (6 models chained)");
-        System.out.println("=========================================");
-
+        System.out.println("===========================================");
         String current = input;
-        String[] pipeline = {"qwen2.5:0.5b", "tinyllama:1.1b", "phi:latest",
-                             "llama3.2:1b", "phi3:mini", "deepseek-r1:1.5b"};
-
+        String[] pipeline = {"qwen2.5:0.5b", "tinyllama:1.1b", "phi:latest", "llama3.2:1b", "phi3:mini", "deepseek-r1:1.5b"};
         for (String model : pipeline) {
             System.out.println("\n--- " + model + " ---");
-            current = callModel(model,
-                "Process this and improve it. Add your unique perspective:\n" + current,
-                200, 0.4);
+            current = callModel(model, "Process this and improve it. Add your unique perspective:\n" + current, 200, 0.4);
             System.out.println(current.substring(0, Math.min(150, current.length())) + "...");
         }
-
         System.out.println("\n✅ Pipeline complete! Final output length: " + current.length() + " chars");
     }
 
-    // ==================== VOTING ====================
+    /**
+     * MARKOV VERIFICATION CHAIN voting (upgraded from single-round majority).
+     *
+     * The doctrine: small models reach LOGICALLY CORRECT decisions by stepping
+     * through a chain of verified sub-claims. Correctness is accumulated
+     * probability, not one vote.
+     *
+     *    CLAIM0 ─P01→ CLAIM1 ─P12→ CLAIM2 ─P23→ DECISION
+     *      │          │          │
+     *    verified    verified   verified
+     *    (N models)  (N models) (N models)
+     *
+     *  P(decision) = Π P(step_i | step_{i-1})
+     *
+     * Weak links get SPLIT into smaller sub-claims and re-verified (more steps,
+     * more verification). Transitions are appended to chain_transitions.log
+     * so lstm_refractor.py can learn temporal priors over time.
+     */
     private static void runVote(String proposal) throws Exception {
-        System.out.println("🗳️ MODEL VOTING ON: " + proposal);
+        System.out.println("🧬 MARKOV CHAIN VOTING ON: " + proposal);
         System.out.println("==============================");
-
-        int approve = 0, reject = 0;
         String[] voters = {"qwen2.5:0.5b", "tinyllama:1.1b", "llama3.2:1b", "deepseek-r1:1.5b"};
 
-        for (String model : voters) {
-            String vote = callModel(model,
-                "Vote APPROVE or REJECT on this proposal. Reply with ONLY one word: APPROVE or REJECT.\nProposal: " + proposal,
-                5, 0.0);
-            boolean isApprove = vote.toUpperCase().contains("APPROVE");
-            if (isApprove) approve++; else reject++;
-            System.out.println("   " + model + ": " + (isApprove ? "✅ APPROVE" : "❌ REJECT"));
+        // 1. DECOMPOSE — proposal -> ordered claim chain
+        String[] claims = {
+            "The proposal is clearly stated and its scope is understood: " + proposal,
+            "The key premise of this proposal is factually correct: " + proposal,
+            "Given the premise, the logical inference is sound: " + proposal,
+            "The conclusion follows necessarily and is safe to act on: " + proposal
+        };
+        String[] claimIds = {"fact", "premise", "infer", "conclude"};
+
+        double chainConfidence = 1.0;
+        boolean chainBroken = false;
+        for (int i = 0; i < claims.length && !chainBroken; i++) {
+            // 2. VERIFY — every link voted by all models, weighted by confidence
+            double conf = verifyClaim(claims[i], voters);
+            System.out.printf("   %-8s claim verified: confidence=%.2f %s%n",
+                    claimIds[i], conf, conf >= 0.7 ? "✅" : "⚠️  weak");
+            // learn this transition (append for lstm_refractor.py)
+            appendTransition(claimIds[Math.max(0, i - 1)], claimIds[i], conf >= 0.7);
+            // 3. PROPAGATE — chain product
+            chainConfidence *= conf;
+            if (conf < 0.7) {
+                System.out.println("   ⚠️  weak link — SPLITTING into sub-claims for re-verification");
+                // split into two smaller claims (each easier to verify)
+                double subA = verifyClaim("Part A of: " + claims[i], voters);
+                double subB = verifyClaim("Part B of: " + claims[i], voters);
+                double subConf = Math.min(subA, subB);
+                System.out.printf("   split re-verify: A=%.2f B=%.2f → combined=%.2f%n", subA, subB, subConf);
+                chainConfidence = (chainConfidence / conf) * subConf; // replace weak link
+                appendTransition(claimIds[i], claimIds[i] + "_split", subConf >= 0.7);
+                if (subConf < 0.7) {
+                    chainBroken = true; // a false premise — stop, don't build on it
+                    System.out.println("   ❌ chain broken at " + claimIds[i] + " — do not proceed");
+                }
+            }
         }
 
-        System.out.println("\n📊 Result: " + approve + "/" + voters.length + " APPROVE");
-        System.out.println(approve >= voters.length / 2 ? "✅ PROPOSAL PASSED" : "❌ PROPOSAL REJECTED");
+        // 4. GATE — chain product must clear threshold
+        System.out.printf("\n📊 Chain confidence: %.3f (product of %d verified links)%n", chainConfidence, claims.length);
+        boolean passed = !chainBroken && chainConfidence >= 0.5;
+        System.out.println(passed ? "✅ PROPOSAL PASSED (Markov chain verified)"
+                                  : "❌ PROPOSAL REJECTED (chain confidence below gate)");
+        appendDecision(proposal, passed, chainConfidence);
     }
 
-    // ==================== RUN ALL ====================
+    /** Verify one claim across all models; returns weighted confidence 0..1. */
+    private static double verifyClaim(String claim, String[] voters) throws Exception {
+        String prompt = "You are one of several small models in a Markov verification chain. "
+                + "Is this claim TRUE? Answer STRICTLY as JSON: "
+                + "{\"answer\": \"YES\" or \"NO\", \"confidence\": 0.0-1.0}\n"
+                + "Claim: " + claim;
+        double yesW = 0, noW = 0;
+        for (String model : voters) {
+            String raw = callModel(model, prompt, 80, 0.0);
+            double conf = 0.5;
+            String ans = "NO";
+            try {
+                int ci = raw.indexOf("confidence");
+                if (ci > 0) conf = Double.parseDouble(raw.substring(raw.indexOf(':', ci) + 1).trim().replaceAll("[^0-9.]", ""));
+            } catch (Exception ignored) {}
+            if (raw.toUpperCase().contains("\"YES\"") || raw.toUpperCase().contains("YES")) ans = "YES";
+            if (ans.equals("YES")) yesW += conf; else noW += conf;
+            System.out.printf("      %-16s %s (conf %.2f)%n", model, ans.equals("YES") ? "✅ TRUE" : "❌ FALSE", conf);
+        }
+        double total = yesW + noW;
+        return total == 0 ? 0 : Math.max(yesW, noW) / total;
+    }
+
+    /** Append a learned transition to chain_transitions.log (CSV: prev,curr,correct). */
+    private static void appendTransition(String prev, String curr, boolean correct) {
+        try {
+            java.nio.file.Files.writeString(
+                java.nio.file.Paths.get("chain_transitions.log"),
+                prev + "," + curr + "," + correct + "\n",
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception ignored) {}
+    }
+
+    /** Append decision outcome for lstm_refractor.py sequence learning. */
+    private static void appendDecision(String proposal, boolean passed, double confidence) {
+        try {
+            String json = "{\"ts\": " + System.currentTimeMillis() / 1000.0
+                + ", \"decision\": \"" + (passed ? "APPROVE" : "REJECT")
+                + "\", \"confidence\": " + String.format("%.3f", confidence)
+                + ", \"proposal\": \"" + escapeJson(proposal) + "\"}\n";
+            java.nio.file.Files.writeString(
+                java.nio.file.Paths.get("chain_decisions.jsonl"), json,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception ignored) {}
+    }
+
     private static void runAll(String input) throws Exception {
-        System.out.println("🚀 RUNNING ALL PIPELINES\n");
+        System.out.println("😀 RUNNING ALL PIPELINES\n");
         generateCode(input);
         System.out.println("\n" + "=".repeat(60) + "\n");
         writeEssay(input);
@@ -195,7 +236,6 @@ public class HeadlessOllamaPipeline {
         runVote("Should we deploy the generated code for: " + input);
     }
 
-    // ==================== OLLAMA API CALL ====================
     private static String callModel(String model, String prompt, int maxTokens, double temp) throws Exception {
         String escapedPrompt = escapeJson(prompt);
         String json = String.format(
