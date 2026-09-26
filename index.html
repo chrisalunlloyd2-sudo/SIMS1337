@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIMS1337 — Sovereign Intelligence Matrix</title>
+<style>
+  :root{--bg:#050510;--panel:#0a0a1f;--accent:#ff00ff;--accent2:#00ffff;--text:#e0e0ff;--muted:#8888aa;--border:#222244;}
+  *{box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;margin:0;padding:20px;}
+  .wrap{max-width:1000px;margin:0 auto;}
+  h1{color:var(--accent);text-shadow:0 0 12px var(--accent);}
+  h2{color:var(--accent2);border-bottom:1px solid var(--border);padding-bottom:8px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  .stat{color:var(--accent2);font-size:1.4em;font-weight:bold;}
+  a{color:var(--accent2);text-decoration:none;} a:hover{text-decoration:underline;}
+  .tag{background:var(--border);padding:2px 8px;border-radius:4px;font-size:11px;color:var(--muted);}
+  .ok{color:#0f0;} .warn{color:#fa0;}
+  pre{background:#000;border:1px solid var(--border);padding:10px;overflow-x:auto;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⬡ SIMS1337 — Sovereign Intelligence Matrix</h1>
+  <p>Autonomous code mining, quorum voting, gated deploy, LoRA auto-tuning, self-growing GUI.<br>
+  <span class="tag">110/110 tests</span> <span class="tag">5 phases</span> <span class="tag">hex FOW</span> <span class="tag">Markov chain</span></p>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>📄 Canon</h2>
+      <ul>
+        <li><a href="SIMS1337_White_Paper.md">White Paper v1.0</a></li>
+        <li><a href="docs/UNIFIED_SYSTEM.md">Unified System Map (2026-08-07)</a></li>
+        <li><a href="docs/BACKUP_DOCTRINE.md">Backup Doctrine — agents must back up at all times</a></li>
+        <li><a href="docs/ARCHITECTURE.md">Architecture</a></li>
+        <li><a href="docs/CREW_PROCEDURE.md">Crew Procedure</a></li>
+        <li><a href="DEPENDENCIES.md">Dependencies</a></li>
+        <li><a href="PHASES.md">Phases</a></li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2>🧠 Cortex Stack</h2>
+      <ul>
+        <li>Orchestration layer (conductor)</li>
+        <li>Executive cortex (intent routing)</li>
+        <li>Evolution engine (A/B ledger)</li>
+        <li>Memory consolidation (SOV KV/KG)</li>
+        <li>Dream-cycle + foresight</li>
+        <li>Role evolution + planning</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h2>⚙️ Phases</h2>
+      <ul>
+        <li>Quorum voting — <span class="ok">live</span></li>
+        <li>Code mining — <span class="ok">live</span></li>
+        <li>Gated deploy — <span class="ok">live</span></li>
+        <li>LoRA auto-tune (Hessian) — <span class="ok">live</span></li>
+        <li>Self-growing GUI — <span class="ok">live</span></li>
+      </ul>
+      <p><a href="web/hexeract-gui/">🕹️ Hexeract GUI</a></p>
+    </div>
+    <div class="panel">
+      <h2>🛡️ Backup Doctrine</h2>
+      <p>GitHub main is the source of truth. Local is disposable.</p>
+      <pre>bash scripts/backup.sh --snapshot before-x
+# ... modify ...
+bash scripts/backup.sh --push "feat: x"</pre>
+      <p class="warn">Any agent that modifies without backing up doesn't modify.</p>
+    </div>
+  </div>
+  <p style="margin-top:24px;color:var(--muted);font-size:12px;">SIMS1337 — generated 2026-08-07 · GitHub main = truth · ADD never DELETE</p>
+</div>
+</body>
+</html>

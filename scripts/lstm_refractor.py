@@ -25,6 +25,7 @@ def tokenize_entry(e):
     return toks
 
 def main():
+    """Main (function)."""
     p = argparse.ArgumentParser()
     p.add_argument("--log", required=True, help="JSONL log of calls/decisions")
     p.add_argument("--out", default="patterns.json")
