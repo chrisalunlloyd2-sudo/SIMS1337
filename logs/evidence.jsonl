@@ -9547,3 +9547,17 @@ Tool: SimGrid Planner - A versatile tool for man"}
 {"ts":"2026-09-26T20:42:34.859183100Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address kqml need for llama3.2:1b (urgency: 50)"}
 {"ts":"2026-09-26T20:42:34.860134800Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address kqml need for deepseek-r1:1.5b (urgency: 50)"}
 {"ts":"2026-09-26T20:42:34.861140800Z","cat":"vote","model":"phi3:mini","obs":"maslow: NO — Address kqml need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-26T20:48:21.900578300Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address kqml need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-26T20:53:40.661871100Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address acl need for phi:latest (urgency: 60)"}
+{"ts":"2026-09-26T21:00:21.824011700Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address kqml need for qwen2.5:0.5b (urgency: 60)"}
+{"ts":"2026-09-26T21:06:05.980942200Z","cat":"memory","model":"Agent Alpha","obs":"[14:06] Activity: 6 total memories stored"}
+{"ts":"2026-09-26T21:07:13.972137400Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address acl need for nomic-embed-text:latest (urgency: 70)"}
+{"ts":"2026-09-26T21:07:13.972577900Z","cat":"vote","model":"mistral:7b","obs":"maslow: NO — Address acl need for mistral:7b (urgency: 70)"}
+{"ts":"2026-09-26T21:07:13.972577900Z","cat":"vote","model":"codellama:7b","obs":"maslow: NO — Address kqml need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-26T21:13:21.456858400Z","cat":"vote","model":"gemma2:2b","obs":"maslow: YES — Address rag need for gemma2:2b (urgency: 50)"}
+{"ts":"2026-09-26T21:18:50.198776600Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address rag need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-26T21:18:50.200218400Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address rag need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-26T21:18:50.200304400Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address kqml need for phi3:mini (urgency: 60)"}
+{"ts":"2026-09-26T21:31:09.936860600Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: NO — Address rag need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-26T21:34:50.540518500Z","cat":"memory","model":"Agent Gamma","obs":"[14:34] Activity: 5 total memories stored"}
+{"ts":"2026-09-26T21:36:49.428772700Z","cat":"vote","model":"phi:latest","obs":"maslow: NO — Address kqml need for phi:latest (urgency: 50)"}
