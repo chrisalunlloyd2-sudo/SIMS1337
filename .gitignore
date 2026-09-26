@@ -1,1 +1,22 @@
 __pycache__/
+
+# Secrets — never commit
+.env
+
+# JVM crash dumps
+hs_err_pid*.log
+
+# DB lock files
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Java build output (mirrors upstream .gitignore)
+target/
+build/
+
+# Node
+node_modules/
+
+# Oversized local run data (150MB, exceeds GitHub 100MB blob limit)
+logs/overnight-data-run1.json
