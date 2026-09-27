@@ -9651,3 +9651,115 @@ Tool: SimGrid Planner - A versatile tool for man"}
 {"ts":"2026-09-27T01:10:05.396904200Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Multi-Model Consensus"}
 {"ts":"2026-09-27T01:10:05.396904200Z","cat":"vote","model":"codellama:7b","obs":"quorum: NO — Hex Weather System"}
 {"ts":"2026-09-27T01:10:05.397463700Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Hex Weather System"}
+{"ts":"2026-09-27T01:15:45.049692100Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Hex Weather System"}
+{"ts":"2026-09-27T01:15:45.050695300Z","cat":"vote","model":"codellama:7b","obs":"quorum: NO — Agent Breeding"}
+{"ts":"2026-09-27T01:15:45.051129900Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Agent Breeding"}
+{"ts":"2026-09-27T01:15:49.511198500Z","cat":"vote","model":"gemma2:2b","obs":"maslow: YES — Address memory need for gemma2:2b (urgency: 50)"}
+{"ts":"2026-09-27T01:20:54.153284500Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address quant need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T01:20:54.153284500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address lora need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-27T01:20:54.154285400Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address speed need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-27T01:21:03.352587900Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — Agent Breeding"}
+{"ts":"2026-09-27T01:21:03.353163400Z","cat":"vote","model":"codellama:7b","obs":"quorum: NO — Category: Logic System — Simulates complex interactions and decisions among 61 h"}
+{"ts":"2026-09-27T01:21:03.354108100Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — Category: Logic System — Simulates complex interactions and decisions among 61 h"}
+{"ts":"2026-09-27T01:26:31.655245700Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address speed need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-27T01:26:40.076039200Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Category: Logic System — Simulates complex interactions and decisions among 61 h"}
+{"ts":"2026-09-27T01:26:40.076655500Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Agent: Quantum Particle Swarm - FOW, Agent: Supercomputer - FOW, Agent: Nervous "}
+{"ts":"2026-09-27T01:26:40.076655500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Agent: Quantum Particle Swarm - FOW, Agent: Supercomputer - FOW, Agent: Nervous "}
+{"ts":"2026-09-27T01:32:47.015071400Z","cat":"vote","model":"phi:latest","obs":"maslow: NO — Address kg need for phi:latest (urgency: 50)"}
+{"ts":"2026-09-27T01:33:14.033764800Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — Agent: Quantum Particle Swarm - FOW, Agent: Supercomputer - FOW, Agent: Nervous "}
+{"ts":"2026-09-27T01:33:14.033764800Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Category: Tool — user-friendly interface for agent management."}
+{"ts":"2026-09-27T01:33:14.034765500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — Category: Tool — user-friendly interface for agent management."}
+{"ts":"2026-09-27T01:37:48.555736300Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address vision need for qwen2.5:0.5b (urgency: 60)"}
+{"ts":"2026-09-27T01:37:48.555736300Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address quant need for nomic-embed-text:latest (urgency: 60)"}
+{"ts":"2026-09-27T01:37:48.556749400Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address lora need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:37:48.556749400Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address speed need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:39:43.311713500Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Category: Tool — user-friendly interface for agent management."}
+{"ts":"2026-09-27T01:39:43.312712700Z","cat":"vote","model":"codellama:7b","obs":"quorum: NO — \\"}
+{"ts":"2026-09-27T01:39:43.313721Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — \\"}
+{"ts":"2026-09-27T01:45:39.457209500Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address speed need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T01:45:39.457708800Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address quant need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-27T01:45:39.458205300Z","cat":"vote","model":"phi3:mini","obs":"maslow: NO — Address vision need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-27T01:46:19.735141800Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address vision need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-27T01:53:13.706805600Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — \\"}
+{"ts":"2026-09-27T01:53:14.351108100Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T01:53:14.351571600Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T01:53:53.090086200Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address kg need for phi:latest (urgency: 60)"}
+{"ts":"2026-09-27T01:59:46.220809600Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address audio need for qwen2.5:0.5b (urgency: 50)"}
+{"ts":"2026-09-27T01:59:46.221485600Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: NO — Address speed need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T01:59:46.221485600Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address quant need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:59:46.222007600Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address vision need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:59:48.834215300Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T01:59:48.834215300Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T01:59:49.042557100Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T02:05:55.735462800Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address vision need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T02:05:55.755028100Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: NO — Address speed need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-27T02:05:55.755028100Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address vision need for phi3:mini (urgency: 60)"}
+{"ts":"2026-09-27T02:11:50.320630700Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T02:11:50.323629300Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 What new tool would most benefit the collective?"}
+{"ts":"2026-09-27T02:11:50.324630500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — 🦉 What new tool would most benefit the collective?"}
+{"ts":"2026-09-27T02:11:50.408147100Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — 🦉 What new tool would most benefit the collective?"}
+{"ts":"2026-09-27T02:11:50.436144900Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 What is the best voting strategy for proposal quality?"}
+{"ts":"2026-09-27T02:11:50.436144900Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — 🦉 What is the best voting strategy for proposal quality?"}
+{"ts":"2026-09-27T02:11:50.436883600Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — 🦉 What is the best voting strategy for proposal quality?"}
+{"ts":"2026-09-27T02:11:50.436883600Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T02:11:50.446148600Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T02:11:50.447147900Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — 🦉 What patterns emerge from cross-model communication?"}
+{"ts":"2026-09-27T02:11:50.447147900Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T02:11:50.447147900Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T02:11:50.448267100Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — 🦉 How should the hex grid evolve to support more agents?"}
+{"ts":"2026-09-27T02:11:50.455371400Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address audio need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-27T02:17:46.843475100Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address lora need for phi:latest (urgency: 50)"}
+{"ts":"2026-09-27T02:22:53.458236800Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address memory need for qwen2.5:0.5b (urgency: 50)"}
+{"ts":"2026-09-27T02:22:53.459238100Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address speed need for nomic-embed-text:latest (urgency: 60)"}
+{"ts":"2026-09-27T02:22:53.486316200Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address speed need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T02:22:53.788168900Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address audio need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T02:29:07.632657800Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: NO — Address audio need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T02:29:07.635656800Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: NO — Address speed need for deepseek-r1:1.5b (urgency: 60)"}
+{"ts":"2026-09-27T02:29:07.636308700Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address audio need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-27T02:34:31.139638500Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address memory need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-27T02:39:44.905084300Z","cat":"vote","model":"phi:latest","obs":"maslow: NO — Address quant need for phi:latest (urgency: 50)"}
+{"ts":"2026-09-27T02:46:56.866565600Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address kqml need for qwen2.5:0.5b (urgency: 30)"}
+{"ts":"2026-09-27T02:46:56.866915400Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: NO — Address vision need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T02:46:56.866915400Z","cat":"vote","model":"mistral:7b","obs":"maslow: NO — Address vision need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T02:46:56.866915400Z","cat":"vote","model":"codellama:7b","obs":"maslow: NO — Address memory need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T02:47:05.842790600Z","cat":"vote","model":"llama3.2:1b","obs":": YES — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T02:52:40.594507900Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address audio need for llama3.2:1b (urgency: 60)"}
+{"ts":"2026-09-27T02:52:40.594507900Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address speed need for deepseek-r1:1.5b (urgency: 70)"}
+{"ts":"2026-09-27T02:52:43.475920800Z","cat":"vote","model":"qwen2.5:0.5b","obs":": YES — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T02:52:43.476891300Z","cat":"vote","model":"deepseek-r1:1.5b","obs":": YES — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T02:57:58.920711900Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address memory need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-27T02:58:38.556043Z","cat":"vote","model":"phi:latest","obs":": YES — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T03:03:24.546888600Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address rag need for tinyllama:1.1b (urgency: 30)"}
+{"ts":"2026-09-27T03:03:57.438390400Z","cat":"vote","model":"phi3:mini","obs":": YES — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T03:09:05.072668200Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address quant need for phi:latest (urgency: 60)"}
+{"ts":"2026-09-27T03:09:17.307649700Z","cat":"vote","model":"tinyllama:1.1b","obs":": NO — Add terrain types per Z-level: water(0), plains(1), forest(2), mountain(3)"}
+{"ts":"2026-09-27T03:14:19.646377800Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: NO — Address quant need for qwen2.5:0.5b (urgency: 30)"}
+{"ts":"2026-09-27T03:14:19.646377800Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address vision need for nomic-embed-text:latest (urgency: 60)"}
+{"ts":"2026-09-27T03:14:19.646377800Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address vision need for mistral:7b (urgency: 60)"}
+{"ts":"2026-09-27T03:14:19.646377800Z","cat":"vote","model":"codellama:7b","obs":"maslow: NO — Address memory need for codellama:7b (urgency: 60)"}
+{"ts":"2026-09-27T03:23:09.122564500Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: NO — Address memory need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T03:23:09.123088200Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address vision need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-27T03:35:25.192383Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address kqml need for phi3:mini (urgency: 30)"}
+{"ts":"2026-09-27T03:40:34.369416Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address kg need for tinyllama:1.1b (urgency: 30)"}
+{"ts":"2026-09-27T03:43:22.087880500Z","cat":"vote","model":"llama3.2:1b","obs":": NO — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T03:46:29.982495Z","cat":"vote","model":"phi:latest","obs":"maslow: NO — Address speed need for phi:latest (urgency: 50)"}
+{"ts":"2026-09-27T03:48:35.532293500Z","cat":"vote","model":"qwen2.5:0.5b","obs":": NO — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T03:48:35.533016Z","cat":"vote","model":"deepseek-r1:1.5b","obs":": NO — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T03:51:36.857299100Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: NO — Address quant need for qwen2.5:0.5b (urgency: 40)"}
+{"ts":"2026-09-27T03:51:36.857820800Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address audio need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T03:51:36.857820800Z","cat":"vote","model":"mistral:7b","obs":"maslow: NO — Address audio need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T03:51:36.857820800Z","cat":"vote","model":"codellama:7b","obs":"maslow: NO — Address memory need for codellama:7b (urgency: 70)"}
+{"ts":"2026-09-27T03:54:04.237797100Z","cat":"vote","model":"phi:latest","obs":": NO — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T03:57:33.505540400Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address memory need for llama3.2:1b (urgency: 60)"}
+{"ts":"2026-09-27T03:57:33.506541500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address audio need for deepseek-r1:1.5b (urgency: 50)"}
+{"ts":"2026-09-27T03:59:37.454243100Z","cat":"vote","model":"phi3:mini","obs":": NO — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T04:02:52.515533200Z","cat":"vote","model":"phi3:mini","obs":"maslow: NO — Address kg need for phi3:mini (urgency: 30)"}
+{"ts":"2026-09-27T04:05:05.534067700Z","cat":"vote","model":"tinyllama:1.1b","obs":": YES — Each agent gets a skill tree: Alpha=Orchestration, Beta=Construction, Gamma=Analysis"}
+{"ts":"2026-09-27T04:08:19.306315800Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address lora need for tinyllama:1.1b (urgency: 30)"}
+{"ts":"2026-09-27T04:13:47.594754800Z","cat":"vote","model":"phi:latest","obs":"maslow: NO — Address speed need for phi:latest (urgency: 60)"}
+{"ts":"2026-09-27T04:18:53.316860900Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address quant need for qwen2.5:0.5b (urgency: 50)"}
+{"ts":"2026-09-27T04:18:53.316860900Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address memory need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T04:18:53.317861Z","cat":"vote","model":"mistral:7b","obs":"maslow: NO — Address audio need for mistral:7b (urgency: 60)"}
+{"ts":"2026-09-27T04:18:53.317861Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address memory need for codellama:7b (urgency: 80)"}
+{"ts":"2026-09-27T04:24:05.286218900Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address audio need for llama3.2:1b (urgency: 30)"}
+{"ts":"2026-09-27T04:24:05.286218900Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: NO — Address memory need for deepseek-r1:1.5b (urgency: 50)"}

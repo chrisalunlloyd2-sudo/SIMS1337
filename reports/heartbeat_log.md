@@ -42,3 +42,42 @@ Dashboard HTML reviewed via live fetch: no stale data (models queried live per P
 ### 7. Notes / Follow-ups
 - Live app is pacing Ollama at 5-min cellular gate; heartbeat voting adds extra load → consider reusing app's gate or running votes with longer gaps next cycle
 - scripts/verify.py referenced by skill missing from repo — needs creation or skill update
+## Heartbeat 2026-09-27T00:26–00:50
+
+**Trigger:** hourly cron (SIMS1337-Heartbeat) — cycle 3
+
+### 1. System Health
+| Check | Result |
+|---|---|
+| Ollama API | ✅ UP — 12 models (qwen2.5:0.5b, tinyllama:1.1b, llama3.2:1b, deepseek-r1:1.5b, phi3:mini, phi:latest, llama3.2:3b, mistral:7b, qwen2.5-coder:3b, codellama:7b, gemma2:2b, nomic-embed-text) |
+| SIMS1337 Java app | ❌ DOWN at cycle start — no java.exe, dashboard :8899 dead, evidence.jsonl stale since 21:24 (~3h gap) |
+| App recovery | ✅ RELAUNCHED — javaw PID 8272 via PowerShell Start-Process; dashboard :8899 live at 00:47 (v0.18.0, models:12, kgNodes:23, errors:0) |
+| Cellular gate | App pacing intact on relaunch (5-min gate, cold-shot doctrine) |
+| JDK 17 / Maven | ✅ 17.0.12 / 3.9.16 |
+| scripts/verify.py | ✅ RESULT: PASS |
+
+### 2. Model Voting
+- Proposal (hour-rotated #17, 17%8=1): **Brute Foundry code review**
+- Votes ran while app was DOWN — zero cellular-gate contention (last cycle's complaint eliminated), yet tinyllama/deepseek abstained again (echo/empty = model-side issue, not load)
+- Tally: **0 APPROVE / 2 REJECT / 2 ABSTAIN** → ❌ NOT PASSED (needed 3+)
+  - qwen2.5:0.5b — REJECT (3.0s)
+  - tinyllama:1.1b — ABSTAIN, echoed prompt (20.1s)
+  - llama3.2:1b — REJECT: "Lack of robust feedback mechanism and reputation system for code reviewers." (16.2s)
+  - deepseek-r1:1.5b — ABSTAIN, empty (30.0s)
+
+### 3. Built This Cycle
+**Nothing** — proposal failed consensus. Instead the cycle's real win: **live app recovery** (relaunch after 3h outage). No GodHandApp.java changes → no compile needed.
+
+### 4. Git Backup
+- Commit + tag heartbeat-20260927-0026 + push (see evidence below)
+
+### 5. Errors → `reports/heartbeat_errors.md`
+Voting abstains (recurring pattern, 2 cycles), failed cmd.exe `start` relaunch path, stale guardian watchdog. All logged.
+
+### 6. Design Review
+No UI changes (KISS; proposal failed). Note for next cycles: watchdog is stale — guardian.bat not monitoring app crashes since 07-28; tonight's 3h outage is exactly the failure mode it should catch. Recommend next heartbeat wires guardian.bat restart-on-crash or adds a heartbeat-side java.exe check+relaunch.
+
+### 7. Notes / Follow-ups
+- App boot time ~4 min (javaw start → :8899 listen) — future heartbeat relaunches need ~5 min patience before declaring failure
+- tinyllama echo-abstain + deepseek empty-abstain are deterministic model quirks at num_predict≤40; consider raising num_predict or dropping these two from the voter pool in favor of gemma2:2b
+- PowerShell Start-Process is the reliable relaunch path from cron (cmd `start` silently failed 2x)
