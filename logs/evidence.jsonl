@@ -9611,3 +9611,43 @@ Tool: SimGrid Planner - A versatile tool for man"}
 {"ts":"2026-09-26T23:57:28.113726300Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address kg need for nomic-embed-text:latest (urgency: 60)"}
 {"ts":"2026-09-26T23:57:28.113988200Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address kqml need for mistral:7b (urgency: 60)"}
 {"ts":"2026-09-26T23:57:28.115065600Z","cat":"vote","model":"codellama:7b","obs":"maslow: NO — Address lora need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T00:09:10.311641100Z","cat":"vote","model":"gemma2:2b","obs":"maslow: YES — Address vision need for gemma2:2b (urgency: 50)"}
+{"ts":"2026-09-27T00:09:10.312337800Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address kg need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T00:09:10.312337800Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: NO — Address lora need for deepseek-r1:1.5b (urgency: 70)"}
+{"ts":"2026-09-27T00:15:32.743431100Z","cat":"vote","model":"phi3:mini","obs":"maslow: NO — Address quant need for phi3:mini (urgency: 50)"}
+{"ts":"2026-09-27T00:21:27.086453200Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address lora need for tinyllama:1.1b (urgency: 60)"}
+{"ts":"2026-09-27T00:21:34.700989200Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Hex Elevation Terrain"}
+{"ts":"2026-09-27T00:21:35.337474Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — Hex Elevation Terrain"}
+{"ts":"2026-09-27T00:27:16.101852600Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address kqml need for phi:latest (urgency: 60)"}
+{"ts":"2026-09-27T00:32:19.646624700Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — Hex Elevation Terrain"}
+{"ts":"2026-09-27T00:32:19.646624700Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Agent Skill Trees"}
+{"ts":"2026-09-27T00:32:19.646624700Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — Agent Skill Trees"}
+{"ts":"2026-09-27T00:32:21.216823900Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: YES — Address speed need for qwen2.5:0.5b (urgency: 50)"}
+{"ts":"2026-09-27T00:32:21.217794500Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: YES — Address lora need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T00:32:21.217794500Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address rag need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T00:32:21.217794500Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address lora need for codellama:7b (urgency: 60)"}
+{"ts":"2026-09-27T00:39:44.662761400Z","cat":"vote","model":"gemma2:2b","obs":"maslow: YES — Address audio need for gemma2:2b (urgency: 50)"}
+{"ts":"2026-09-27T00:39:45.495378Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — Agent Skill Trees"}
+{"ts":"2026-09-27T00:39:45.496375500Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Resource Economy"}
+{"ts":"2026-09-27T00:39:45.496375500Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Resource Economy"}
+{"ts":"2026-09-27T00:45:30.515368100Z","cat":"vote","model":"llama3.2:1b","obs":"maslow: YES — Address lora need for llama3.2:1b (urgency: 50)"}
+{"ts":"2026-09-27T00:45:30.515903200Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"maslow: YES — Address lora need for deepseek-r1:1.5b (urgency: 80)"}
+{"ts":"2026-09-27T00:46:06.022264Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Resource Economy"}
+{"ts":"2026-09-27T00:46:06.022264Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — FOW Expansion"}
+{"ts":"2026-09-27T00:46:06.022264Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — FOW Expansion"}
+{"ts":"2026-09-27T00:52:14.195333900Z","cat":"vote","model":"phi3:mini","obs":"maslow: YES — Address quant need for phi3:mini (urgency: 60)"}
+{"ts":"2026-09-27T00:52:19.429933800Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — FOW Expansion"}
+{"ts":"2026-09-27T00:52:19.429933800Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Dream Journal Gist"}
+{"ts":"2026-09-27T00:52:19.429933800Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Dream Journal Gist"}
+{"ts":"2026-09-27T00:57:58.315027400Z","cat":"vote","model":"tinyllama:1.1b","obs":"maslow: YES — Address quant need for tinyllama:1.1b (urgency: 50)"}
+{"ts":"2026-09-27T00:58:03.712505800Z","cat":"vote","model":"gemma2:2b","obs":"quorum: NO — Dream Journal Gist"}
+{"ts":"2026-09-27T00:58:03.712801900Z","cat":"vote","model":"codellama:7b","obs":"quorum: YES — Multi-Model Consensus"}
+{"ts":"2026-09-27T00:58:03.713491700Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: NO — Multi-Model Consensus"}
+{"ts":"2026-09-27T01:04:25.699531500Z","cat":"vote","model":"phi:latest","obs":"maslow: YES — Address rag need for phi:latest (urgency: 50)"}
+{"ts":"2026-09-27T01:10:04.071217400Z","cat":"vote","model":"qwen2.5:0.5b","obs":"maslow: NO — Address vision need for qwen2.5:0.5b (urgency: 50)"}
+{"ts":"2026-09-27T01:10:04.071217400Z","cat":"vote","model":"nomic-embed-text:latest","obs":"maslow: NO — Address quant need for nomic-embed-text:latest (urgency: 50)"}
+{"ts":"2026-09-27T01:10:04.072087300Z","cat":"vote","model":"mistral:7b","obs":"maslow: YES — Address kg need for mistral:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:10:04.072087300Z","cat":"vote","model":"codellama:7b","obs":"maslow: YES — Address quant need for codellama:7b (urgency: 50)"}
+{"ts":"2026-09-27T01:10:05.396904200Z","cat":"vote","model":"gemma2:2b","obs":"quorum: YES — Multi-Model Consensus"}
+{"ts":"2026-09-27T01:10:05.396904200Z","cat":"vote","model":"codellama:7b","obs":"quorum: NO — Hex Weather System"}
+{"ts":"2026-09-27T01:10:05.397463700Z","cat":"vote","model":"deepseek-r1:1.5b","obs":"quorum: YES — Hex Weather System"}
