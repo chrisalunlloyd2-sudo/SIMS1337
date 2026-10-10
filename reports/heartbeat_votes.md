@@ -1,32 +1,25 @@
-# SIMS1337 Model Votes
+# Heartbeat Vote Log (model voting, hour-rotated proposals)
 
-**Timestamp:** 2026-07-25T07:36:11.411661
+## 2026-10-10T05:52Z — Vote #18
 
-**Directive:** Architect says ALL PASSED - build everything
+**Proposal #2 (2%8=2):** Knowledge Graph node auto-seeding for all backend systems
+**Context:** vote ran while app recovered this cycle (hung JVMs killed 22:45Z, relaunched 22:51Z, :8899 live 23:03Z) — minimal cellular-gate contention
 
-| Proposal | Approve | Reject | Result |
-|----------|---------|--------|--------|
-| Hospital | 4 | 0 | PASSED |
-| Brute Foundry | 4 | 0 | PASSED |
-| Knowledge Graph | 4 | 0 | PASSED |
-| Server | 4 | 0 | PASSED |
-| Self-Exploration | 4 | 0 | PASSED |
-| Error Logging | 4 | 0 | PASSED |
-| Design | 4 | 0 | PASSED |
+| Voter | Verdict | Time | Note |
+|---|---|---|---|
+| qwen2.5:0.5b | REJECT | 52.8s | "does not align with current state of knowledge graph integration" |
+| tinyllama:1.1b | APPROVE | 22.3s | (echo-ish preamble, verdict extracted) |
+| llama3.2:1b | ABSTAIN | 6.9s | "I can't assist with this request." |
+| deepseek-r1:1.5b | ABSTAIN | 34.5s | empty |
+| gemma2:2b | APPROVE | 52.1s | "improve app performance and data consistency" |
 
-## 2026-09-26T16:50:10.475596
-- **Proposal:** Hospital admissions diagnostics
-- **qwen2.5:0.5b:** REJECT — "REJECT" (7.1s)
-- **tinyllama:1.1b:** ABSTAIN — "Proposaal: implement 'Hospital admissions diagnostiics' in the SIMS13" (3.6s)
-- **llama3.2:1b:** REJECT — "REJECT. Diagnostics require significant changes to backend infrastructure." (35.9s)
-- **deepseek-r1:1.5b:** ABSTAIN — "" (33.8s)
-- **Tally:** 0 APPROVE / 2 REJECT -> NOT PASSED
+**Tally: 2 APPROVE / 1 REJECT / 2 ABSTAIN → ❌ NOT PASSED (needed 3+)**
 
-## 2026-09-27T00:50 (heartbeat cycle 3)
-- **Proposal:** Brute Foundry code review (hour-rotated #17, 17%8=1)
-- **qwen2.5:0.5b:** REJECT — "REJECT" (3.0s)
-- **tinyllama:1.1b:** ABSTAIN — echoed prompt, no verdict (20.1s)
-- **llama3.2:1b:** REJECT — "REJECT. Lack of robust feedback mechanism and reputation system for code reviewers." (16.2s)
-- **deepseek-r1:1.5b:** ABSTAIN — empty response (30.0s)
-- **Tally:** 0 APPROVE / 2 REJECT -> NOT PASSED (needed 3+)
-- **Note:** votes ran while app was down (no cellular-gate contention); tinyllama still echoes, deepseek still empty — recurring abstain pattern across 2 cycles
+**Result:** Nothing built this cycle. Correct behavior — consensus gate held.
+
+**Signal for next cycles:** KG seeding has now failed twice with rejections from qwen2.5 (the same model, deterministic). The proposal text ("node auto-seeding for all backend systems") reads as scope creep to the rejecting voter. Next heartbeat should re-scope the proposal text to the actual gap observed 10-09: KG populates only from chat; kgNodes=44 counts backend systems but they are not self-seeding. Reword to "Knowledge Graph: let each of the 17 backend systems register its own status node each cycle" and re-vote.
+
+**Vote history (recent):**
+- #18 (this run): KG seeding — NOT PASSED (2/5)
+- #17 (09-27): Brute Foundry — NOT PASSED (0/4, pre-gemma2 tiebreaker era)
+- #16 (10-03): design pass — NOT PASSED (per scripts/.last_vote.json overwrite)

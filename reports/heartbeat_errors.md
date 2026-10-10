@@ -28,3 +28,23 @@ Success/failure tracking for autonomous heartbeat runs.
 | scripts/verify.py | ✅ PASS | RESULT: PASS (dashboard was down at check time = pre-recovery) |
 
 **Running totals:** runs=3 | health_checks_passed=3 | builds=0 | git_pushes_ok=2 | app_recoveries=1
+## 2026-10-10T06:10Z — Heartbeat run (cycle 4, after 13-day gap)
+
+| Item | Status | Detail |
+|---|---|---|
+| Ollama health | ✅ PASS | 12 models online |
+| SIMS1337 app | ❌ DOWN at cycle start → ✅ RECOVERED | 2 javaw PIDs (since 21:10 local) hung with :8899 never bound; killed via wmic; relaunched via wmic→bat→launch_app.ps1 (PowerShell direct timed out from MSYS); dashboard live 23:03 local, boot ~12 min (2× longer than the 4-6 min documented) |
+| New-persistent-process launcher | ⚠️ UNRESOLVED | 22:35Z wmic→cmd/start attempt never produced javaw; the 22:51Z wmic→create of the bat DID work — pattern difference unclear, verify next outage; candidate cause: MSYS→PowerShell slow-spawn making `powershell` direct unusable from cron |
+| Model voting | ⚠️ PARTIAL | 2/5 verdicts effective; llama3.2 refused ("I can't assist"), deepseek empty (recurring), tinyllama echo-preamble |
+| Vote result | ❌ NOT PASSED | KG seeding 2 APPROVE / 1 REJECT / 2 ABSTAIN — 2nd consecutive rejection of this proposal (qwen2.5 deterministic REJECT on scope reads) |
+| Build step | ⏭️ SKIPPED | No 3+ consensus |
+| Uncommitted WIP commit | ✅ PASS | OllamaRouter.java (+513/-69, 10-03 session) + OllamaRouterStressHarness + launcher + run_stress.sh — both Java files compile clean (javac exit 0); telemetry logs included per cycle-3 precedent |
+| Git backup | ✅ PASS | commit + tag heartbeat-20261010-2310 + push → origin/main |
+| scripts/verify.py | ✅ PASS | RESULT: PASS (post-recovery) |
+
+**Tooling quirks (2026-10-10):**
+- bare `tasklist` under MSYS silently returns empty / mangles `//FI` → use `wmic process where "name='javaw.exe'" get ProcessId,CreationDate` (reliable) or cmd.exe /c with quoted filter
+- PowerShell from MSYS git-bash: direct `powershell -File` hangs >60s; `cmd.exe /c powershell ...` also hung this cycle — wmic process call create of a .bat was the only path that produced the process
+- `wmic ... call create "path"` without embedded quotes → "Invalid Verb Switch"; wrap path in single-quote-wrapped double quotes
+
+**Running totals:** runs=4 | health_checks_passed=4 | builds=0 | git_pushes_ok=3 | app_recoveries=2 | votes_passed=0

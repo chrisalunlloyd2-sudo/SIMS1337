@@ -1,0 +1,282 @@
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T04:20:25.910Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=5414 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T04:20:27.360Z event=queued job=0 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=5408 depth_at_submit=1
+[ORCH] ts=2026-10-10T04:20:27.602Z event=rejected job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5406 reason=ram_low free_ram_mb=5408 min_free_mb=9999999
+[ORCH] ts=2026-10-10T04:20:28.077Z event=queued job=1 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=5415 depth_at_submit=1
+[ORCH] ts=2026-10-10T04:20:28.506Z event=rejected job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5415 reason=ram_low free_ram_mb=5415 min_free_mb=9999999
+[ORCH] ts=2026-10-10T04:20:28.632Z event=queued job=2 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=5415 depth_at_submit=1
+[ORCH] ts=2026-10-10T04:20:28.999Z event=rejected job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5414 reason=ram_low free_ram_mb=5414 min_free_mb=9999999
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T04:23:50.381Z event=queued job=3 model=deepseek-r1:1.5b queue=2 in_flight=1 free_ram_mb=5310 depth_at_submit=2
+[ORCH] ts=2026-10-10T04:23:50.584Z event=load_start job=1 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5310 phase=cold
+[ORCH] ts=2026-10-10T04:23:50.488Z event=queued job=1 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5310 depth_at_submit=1
+[ORCH] ts=2026-10-10T04:23:50.383Z event=queued job=2 model=llama3.2:1b queue=2 in_flight=1 free_ram_mb=5310 depth_at_submit=2
+[ORCH] ts=2026-10-10T04:23:51.055Z event=queued job=4 model=qwen2.5:0.5b queue=3 in_flight=1 free_ram_mb=5312 depth_at_submit=3
+[ORCH] ts=2026-10-10T04:23:51.342Z event=queued job=5 model=tinyllama:1.1b queue=4 in_flight=1 free_ram_mb=5311 depth_at_submit=4
+[ORCH] ts=2026-10-10T04:23:51.347Z event=queued job=6 model=deepseek-r1:1.5b queue=5 in_flight=1 free_ram_mb=5311 depth_at_submit=5
+[ORCH] ts=2026-10-10T04:23:51.548Z event=queued job=7 model=llama3.2:1b queue=6 in_flight=1 free_ram_mb=5314 depth_at_submit=6
+[ORCH] ts=2026-10-10T04:23:51.566Z event=queued job=8 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=5314 depth_at_submit=7
+[ORCH] ts=2026-10-10T04:23:51.588Z event=queued job=9 model=tinyllama:1.1b queue=8 in_flight=1 free_ram_mb=5314 depth_at_submit=8
+[ORCH] ts=2026-10-10T04:23:51.633Z event=queued job=10 model=deepseek-r1:1.5b queue=9 in_flight=1 free_ram_mb=5314 depth_at_submit=9
+[ORCH] ts=2026-10-10T04:23:51.711Z event=queued job=11 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=5307 depth_at_submit=10
+[ORCH] ts=2026-10-10T04:23:54.051Z event=http_up job=1 model=- queue=10 in_flight=1 free_ram_mb=5262 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T04:23:54.057Z event=queued job=12 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=5261 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:24:45.704Z event=infer_done job=1 model=tinyllama:1.1b queue=11 in_flight=1 free_ram_mb=4607 total_ms=55095 chars=69
+[ORCH] ts=2026-10-10T04:24:56.107Z event=queued job=13 model=qwen2.5:0.5b queue=12 in_flight=0 free_ram_mb=4607 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:24:57.033Z event=load_start job=2 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=5094 phase=swap prev_model=tinyllama:1.1b purge_ms=80
+[ORCH] ts=2026-10-10T04:25:06.643Z event=infer_done job=2 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=3691 total_ms=9725 chars=2
+[ORCH] ts=2026-10-10T04:25:06.646Z event=queued job=14 model=tinyllama:1.1b queue=12 in_flight=0 free_ram_mb=3691 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:25:07.522Z event=load_start job=3 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=3831 phase=swap prev_model=llama3.2:1b purge_ms=56
+[ORCH] ts=2026-10-10T04:26:00.485Z event=infer_done job=3 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=4036 total_ms=53019 chars=0
+[ORCH] ts=2026-10-10T04:26:00.550Z event=queued job=15 model=deepseek-r1:1.5b queue=12 in_flight=0 free_ram_mb=4325 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:26:01.381Z event=load_start job=4 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=5332 phase=swap prev_model=deepseek-r1:1.5b purge_ms=20
+[ORCH] ts=2026-10-10T04:26:21.848Z event=infer_done job=4 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=4810 total_ms=20487 chars=3
+[ORCH] ts=2026-10-10T04:26:21.897Z event=queued job=16 model=llama3.2:1b queue=12 in_flight=0 free_ram_mb=5088 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:26:22.729Z event=load_start job=5 model=tinyllama:1.1b queue=11 in_flight=1 free_ram_mb=5247 phase=swap prev_model=qwen2.5:0.5b purge_ms=70
+[ORCH] ts=2026-10-10T04:26:27.473Z event=infer_done job=5 model=tinyllama:1.1b queue=11 in_flight=1 free_ram_mb=4693 total_ms=4805 chars=2
+[ORCH] ts=2026-10-10T04:26:27.504Z event=queued job=17 model=qwen2.5:0.5b queue=12 in_flight=0 free_ram_mb=4892 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:26:28.304Z event=load_start job=6 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=5268 phase=swap prev_model=tinyllama:1.1b purge_ms=15
+[ORCH] ts=2026-10-10T04:26:43.408Z event=infer_done job=6 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=3996 total_ms=15119 chars=0
+[ORCH] ts=2026-10-10T04:26:43.441Z event=queued job=18 model=tinyllama:1.1b queue=12 in_flight=0 free_ram_mb=4184 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:26:44.437Z event=load_start job=7 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=5327 phase=swap prev_model=deepseek-r1:1.5b purge_ms=222
+[ORCH] ts=2026-10-10T04:26:59.411Z event=infer_done job=7 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=3802 total_ms=15196 chars=2
+[ORCH] ts=2026-10-10T04:26:59.469Z event=queued job=19 model=deepseek-r1:1.5b queue=12 in_flight=0 free_ram_mb=4165 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:00.230Z event=load_start job=8 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=5318 phase=swap prev_model=llama3.2:1b purge_ms=14
+[ORCH] ts=2026-10-10T04:27:05.722Z event=infer_done job=8 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=4799 total_ms=5506 chars=3
+[ORCH] ts=2026-10-10T04:27:05.772Z event=queued job=20 model=llama3.2:1b queue=12 in_flight=0 free_ram_mb=4799 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:06.557Z event=load_start job=9 model=tinyllama:1.1b queue=11 in_flight=1 free_ram_mb=4824 phase=swap prev_model=qwen2.5:0.5b purge_ms=12
+[ORCH] ts=2026-10-10T04:27:12.983Z event=infer_done job=9 model=tinyllama:1.1b queue=11 in_flight=1 free_ram_mb=4659 total_ms=6437 chars=103
+[ORCH] ts=2026-10-10T04:27:12.991Z event=queued job=21 model=qwen2.5:0.5b queue=12 in_flight=0 free_ram_mb=4659 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:13.806Z event=load_start job=10 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=4656 phase=swap prev_model=tinyllama:1.1b purge_ms=12
+[ORCH] ts=2026-10-10T04:27:27.518Z event=infer_done job=10 model=deepseek-r1:1.5b queue=11 in_flight=1 free_ram_mb=3991 total_ms=13724 chars=0
+[ORCH] ts=2026-10-10T04:27:27.537Z event=queued job=22 model=tinyllama:1.1b queue=12 in_flight=0 free_ram_mb=3991 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:28.355Z event=load_start job=11 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=3985 phase=swap prev_model=deepseek-r1:1.5b purge_ms=13
+[ORCH] ts=2026-10-10T04:27:36.719Z event=infer_done job=11 model=llama3.2:1b queue=11 in_flight=1 free_ram_mb=3763 total_ms=8377 chars=2
+[ORCH] ts=2026-10-10T04:27:36.762Z event=queued job=23 model=deepseek-r1:1.5b queue=12 in_flight=0 free_ram_mb=3763 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:37.595Z event=load_start job=12 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=3785 phase=swap prev_model=llama3.2:1b purge_ms=53
+[ORCH] ts=2026-10-10T04:27:45.394Z event=infer_done job=12 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=4802 total_ms=7852 chars=3
+[ORCH] ts=2026-10-10T04:27:45.427Z event=queued job=24 model=llama3.2:1b queue=12 in_flight=0 free_ram_mb=4802 depth_at_submit=12
+[ORCH] ts=2026-10-10T04:27:46.222Z event=load_start job=13 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=4805 phase=same_model_kept
+[ORCH] ts=2026-10-10T04:27:46.847Z event=infer_done job=13 model=qwen2.5:0.5b queue=11 in_flight=1 free_ram_mb=4806 total_ms=625 chars=2
+[ORCH] ts=2026-10-10T04:27:47.687Z event=load_start job=14 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4815 phase=swap prev_model=qwen2.5:0.5b purge_ms=10
+[ORCH] ts=2026-10-10T04:27:50.573Z event=infer_done job=14 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4666 total_ms=2896 chars=2
+[ORCH] ts=2026-10-10T04:27:51.437Z event=load_start job=15 model=deepseek-r1:1.5b queue=9 in_flight=1 free_ram_mb=4663 phase=swap prev_model=tinyllama:1.1b purge_ms=35
+[ORCH] ts=2026-10-10T04:28:06.515Z event=infer_done job=15 model=deepseek-r1:1.5b queue=9 in_flight=1 free_ram_mb=4005 total_ms=15113 chars=0
+[ORCH] ts=2026-10-10T04:28:07.338Z event=load_start job=16 model=llama3.2:1b queue=8 in_flight=1 free_ram_mb=4001 phase=swap prev_model=deepseek-r1:1.5b purge_ms=16
+[ORCH] ts=2026-10-10T04:28:15.651Z event=infer_done job=16 model=llama3.2:1b queue=8 in_flight=1 free_ram_mb=3777 total_ms=8329 chars=2
+[ORCH] ts=2026-10-10T04:28:18.255Z event=load_start job=17 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=3775 phase=swap prev_model=llama3.2:1b purge_ms=18
+[ORCH] ts=2026-10-10T04:28:23.271Z event=infer_done job=17 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=4817 total_ms=5034 chars=2
+[ORCH] ts=2026-10-10T04:28:24.117Z event=load_start job=18 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4968 phase=swap prev_model=qwen2.5:0.5b purge_ms=40
+[ORCH] ts=2026-10-10T04:28:28.869Z event=infer_done job=18 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4712 total_ms=4792 chars=2
+[ORCH] ts=2026-10-10T04:28:29.694Z event=load_start job=19 model=deepseek-r1:1.5b queue=5 in_flight=1 free_ram_mb=4782 phase=swap prev_model=tinyllama:1.1b purge_ms=21
+[ORCH] ts=2026-10-10T04:28:46.566Z event=infer_done job=19 model=deepseek-r1:1.5b queue=5 in_flight=1 free_ram_mb=4041 total_ms=16894 chars=0
+[ORCH] ts=2026-10-10T04:28:47.423Z event=load_start job=20 model=llama3.2:1b queue=4 in_flight=1 free_ram_mb=4060 phase=swap prev_model=deepseek-r1:1.5b purge_ms=49
+[ORCH] ts=2026-10-10T04:28:53.881Z event=infer_done job=20 model=llama3.2:1b queue=4 in_flight=1 free_ram_mb=3817 total_ms=6507 chars=2
+[ORCH] ts=2026-10-10T04:28:54.795Z event=load_start job=21 model=qwen2.5:0.5b queue=3 in_flight=1 free_ram_mb=3816 phase=swap prev_model=llama3.2:1b purge_ms=61
+[ORCH] ts=2026-10-10T04:29:01.153Z event=infer_done job=21 model=qwen2.5:0.5b queue=3 in_flight=1 free_ram_mb=4846 total_ms=6419 chars=3
+[ORCH] ts=2026-10-10T04:29:02Z event=load_start job=22 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=4841 phase=swap prev_model=qwen2.5:0.5b purge_ms=34
+[ORCH] ts=2026-10-10T04:29:10.752Z event=infer_done job=22 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=4685 total_ms=8786 chars=175
+[ORCH] ts=2026-10-10T04:29:11.621Z event=load_start job=23 model=deepseek-r1:1.5b queue=1 in_flight=1 free_ram_mb=4739 phase=swap prev_model=tinyllama:1.1b purge_ms=31
+[ORCH] ts=2026-10-10T04:29:28.600Z event=infer_done job=23 model=deepseek-r1:1.5b queue=1 in_flight=1 free_ram_mb=4055 total_ms=17010 chars=0
+[ORCH] ts=2026-10-10T04:29:29.430Z event=load_start job=24 model=llama3.2:1b queue=0 in_flight=1 free_ram_mb=4053 phase=swap prev_model=deepseek-r1:1.5b purge_ms=16
+[ORCH] ts=2026-10-10T04:29:38.245Z event=infer_done job=24 model=llama3.2:1b queue=0 in_flight=1 free_ram_mb=3803 total_ms=8831 chars=2
+[ORCH] ts=2026-10-10T04:29:44.457Z event=shutdown job=0 model=llama3.2:1b queue=0 in_flight=0 free_ram_mb=3809
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T04:47:00.955Z event=queued job=2 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=2
+[ORCH] ts=2026-10-10T04:47:00.980Z event=queued job=1 model=phi:latest queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=1
+[ORCH] ts=2026-10-10T04:47:00.961Z event=queued job=9 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=8
+[ORCH] ts=2026-10-10T04:47:00.963Z event=queued job=6 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=5
+[ORCH] ts=2026-10-10T04:47:00.963Z event=queued job=7 model=phi:latest queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=6
+[ORCH] ts=2026-10-10T04:47:12.258Z event=load_start job=1 model=phi:latest queue=10 in_flight=1 free_ram_mb=4022 phase=cold
+[ORCH] ts=2026-10-10T04:47:00.951Z event=queued job=4 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=3
+[ORCH] ts=2026-10-10T04:47:00.952Z event=queued job=8 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=7
+[ORCH] ts=2026-10-10T04:47:00.949Z event=queued job=11 model=phi:latest queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=10
+[ORCH] ts=2026-10-10T04:47:00.949Z event=queued job=3 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=2
+[ORCH] ts=2026-10-10T04:47:00.951Z event=queued job=5 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=4
+[ORCH] ts=2026-10-10T04:47:00.963Z event=queued job=10 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4022 depth_at_submit=9
+[ORCH] ts=2026-10-10T04:47:57.454Z event=infer_done job=1 model=phi:latest queue=10 in_flight=1 free_ram_mb=3193 total_ms=45140 chars=0
+[ORCH] ts=2026-10-10T04:47:57.491Z event=queued job=12 model=qwen2.5:0.5b queue=11 in_flight=0 free_ram_mb=3193 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:47:58.329Z event=load_start job=2 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=3407 phase=swap prev_model=phi:latest purge_ms=42
+[ORCH] ts=2026-10-10T04:48:19.182Z event=infer_done job=2 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4754 total_ms=20909 chars=110
+[ORCH] ts=2026-10-10T04:48:19.212Z event=queued job=13 model=tinyllama:1.1b queue=11 in_flight=0 free_ram_mb=4902 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:48:19.999Z event=load_start job=3 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=5425 phase=same_model_kept
+[ORCH] ts=2026-10-10T04:49:01.833Z event=infer_done job=3 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4747 total_ms=41834 chars=192
+[ORCH] ts=2026-10-10T04:49:02.007Z event=queued job=14 model=llama3.2:1b queue=11 in_flight=0 free_ram_mb=4745 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:49:02.668Z event=load_start job=4 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=4741 phase=swap prev_model=tinyllama:1.1b purge_ms=10
+[ORCH] ts=2026-10-10T04:49:10.836Z event=infer_done job=4 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3876 total_ms=8178 chars=2
+[ORCH] ts=2026-10-10T04:49:10.883Z event=queued job=15 model=phi:latest queue=11 in_flight=0 free_ram_mb=3876 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:49:11.641Z event=load_start job=5 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3873 phase=same_model_kept
+[ORCH] ts=2026-10-10T04:49:11.969Z event=infer_done job=5 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3871 total_ms=328 chars=2
+[ORCH] ts=2026-10-10T04:49:12.092Z event=queued job=16 model=qwen2.5:0.5b queue=11 in_flight=0 free_ram_mb=3870 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:49:12.790Z event=load_start job=6 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=3870 phase=swap prev_model=llama3.2:1b purge_ms=12
+[ORCH] ts=2026-10-10T04:49:26.701Z event=infer_done job=6 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4939 total_ms=13923 chars=3
+[ORCH] ts=2026-10-10T04:49:26.709Z event=queued job=17 model=tinyllama:1.1b queue=11 in_flight=0 free_ram_mb=4938 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:49:27.545Z event=load_start job=7 model=phi:latest queue=10 in_flight=1 free_ram_mb=4960 phase=swap prev_model=qwen2.5:0.5b purge_ms=27
+[ORCH] ts=2026-10-10T04:49:56.736Z event=infer_done job=7 model=phi:latest queue=10 in_flight=1 free_ram_mb=3229 total_ms=29218 chars=278
+[ORCH] ts=2026-10-10T04:49:56.768Z event=queued job=18 model=llama3.2:1b queue=11 in_flight=0 free_ram_mb=3230 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:49:57.576Z event=load_start job=8 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3231 phase=swap prev_model=phi:latest purge_ms=18
+[ORCH] ts=2026-10-10T04:50:09.252Z event=infer_done job=8 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3870 total_ms=11694 chars=2
+[ORCH] ts=2026-10-10T04:50:09.289Z event=queued job=19 model=phi:latest queue=11 in_flight=0 free_ram_mb=3869 depth_at_submit=11
+[ORCH] ts=2026-10-10T04:50:10.087Z event=load_start job=9 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=3900 phase=swap prev_model=llama3.2:1b purge_ms=12
+[ORCH] ts=2026-10-10T04:50:29.838Z event=infer_done job=9 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4802 total_ms=19763 chars=58
+[ORCH] ts=2026-10-10T04:50:30.678Z event=load_start job=10 model=qwen2.5:0.5b queue=9 in_flight=1 free_ram_mb=4834 phase=swap prev_model=tinyllama:1.1b purge_ms=27
+[ORCH] ts=2026-10-10T04:50:37.045Z event=infer_done job=10 model=qwen2.5:0.5b queue=9 in_flight=1 free_ram_mb=4929 total_ms=6394 chars=2
+[ORCH] ts=2026-10-10T04:50:37.884Z event=load_start job=11 model=phi:latest queue=8 in_flight=1 free_ram_mb=4929 phase=swap prev_model=qwen2.5:0.5b purge_ms=16
+[ORCH] ts=2026-10-10T04:50:51.901Z event=infer_done job=11 model=phi:latest queue=8 in_flight=1 free_ram_mb=3225 total_ms=14033 chars=2
+[ORCH] ts=2026-10-10T04:50:52.729Z event=load_start job=12 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=3213 phase=swap prev_model=phi:latest purge_ms=12
+[ORCH] ts=2026-10-10T04:50:57.360Z event=infer_done job=12 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=4920 total_ms=4643 chars=3
+[ORCH] ts=2026-10-10T04:50:58.187Z event=load_start job=13 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4914 phase=swap prev_model=qwen2.5:0.5b purge_ms=16
+[ORCH] ts=2026-10-10T04:51:03.131Z event=infer_done job=13 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4748 total_ms=4960 chars=40
+[ORCH] ts=2026-10-10T04:51:04.014Z event=load_start job=14 model=llama3.2:1b queue=5 in_flight=1 free_ram_mb=5234 phase=swap prev_model=tinyllama:1.1b purge_ms=69
+[ORCH] ts=2026-10-10T04:51:29.167Z event=infer_done job=14 model=llama3.2:1b queue=5 in_flight=1 free_ram_mb=3869 total_ms=25222 chars=2
+[ORCH] ts=2026-10-10T04:51:30.028Z event=load_start job=15 model=phi:latest queue=4 in_flight=1 free_ram_mb=4189 phase=swap prev_model=llama3.2:1b purge_ms=57
+[ORCH] ts=2026-10-10T04:51:45.281Z event=infer_done job=15 model=phi:latest queue=4 in_flight=1 free_ram_mb=3261 total_ms=15310 chars=0
+[ORCH] ts=2026-10-10T04:51:46.111Z event=load_start job=16 model=qwen2.5:0.5b queue=3 in_flight=1 free_ram_mb=3260 phase=swap prev_model=phi:latest purge_ms=10
+[ORCH] ts=2026-10-10T04:52:00.218Z event=infer_done job=16 model=qwen2.5:0.5b queue=3 in_flight=1 free_ram_mb=4919 total_ms=14117 chars=3
+[ORCH] ts=2026-10-10T04:52:01.210Z event=load_start job=17 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5457 phase=swap prev_model=qwen2.5:0.5b purge_ms=188
+[ORCH] ts=2026-10-10T04:52:14.862Z event=infer_done job=17 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=4772 total_ms=13840 chars=2
+[ORCH] ts=2026-10-10T04:52:15.749Z event=load_start job=18 model=llama3.2:1b queue=1 in_flight=1 free_ram_mb=5149 phase=swap prev_model=tinyllama:1.1b purge_ms=59
+[ORCH] ts=2026-10-10T04:52:18.635Z event=http_up job=18 model=- queue=1 in_flight=1 free_ram_mb=5380 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T04:52:18.642Z event=queued job=20 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5380 depth_at_submit=2
+[ORCH] ts=2026-10-10T04:52:22.390Z event=infer_done job=18 model=llama3.2:1b queue=2 in_flight=1 free_ram_mb=3876 total_ms=6700 chars=2
+[ORCH] ts=2026-10-10T04:52:23.211Z event=load_start job=19 model=phi:latest queue=1 in_flight=1 free_ram_mb=3878 phase=swap prev_model=llama3.2:1b purge_ms=10
+[ORCH] ts=2026-10-10T04:52:37.585Z event=infer_done job=19 model=phi:latest queue=1 in_flight=1 free_ram_mb=3236 total_ms=14384 chars=3
+[ORCH] ts=2026-10-10T04:52:38.416Z event=load_start job=20 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=3269 phase=swap prev_model=phi:latest purge_ms=13
+[ORCH] ts=2026-10-10T04:52:53.903Z event=infer_done job=20 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4930 total_ms=15500 chars=3
+[ORCH] ts=2026-10-10T04:52:59.831Z event=shutdown job=0 model=qwen2.5:0.5b queue=0 in_flight=0 free_ram_mb=4898
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:20:29.470Z event=queued job=2 model=phi:latest queue=8 in_flight=0 free_ram_mb=4027 depth_at_submit=8
+[ORCH] ts=2026-10-10T05:20:29.393Z event=queued job=6 model=llama3.2:1b queue=4 in_flight=0 free_ram_mb=4027 depth_at_submit=4
+[ORCH] ts=2026-10-10T05:20:29.396Z event=queued job=5 model=qwen2.5:0.5b queue=5 in_flight=0 free_ram_mb=4027 depth_at_submit=3
+[ORCH] ts=2026-10-10T05:20:29.661Z event=queued job=11 model=phi:latest queue=10 in_flight=1 free_ram_mb=4027 depth_at_submit=10
+[ORCH] ts=2026-10-10T05:20:29.470Z event=queued job=3 model=llama3.2:1b queue=8 in_flight=0 free_ram_mb=4027 depth_at_submit=8
+[ORCH] ts=2026-10-10T05:20:29.597Z event=queued job=10 model=llama3.2:1b queue=9 in_flight=1 free_ram_mb=4027 depth_at_submit=9
+[ORCH] ts=2026-10-10T05:20:29.470Z event=queued job=8 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=4027 depth_at_submit=7
+[ORCH] ts=2026-10-10T05:20:29.396Z event=queued job=1 model=tinyllama:1.1b queue=5 in_flight=0 free_ram_mb=4027 depth_at_submit=5
+[ORCH] ts=2026-10-10T05:20:35.409Z event=load_start job=3 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=4027 phase=cold
+[ORCH] ts=2026-10-10T05:20:29.395Z event=queued job=4 model=tinyllama:1.1b queue=4 in_flight=0 free_ram_mb=4027 depth_at_submit=2
+[ORCH] ts=2026-10-10T05:20:29.532Z event=queued job=9 model=tinyllama:1.1b queue=8 in_flight=1 free_ram_mb=4027 depth_at_submit=8
+[ORCH] ts=2026-10-10T05:20:29.406Z event=queued job=7 model=phi:latest queue=6 in_flight=0 free_ram_mb=4027 depth_at_submit=6
+[ORCH] ts=2026-10-10T05:20:43.841Z event=infer_done job=3 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3775 total_ms=8384 chars=2
+[ORCH] ts=2026-10-10T05:20:43.926Z event=queued job=12 model=qwen2.5:0.5b queue=11 in_flight=0 free_ram_mb=3775 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:20:44.713Z event=load_start job=4 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=3913 phase=swap prev_model=llama3.2:1b purge_ms=48
+[ORCH] ts=2026-10-10T05:21:14.555Z event=infer_done job=4 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4562 total_ms=29902 chars=5
+[ORCH] ts=2026-10-10T05:21:14.590Z event=queued job=13 model=tinyllama:1.1b queue=11 in_flight=0 free_ram_mb=4562 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:21:15.381Z event=load_start job=5 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4560 phase=swap prev_model=tinyllama:1.1b purge_ms=12
+[ORCH] ts=2026-10-10T05:21:21.193Z event=infer_done job=5 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4737 total_ms=5824 chars=3
+[ORCH] ts=2026-10-10T05:21:21.289Z event=queued job=14 model=llama3.2:1b queue=11 in_flight=0 free_ram_mb=4735 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:21:22.099Z event=load_start job=6 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=5239 phase=swap prev_model=qwen2.5:0.5b purge_ms=85
+[ORCH] ts=2026-10-10T05:21:29.304Z event=infer_done job=6 model=llama3.2:1b queue=10 in_flight=1 free_ram_mb=3671 total_ms=7290 chars=2
+[ORCH] ts=2026-10-10T05:21:29.480Z event=queued job=15 model=phi:latest queue=11 in_flight=0 free_ram_mb=3671 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:21:30.207Z event=load_start job=1 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4043 phase=swap prev_model=llama3.2:1b purge_ms=86
+[ORCH] ts=2026-10-10T05:21:37.579Z event=infer_done job=1 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4539 total_ms=7458 chars=98
+[ORCH] ts=2026-10-10T05:21:37.590Z event=queued job=16 model=qwen2.5:0.5b queue=11 in_flight=0 free_ram_mb=4539 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:21:38.419Z event=load_start job=7 model=phi:latest queue=10 in_flight=1 free_ram_mb=4568 phase=swap prev_model=tinyllama:1.1b purge_ms=22
+[ORCH] ts=2026-10-10T05:22:19.361Z event=infer_done job=7 model=phi:latest queue=10 in_flight=1 free_ram_mb=3058 total_ms=40964 chars=3
+[ORCH] ts=2026-10-10T05:22:19.520Z event=queued job=17 model=tinyllama:1.1b queue=11 in_flight=0 free_ram_mb=3054 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:22:20.207Z event=load_start job=8 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=3047 phase=swap prev_model=phi:latest purge_ms=13
+[ORCH] ts=2026-10-10T05:22:35.039Z event=infer_done job=8 model=qwen2.5:0.5b queue=10 in_flight=1 free_ram_mb=4719 total_ms=14845 chars=2
+[ORCH] ts=2026-10-10T05:22:35.093Z event=queued job=18 model=llama3.2:1b queue=11 in_flight=0 free_ram_mb=4718 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:22:35.871Z event=load_start job=2 model=phi:latest queue=10 in_flight=1 free_ram_mb=4716 phase=swap prev_model=qwen2.5:0.5b purge_ms=17
+[ORCH] ts=2026-10-10T05:22:45.379Z event=infer_done job=2 model=phi:latest queue=10 in_flight=1 free_ram_mb=3049 total_ms=9525 chars=2
+[ORCH] ts=2026-10-10T05:22:45.444Z event=queued job=19 model=phi:latest queue=11 in_flight=0 free_ram_mb=3046 depth_at_submit=11
+[ORCH] ts=2026-10-10T05:22:46.203Z event=load_start job=9 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=3042 phase=swap prev_model=phi:latest purge_ms=9
+[ORCH] ts=2026-10-10T05:22:50.860Z event=infer_done job=9 model=tinyllama:1.1b queue=10 in_flight=1 free_ram_mb=4561 total_ms=4666 chars=3
+[ORCH] ts=2026-10-10T05:22:51.690Z event=load_start job=10 model=llama3.2:1b queue=9 in_flight=1 free_ram_mb=4565 phase=swap prev_model=tinyllama:1.1b purge_ms=11
+[ORCH] ts=2026-10-10T05:23:18.869Z event=infer_done job=10 model=llama3.2:1b queue=9 in_flight=1 free_ram_mb=3661 total_ms=27190 chars=2
+[ORCH] ts=2026-10-10T05:23:21.906Z event=load_start job=11 model=phi:latest queue=8 in_flight=1 free_ram_mb=3651 phase=swap prev_model=llama3.2:1b purge_ms=18
+[ORCH] ts=2026-10-10T05:23:32.705Z event=infer_done job=11 model=phi:latest queue=8 in_flight=1 free_ram_mb=3021 total_ms=10816 chars=0
+[ORCH] ts=2026-10-10T05:23:33.542Z event=load_start job=12 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=3075 phase=swap prev_model=phi:latest purge_ms=24
+[ORCH] ts=2026-10-10T05:23:46.824Z event=infer_done job=12 model=qwen2.5:0.5b queue=7 in_flight=1 free_ram_mb=4719 total_ms=13306 chars=2
+[ORCH] ts=2026-10-10T05:23:47.649Z event=load_start job=13 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4722 phase=swap prev_model=qwen2.5:0.5b purge_ms=15
+[ORCH] ts=2026-10-10T05:24:10.719Z event=infer_done job=13 model=tinyllama:1.1b queue=6 in_flight=1 free_ram_mb=4565 total_ms=23086 chars=63
+[ORCH] ts=2026-10-10T05:24:11.549Z event=load_start job=14 model=llama3.2:1b queue=5 in_flight=1 free_ram_mb=4569 phase=swap prev_model=tinyllama:1.1b purge_ms=13
+[ORCH] ts=2026-10-10T05:24:21.286Z event=infer_done job=14 model=llama3.2:1b queue=5 in_flight=1 free_ram_mb=3624 total_ms=9750 chars=2
+[ORCH] ts=2026-10-10T05:24:22.107Z event=load_start job=15 model=phi:latest queue=4 in_flight=1 free_ram_mb=3618 phase=swap prev_model=llama3.2:1b purge_ms=17
+[ORCH] ts=2026-10-10T05:24:42.189Z event=http_up job=15 model=- queue=4 in_flight=1 free_ram_mb=3858 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:24:42.196Z event=queued job=20 model=qwen2.5:0.5b queue=5 in_flight=1 free_ram_mb=3858 depth_at_submit=5
+[ORCH] ts=2026-10-10T05:24:54.770Z event=infer_done job=15 model=phi:latest queue=5 in_flight=1 free_ram_mb=3065 total_ms=32680 chars=11
+[ORCH] ts=2026-10-10T05:24:55.598Z event=load_start job=16 model=qwen2.5:0.5b queue=4 in_flight=1 free_ram_mb=3062 phase=swap prev_model=phi:latest purge_ms=15
+[ORCH] ts=2026-10-10T05:25:13.683Z event=infer_done job=16 model=qwen2.5:0.5b queue=4 in_flight=1 free_ram_mb=4743 total_ms=18100 chars=3
+[ORCH] ts=2026-10-10T05:25:14.519Z event=load_start job=17 model=tinyllama:1.1b queue=3 in_flight=1 free_ram_mb=4733 phase=swap prev_model=qwen2.5:0.5b purge_ms=13
+[ORCH] ts=2026-10-10T05:25:31.239Z event=infer_done job=17 model=tinyllama:1.1b queue=3 in_flight=1 free_ram_mb=4589 total_ms=16733 chars=0
+[ORCH] ts=2026-10-10T05:25:32.078Z event=load_start job=18 model=llama3.2:1b queue=2 in_flight=1 free_ram_mb=4582 phase=swap prev_model=tinyllama:1.1b purge_ms=13
+[ORCH] ts=2026-10-10T05:25:40.198Z event=infer_done job=18 model=llama3.2:1b queue=2 in_flight=1 free_ram_mb=3667 total_ms=8133 chars=2
+[ORCH] ts=2026-10-10T05:25:41.028Z event=load_start job=19 model=phi:latest queue=1 in_flight=1 free_ram_mb=3661 phase=swap prev_model=llama3.2:1b purge_ms=14
+[ORCH] ts=2026-10-10T05:26:03.998Z event=infer_done job=19 model=phi:latest queue=1 in_flight=1 free_ram_mb=3031 total_ms=22984 chars=34
+[ORCH] ts=2026-10-10T05:26:05.633Z event=load_start job=20 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=3161 phase=swap prev_model=phi:latest purge_ms=22
+[ORCH] ts=2026-10-10T05:26:31.094Z event=infer_done job=20 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4752 total_ms=25483 chars=3
+[ORCH] ts=2026-10-10T05:26:48.507Z event=shutdown job=0 model=qwen2.5:0.5b queue=0 in_flight=0 free_ram_mb=4733
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:30:36.215Z event=rejected job=11 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.108Z event=rejected job=3 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.108Z event=rejected job=8 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.147Z event=rejected job=10 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.108Z event=rejected job=2 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.108Z event=rejected job=7 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:36.103Z event=queued job=4 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 depth_at_submit=2
+[ORCH] ts=2026-10-10T05:30:36.103Z event=queued job=6 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5010 depth_at_submit=2
+[ORCH] ts=2026-10-10T05:30:36.109Z event=queued job=1 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:30:36.103Z event=rejected job=5 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:30:56.140Z event=load_start job=1 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=5010 phase=cold
+[ORCH] ts=2026-10-10T05:30:36.109Z event=rejected job=9 model=qwen2.5:0.5b queue=2 in_flight=1 free_ram_mb=5010 reason=queue_full capacity=2
+[ORCH] ts=2026-10-10T05:31:27.160Z event=infer_done job=1 model=tinyllama:1.1b queue=2 in_flight=1 free_ram_mb=4627 total_ms=30854 chars=78
+[ORCH] ts=2026-10-10T05:31:29.688Z event=load_start job=4 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4626 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:31:33.694Z event=infer_done job=4 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4623 total_ms=4006 chars=122
+[ORCH] ts=2026-10-10T05:31:36.403Z event=load_start job=6 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=5029 phase=swap prev_model=tinyllama:1.1b purge_ms=81
+[ORCH] ts=2026-10-10T05:31:43.461Z event=infer_done job=6 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4781 total_ms=7223 chars=9
+[ORCH] ts=2026-10-10T05:32:11.720Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=4786 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:32:11.726Z event=load_start job=12 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4786 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:32:11.727Z event=queued job=12 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4782 depth_at_submit=0
+[ORCH] ts=2026-10-10T05:32:13.747Z event=infer_done job=12 model=qwen2.5:0.5b queue=0 in_flight=1 free_ram_mb=4782 total_ms=2021 chars=55
+[ORCH] ts=2026-10-10T05:32:14.567Z event=shutdown job=0 model=qwen2.5:0.5b queue=0 in_flight=0 free_ram_mb=4775
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:32:19.446Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=5325 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:32:19.619Z event=load_start job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5325 phase=cold
+[ORCH] ts=2026-10-10T05:32:19.627Z event=queued job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5325 depth_at_submit=0
+[ORCH] ts=2026-10-10T05:32:24.699Z event=timeout job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5325 phase=generate total_ms=5072 timeout_ms=6000
+[ORCH] ts=2026-10-10T05:32:24.702Z event=queued job=2 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=5325 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:24.816Z event=load_start job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5325 phase=cold
+[ORCH] ts=2026-10-10T05:32:27.829Z event=timeout job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5321 phase=generate total_ms=3013 timeout_ms=6000
+[ORCH] ts=2026-10-10T05:32:27.833Z event=queued job=3 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=5321 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:27.942Z event=load_start job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5321 phase=cold
+[ORCH] ts=2026-10-10T05:32:30.947Z event=timeout job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5305 phase=generate total_ms=3003 timeout_ms=6000
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:32:34.475Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=5324 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:32:34.630Z event=load_start job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5324 phase=cold
+[ORCH] ts=2026-10-10T05:32:34.633Z event=queued job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=5324 depth_at_submit=0
+[ORCH] ts=2026-10-10T05:32:39.024Z event=timeout job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4626 phase=generate total_ms=4321 timeout_ms=4000
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:32:40.694Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=4640 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:32:40.770Z event=queued job=1 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4640 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:40.799Z event=rejected job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4640 reason=ram_low free_ram_mb=4640 min_free_mb=9999999
+[ORCH] ts=2026-10-10T05:32:40.803Z event=queued job=2 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4639 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:40.917Z event=rejected job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4637 reason=ram_low free_ram_mb=4637 min_free_mb=9999999
+[ORCH] ts=2026-10-10T05:32:40.918Z event=queued job=3 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4637 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:41.020Z event=rejected job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4638 reason=ram_low free_ram_mb=4638 min_free_mb=9999999
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:32:43.270Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=4636 port=11440 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:32:47.401Z event=load_start job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4626 phase=cold
+[ORCH] ts=2026-10-10T05:32:47.406Z event=queued job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4626 depth_at_submit=0
+[ORCH] ts=2026-10-10T05:32:51.224Z event=infer_done job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4624 total_ms=3741 chars=50
+[ORCH] ts=2026-10-10T05:32:51.410Z event=queued job=2 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4617 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:51.453Z event=load_start job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4616 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:32:51.456Z event=queued job=3 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4615 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:54.330Z event=infer_done job=2 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4617 total_ms=2877 chars=109
+[ORCH] ts=2026-10-10T05:32:54.539Z event=queued job=4 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4616 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:32:54.538Z event=load_start job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4616 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:32:57.535Z event=infer_done job=3 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4620 total_ms=2997 chars=151
+[ORCH] ts=2026-10-10T05:32:57.592Z event=queued job=5 model=tinyllama:1.1b queue=2 in_flight=0 free_ram_mb=4620 depth_at_submit=2
+[ORCH] ts=2026-10-10T05:32:57.706Z event=load_start job=4 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4620 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:33:00.700Z event=infer_done job=4 model=tinyllama:1.1b queue=1 in_flight=1 free_ram_mb=4617 total_ms=2994 chars=119
+[ORCH] ts=2026-10-10T05:33:00.872Z event=load_start job=5 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4616 phase=same_model_kept
+[ORCH] ts=2026-10-10T05:33:03.684Z event=infer_done job=5 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4613 total_ms=2812 chars=105
+[ORCH] ts=2026-10-10T05:33:03.989Z event=shutdown job=0 model=tinyllama:1.1b queue=0 in_flight=0 free_ram_mb=4607
+# v1 format: [ORCH] ts=<iso8601> event=<queued|rejected|load_start|infer_done|timeout|http_up|http_failed|shutdown> job=<id> model=<name> queue=<depth> in_flight=<0|1> free_ram_mb=<n> <k=v pairs>
+[ORCH] ts=2026-10-10T05:42:03.804Z event=http_up job=0 model=- queue=0 in_flight=0 free_ram_mb=4907 port=11435 bind=127.0.0.1
+[ORCH] ts=2026-10-10T05:42:08.425Z event=queued job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4907 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:42:08.438Z event=rejected job=1 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4907 reason=ram_low free_ram_mb=4907 min_free_mb=9999999
+[ORCH] ts=2026-10-10T05:42:08.456Z event=queued job=2 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4907 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:42:08.544Z event=rejected job=2 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4907 reason=ram_low free_ram_mb=4907 min_free_mb=9999999
+[ORCH] ts=2026-10-10T05:42:08.545Z event=queued job=3 model=tinyllama:1.1b queue=1 in_flight=0 free_ram_mb=4907 depth_at_submit=1
+[ORCH] ts=2026-10-10T05:42:08.647Z event=rejected job=3 model=tinyllama:1.1b queue=0 in_flight=1 free_ram_mb=4906 reason=ram_low free_ram_mb=4906 min_free_mb=9999999
