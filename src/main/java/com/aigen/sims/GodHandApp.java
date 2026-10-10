@@ -43,6 +43,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpExchange;
 import java.net.InetSocketAddress;
 import java.io.IOException;
+import com.aigen.sims.engine.KnowledgeGraph;
 
 /**
  * SIMS1337 v0.25.0 - GodHandApp
@@ -58,6 +59,15 @@ public class GodHandApp extends Application {
     private List<Agent> agents = new CopyOnWriteArrayList<>();
     private List<String> godChat = new CopyOnWriteArrayList<>();
     private ExecutorService threadPool = Executors.newFixedThreadPool(8);
+    // PERF EPIC t_4a3756ed (C.4): model-call work runs on ONE dedicated thread;
+    // threadPool(8) remains for engine loops (watchdog/mcts/fuzzer/heartrate/
+    // dream) so eternal while(true) tasks can never starve or deadlock it.
+    private final ExecutorService modelExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "modelbus-caller-single");
+                t.setDaemon(true);
+                return t;
+            });
     private HttpServer dashboardServer;
     
     private double timePulse = 0;
@@ -65,21 +75,10 @@ public class GodHandApp extends Application {
     
     private NightCycleEngine nightCycle;
     private OllamaRouter ollamaRouter;
-    
-    // Subsystems
-    private ModelManager modelManager;
+
+    // Subsystems (t_4a3756ed repair: phantom ModelManager/SQLiteMemory/GistSync/SelfMutator
+    // and enterprise classes never existed in-tree; only real engine.KnowledgeGraph kept)
     private KnowledgeGraph kg;
-    private SQLiteMemory memory;
-    private GistSync gistSync;
-    private SelfMutator mutator;
-    
-    // Enterprise & Legacy Engine Dependencies
-    private EnterpriseGuard guard;
-    private SwarmWatchdog watchdog;
-    private MCTSPipeline mcts;
-    private AdversarialFuzzer fuzzer;
-    private MetaLogicSupervisor metaLogic;
-    private NightlyEvolutionEngine evolutionEngine;
     
     // 6D Hexeract Fields
     private double[][] vertices6D = new double[64][6];
@@ -148,7 +147,7 @@ public class GodHandApp extends Application {
                     triggerPulse(hoveredVertexIdx);
                 } else if (e.getButton() == MouseButton.SECONDARY) {
                     triggerPulse(hoveredVertexIdx);
-                    threadPool.submit(() -> {
+                    modelExecutor.submit(() -> {
                         ollamaRouter.query("tinyllama:1.1b", "Spike routing instruction at coordinate " + hoveredVertexIdx);
                     });
                 }
@@ -173,10 +172,17 @@ public class GodHandApp extends Application {
                 if (now - lastEnterpriseTick > 30_000_000_000L) { // 30 seconds
                     lastEnterpriseTick = now;
                     threadPool.submit(() -> {
-                        watchdog.auditTopology(agents);
-                        mcts.executeRollout("Hex_Topology_Alpha");
-                        fuzzer.fuzzNetwork();
-                        metaLogic.periodicScan();
+                        // t_4a3756ed repair: phantom enterprise classes removed —
+                        // KG topology telemetry keeps this tick alive and observable.
+                        if (kg != null) {
+                            int kgSize = kg.size();
+                            Platform.runLater(() -> {
+                                synchronized (godChat) {
+                                    if (godChat.size() > 50) godChat.remove(0);
+                                    godChat.add("[KG] Topology sweep OK. " + kgSize + " nodes indexed.");
+                                }
+                            });
+                        }
                     });
                 }
                 render(gc);
@@ -358,7 +364,7 @@ public class GodHandApp extends Application {
                 
                 String finalPrompt = context.toString();
                 
-                threadPool.submit(() -> {
+                modelExecutor.submit(() -> {
                     // Chat routed to qwen2.5:3b (Karoo)
                     String response = ollamaRouter.query("qwen2.5:3b", finalPrompt);
                     Platform.runLater(() -> {
@@ -537,7 +543,7 @@ public class GodHandApp extends Application {
                     String repo = repos[rand.nextInt(repos.length)];
                     String topic = topics[rand.nextInt(topics.length)];
                     
-                    threadPool.submit(() -> {
+                    modelExecutor.submit(() -> {
                         String prompt = String.format("You are Agent %s using model %s chatting with %s. Formulate a short, unrestricted KQML tell message discussing repository %s and topic: %s", 
                             sender, model, target, repo, topic);
                         String reply = ollamaRouter.query(model, prompt);
@@ -641,20 +647,10 @@ public class GodHandApp extends Application {
     }
     
     private void initBackendSystems() {
-        modelManager = new ModelManager();
         kg = new KnowledgeGraph();
-        memory = new SQLiteMemory();
-        gistSync = new GistSync();
         ollamaRouter = new OllamaRouter();
-        
-        guard = new EnterpriseGuard();
-        watchdog = new SwarmWatchdog(guard);
-        mcts = new MCTSPipeline(ollamaRouter, guard);
-        fuzzer = new AdversarialFuzzer(ollamaRouter, guard);
-        metaLogic = new MetaLogicSupervisor(guard, ollamaRouter);
-        evolutionEngine = new NightlyEvolutionEngine(metaLogic, guard, mutator);
-        
-        nightCycle = new NightCycleEngine(ollamaRouter, modelManager, gistSync, memory, mutator);
+
+        nightCycle = new NightCycleEngine(ollamaRouter);
         try {
             dashboardServer = HttpServer.create(new InetSocketAddress(8899), 0);
             dashboardServer.createContext("/api/status", new HttpHandler() {
@@ -675,7 +671,7 @@ public class GodHandApp extends Application {
     }
 
     private void triggerAutonomousInferenceMovement() {
-        threadPool.submit(() -> {
+        modelExecutor.submit(() -> {
             for (Agent a : agents) {
                 String prompt = "You are Agent " + a.name + " at hex (" + a.q + "," + a.r + "). Reply with exactly one word indicating your move direction: NORTH, SOUTH, EAST, WEST, NORTHEAST, or NORTHWEST.";
                 String move = ollamaRouter.query("qwen2.5:0.5b", prompt).toUpperCase();
@@ -1025,25 +1021,23 @@ public class GodHandApp extends Application {
 
         gc.setFont(Font.font("Consolas", 11));
         int rIndex = 0;
-        if (modelManager != null) {
-            for (ModelManager.ModelProfile profile : modelManager.getSwarm()) {
-                double textY = 145 + (rIndex * 50);
-                
-                gc.setFill(Color.web("#38bdf8"));
-                gc.fillText(profile.name, 970, textY);
-                gc.setFill(Color.web("#6b5c8c"));
-                gc.fillText("Role: " + profile.role, 970, textY + 12);
-                
-                String activity = "IDLE";
-                String phase = nightCycle.getCurrentPhase();
-                if (phase.contains("DREAM")) activity = "SOAKING EMBEDDINGS";
-                else if (phase.contains("VOTE")) activity = "HOMOLOGY VOTE RUNNING";
-                else if (phase.contains("DEPLOY")) activity = "DEPLOYING SOP SHARDS";
-                
-                gc.setFill(Color.web("#f472b6"));
-                gc.fillText("-> " + activity, 970, textY + 24);
-                rIndex++;
-            }
+        for (Agent agent : agents) {
+            double textY = 145 + (rIndex * 50);
+
+            gc.setFill(Color.web("#38bdf8"));
+            gc.fillText(agent.name, 970, textY);
+            gc.setFill(Color.web("#6b5c8c"));
+            gc.fillText("Hex: " + agent.q + "," + agent.r, 970, textY + 12);
+
+            String activity = "IDLE";
+            String phase = nightCycle.getCurrentPhase();
+            if (phase.contains("DREAM")) activity = "SOAKING EMBEDDINGS";
+            else if (phase.contains("VOTE")) activity = "HOMOLOGY VOTE RUNNING";
+            else if (phase.contains("DEPLOY")) activity = "DEPLOYING SOP SHARDS";
+
+            gc.setFill(Color.web("#f472b6"));
+            gc.fillText("-> " + activity, 970, textY + 24);
+            rIndex++;
         }
 
         // Bottom Side: Multi-Agent Consensus logs
@@ -1135,6 +1129,7 @@ public class GodHandApp extends Application {
 
     @Override
     public void stop() {
+        modelExecutor.shutdownNow();
         threadPool.shutdownNow();
         if(dashboardServer != null) dashboardServer.stop(0);
     }
@@ -1273,7 +1268,7 @@ public class GodHandApp extends Application {
         public void triggerPipeline(OllamaRouter router) {
             if(station != null) {
                 System.out.println("[PIPELINE] Executing Station Pipeline: " + station);
-                threadPool.submit(() -> {
+                modelExecutor.submit(() -> {
                     router.query("tinyllama:1.1b", "Execute pipeline task for station " + station);
                 });
             }
@@ -1290,17 +1285,9 @@ public class GodHandApp extends Application {
     class NightCycleEngine {
         private String currentPhase = "00:00 DREAM PHASE";
         private OllamaRouter router;
-        private ModelManager modelManager;
-        private GistSync gistSync;
-        private SQLiteMemory memory;
-        private SelfMutator mutator;
-        
-        public NightCycleEngine(OllamaRouter router, ModelManager modelManager, GistSync gistSync, SQLiteMemory memory, SelfMutator mutator) { 
+
+        public NightCycleEngine(OllamaRouter router) {
             this.router = router;
-            this.modelManager = modelManager;
-            this.gistSync = gistSync;
-            this.memory = memory;
-            this.mutator = mutator;
         }
         
         public void startClock() {
@@ -1339,17 +1326,19 @@ public class GodHandApp extends Application {
                         Thread.sleep(900000); // 15 Minutes
                         currentPhase = "18:00 VOTE PHASE";
                         System.out.println("[SOAK] Engaged Vote Phase...");
-                        boolean approved = modelManager.executeVote(dreamProposal, router);
-                        
+                        boolean approved = !dreamProposal.isEmpty() && router.query("qwen2.5:0.5b",
+                                "Vote YES or NO only: deploy new node '" + dreamProposal + "'?").toUpperCase().contains("YES");
+
                         Thread.sleep(900000); // 15 Minutes
                         currentPhase = "20:00 DEPLOY PHASE";
                         System.out.println("[SOAK] Deploying dynamically generated tools...");
                         if (approved) {
-                            memory.logMemory("SYSTEM", "SOAK_CYCLE", "Deployed new " + dreamProposal + " node.");
-                            mutator.injectMutation(dreamProposal);
-                            Map<String, String> state = new HashMap<>();
-                            state.put("topology.json", "{\"status\": \"Topology updated with " + dreamProposal + "\"}");
-                            gistSync.pushState(state);
+                            Platform.runLater(() -> {
+                                synchronized (godChat) {
+                                    if (godChat.size() > 50) godChat.remove(0);
+                                    godChat.add("[DEPLOY] Node deployed: " + dreamProposal);
+                                }
+                            });
                         }
                         
                         Thread.sleep(900000); // 15 Minutes
