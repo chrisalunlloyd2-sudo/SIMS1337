@@ -21,15 +21,6 @@ public class HeadlessOllamaPipeline {
     private static final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10)).build();
 
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
             System.out.println("HeadlessOllamaPipeline v1.0");
