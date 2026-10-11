@@ -18,6 +18,7 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.Stage;
+import java.io.File;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
@@ -159,6 +160,14 @@ public class GodHandApp extends Application {
     // === Ollama API ===
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final String OLLAMA_TAGS = "http://localhost:11434/api/tags";
+
+    // === OPS HEALTH PANEL (GODHAND-2: migrated from ~/.aria/engine/ops_health.py) ===
+    // ARIA's ops_health engine "serve" mode answers /api/ops on 127.0.0.1:11436 (loopback-only, refreshed every 60s).
+    // GodHand proxies that document; when the engine is dark it falls back to `python ops_health.py snapshot`
+    // (same module, one JSON document on stdout). Cache (≤60s) keeps concurrent dashboard tabs from spawning subprocesses.
+    private static final String OPS_HEALTH_URL = "http://127.0.0.1:11436/api/ops";
+    private static final String OPS_HEALTH_DIR = System.getProperty("user.home") + File.separator + ".aria" + File.separator + "engine";
+    private static final long OPS_CACHE_MS = 60_000;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final Map<String, Boolean> ollamaAvailable = new ConcurrentHashMap<>();
     private final Map<String, Integer> ollamaFailCount = new ConcurrentHashMap<>(); // model -> consecutive failures
@@ -502,6 +511,10 @@ public class GodHandApp extends Application {
         if (Boolean.getBoolean("com.aigen.sims.headless")) {
             log("🖥️ HEADLESS server mode: JavaFX stage skipped; dashboard APIs stay up");
             primaryStageRef = null;
+            // statusLabel is normally created by the nav-bar builder (build*()) which
+            // does not run headless; init*() paths reference it. Bare label keeps the
+            // API server booting (t_ceb074c4 followup to t_ef84df83).
+            statusLabel = new Label("🟢 System Ready (headless)");
             // No stage is ever shown in this mode; without this the toolkit would
             // implicit-exit right after start() returns and kill the API server.
             Platform.setImplicitExit(false);
@@ -2433,6 +2446,7 @@ public class GodHandApp extends Application {
                 html.append("<button class='tab' onclick='showTab(\"models\")'>🤖 Models</button>");
                 html.append("<button class='tab' onclick='showTab(\"hex\")'>⬡ Map</button>");
                 html.append("<button class='tab' onclick='showTab(\"log\")'>📜 Log</button>");
+                html.append("<button class='tab' onclick='showTab(\"ops\")'>⚙ Ops</button>");
                 html.append("</div>");
 
                 // Overview tab
@@ -2454,7 +2468,7 @@ public class GodHandApp extends Application {
                 html.append("</div>");
 
                 html.append("<div class='card'><h2>📡 Recent Activity</h2>");
-                String[] recentLines = godChat.getText().split("\n");
+                String[] recentLines = godChat == null ? new String[0] : godChat.getText().split("\n");
                 int recentStart = Math.max(0, recentLines.length - 15);
                 for (int i = recentStart; i < recentLines.length; i++) {
                     html.append("<div class='log-line'>").append(recentLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
@@ -2498,12 +2512,55 @@ public class GodHandApp extends Application {
                 // Log tab
                 html.append("<div id='tab-log' class='content hidden'>");
                 html.append("<div class='card' style='max-height:60vh;overflow-y:auto;font-size:10px'>");
-                String[] logLines = godChat.getText().split("\n");
+                String[] logLines = godChat == null ? new String[0] : godChat.getText().split("\n");
                 int logStart = Math.max(0, logLines.length - 50);
                 for (int i = logStart; i < logLines.length; i++) {
                     html.append("<div class='log-line'>").append(logLines[i].replace("<","&lt;").replace(">","&gt;")).append("</div>");
                 }
                 html.append("</div></div>");
+
+                // GODHAND-2: Ops tab — ops_health law engine + hexflow stage grid (migrated from ~/.aria/engine/ops_health.py)
+                html.append("<div id='tab-ops' class='content hidden'>");
+                try {
+                    String opsJson = getOpsSnapshotJson();
+                    String opsOk = opsField(opsJson, "ok");
+                    String opsIso = opsField(opsJson, "iso");
+                    String opsViol = opsViolationsJson(opsJson);
+                    String opsHf = hexflowFromOps(opsJson);
+                    boolean bad = !"[]".equals(opsViol);
+                    html.append("<div class='card'><h2>🛡 Ops Laws (L1-L5)</h2>");
+                    html.append("<span class='badge " + ("true".equals(opsOk) ? "badge-ok'>OK" : "badge-warn'>VIOLATIONS") + "</span> ");
+                    html.append("<span class='badge badge-info'>source: " + opsCacheSource + "</span> ");
+                    html.append("<span class='badge badge-info'>" + opsIso + "</span></div>");
+                    if (bad) {
+                        html.append("<div class='card'><h2>⚠ Active Violations</h2>");
+                        html.append("<div style='font-size:10px;color:#ff6b6b;white-space:pre-wrap'>").append(opsViol).append("</div></div>");
+                    }
+                    // hexflow stage grid — INGEST..COMMIT counts, live cell highlighted
+                    html.append("<div class='card'><h2>⬡ Hexflow (SHUTTLE)</h2><div class='metric-grid'>");
+                    String[] stages = {"INGEST", "SYNTH", "RESOLVE", "MUTATE", "VERIFY", "COMMIT"};
+                    for (String st : stages) {
+                        int cnt = 0;
+                        // count occurrences of "STAGE":N in the hexflow object (no regex)
+                        String needle = "\\\"" + st + "\\\":";
+                        int idx = opsHf.indexOf(needle);
+                        if (idx >= 0) {
+                            int valStart = idx + needle.length();
+                            StringBuilder num = new StringBuilder();
+                            while (valStart < opsHf.length() && (Character.isDigit(opsHf.charAt(valStart))
+                                || (valStart == idx + needle.length() && opsHf.charAt(valStart) == '-'))) {
+                                num.append(opsHf.charAt(valStart));
+                                valStart++;
+                            }
+                            try { cnt = Integer.parseInt(num.toString()); } catch (NumberFormatException ne) { cnt = 0; }
+                        }
+                        html.append("<div class='metric-item'><div class='val'>" + cnt + "</div><div class='lbl'>" + st + "</div></div>");
+                    }
+                    html.append("</div></div>");
+                } catch (Exception e) {
+                    html.append("<div class='card'><h2>🛡 Ops</h2><span class='badge badge-warn'>engine unavailable: ").append(e.getMessage()).append("</span></div>");
+                }
+                html.append("</div>");
 
                 // Refresh bar
                 html.append("<div class='refresh-bar'>");
@@ -2553,12 +2610,52 @@ public class GodHandApp extends Application {
                         }
                     }
                 } catch (Exception ex) { apiModelCount = 0; }
+                // GODHAND-2: ops violations folded into errors (errorCount + active law violations), additive ops block
+                String opsDoc = getOpsSnapshotJson();
+                String opsViolations = opsViolationsJson(opsDoc);
+                int opsViolationCount = 0;
+                if (!"[]".equals(opsViolations)) {
+                    // count top-level objects in the violations array
+                    int depth = 0;
+                    for (int ci = 0; ci < opsViolations.length(); ci++) {
+                        char c = opsViolations.charAt(ci);
+                        if (c == '{') { if (depth == 1) opsViolationCount++; depth++; }
+                        else if (c == '}') depth--;
+                    }
+                }
                 String json = String.format(
-                    "{\"version\":\"0.18.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,\"timestamp\":\"%s\"}",
-                    apiModelCount, kgNodes.size(), errorCount, recoveryCount,
-                    java.time.LocalDateTime.now().toString());
+                    "{\"version\":\"0.18.0\",\"models\":%d,\"kgNodes\":%d,\"errors\":%d,\"recoveries\":%d,"
+                        + "\"opsOk\":%s,\"opsViolations\":%d,\"opsSource\":\"%s\",\"opsViolationsDetail\":%s,\"timestamp\":\"%s\"}",
+                    apiModelCount, kgNodes.size(), errorCount + opsViolationCount, recoveryCount,
+                    opsField(opsDoc, "ok"), opsViolationCount, opsCacheSource,
+                    opsViolations, java.time.LocalDateTime.now().toString());
                 byte[] response = json.getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
+            // GODHAND-2: full ops_health snapshot (L1..L5 laws + hexflow) — migrated from ~/.aria/engine/ops_health.py
+            webServer.createContext("/api/ops", exchange -> {
+                String doc = getOpsSnapshotJson();
+                byte[] response = doc.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+                exchange.close();
+            });
+
+            // GODHAND-2: hexflow — the SHUTTLE view of the kanban board (INGEST..COMMIT) from the ops snapshot
+            webServer.createContext("/api/hexflow", exchange -> {
+                String opsDoc = getOpsSnapshotJson();
+                String hexflow = hexflowFromOps(opsDoc);
+                String json = "{\"hexflow\":" + hexflow + ",\"source\":\"" + opsCacheSource + "\",\"timestamp\":\""
+                    + java.time.LocalDateTime.now().toString() + "\"}";
+                byte[] response = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("Cache-Control", "no-cache");
                 exchange.sendResponseHeaders(200, response.length);
                 exchange.getResponseBody().write(response);
                 exchange.close();
@@ -3649,6 +3746,124 @@ public class GodHandApp extends Application {
         }
     }
 
+    // ==================== OPS HEALTH ENGINE (GODHAND-2, migrated from ~/.aria/engine/ops_health.py) ====================
+    // Law engine summary (L1 singleton, L2 progress, L3 local-only, L4 cellular, L5 admission) + kanban hexflow.
+    // Source of truth stays the ARIA module; GodHand is the panel that exposes it.
+    private final Object opsCacheLock = new Object();
+    private String opsCacheJson = null;
+    private long opsCacheAtMs = 0L;
+    private String opsCacheSource = "none";
+    private volatile String opsLastError = "";
+
+    /** Latest ops_health snapshot as a JSON document, cached 60 s. Tries the live engine on 11436 first,
+     *  then `python ops_health.py snapshot` as an impure fallback. Never throws — returns an ok:false doc. */
+    private String getOpsSnapshotJson() {
+        synchronized (opsCacheLock) {
+            long now = System.currentTimeMillis();
+            if (opsCacheJson != null && (now - opsCacheAtMs) < OPS_CACHE_MS) {
+                return opsCacheJson;
+            }
+            String doc = null;
+            String source = "none";
+            // 1) live engine (fast, already cached server-side)
+            try {
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(OPS_HEALTH_URL))
+                    .timeout(java.time.Duration.ofSeconds(2)).GET().build();
+                java.net.http.HttpResponse<String> resp = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200 && resp.body() != null && resp.body().contains("\"iso\"")) {
+                    doc = resp.body();
+                    source = "engine:11436";
+                }
+            } catch (Exception ignored) { /* engine dark — fall through */ }
+            // 2) subprocess fallback: same module, one JSON document on stdout
+            if (doc == null) {
+                try {
+                    File engine = new File(OPS_HEALTH_DIR, "ops_health.py");
+                    if (engine.isFile()) {
+                        ProcessBuilder pb = new ProcessBuilder("python", engine.getAbsolutePath(), "snapshot");
+                        pb.directory(engine.getParentFile());
+                        pb.redirectErrorStream(false);
+                        Process p = pb.start();
+                        boolean finished = p.waitFor(25, TimeUnit.SECONDS);
+                        if (finished) {
+                            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            String err = new String(p.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            if (p.exitValue() == 0 && out.startsWith("{")) {
+                                doc = out;
+                                source = "subprocess:" + (err.isEmpty() ? "clean" : "exit0+stderr");
+                            } else if (!out.startsWith("{")) {
+                                opsLastError = err.isEmpty() ? "snapshot stdout not JSON" : err;
+                            }
+                        } else {
+                            p.destroyForcibly();
+                            opsLastError = "snapshot timeout (25s)";
+                        }
+                    } else {
+                        opsLastError = "ops_health.py not found at " + OPS_HEALTH_DIR;
+                    }
+                } catch (Exception e) {
+                    opsLastError = "subprocess: " + e.getMessage();
+                }
+            }
+            if (doc != null) {
+                opsCacheJson = doc;
+                opsCacheSource = source;
+                opsLastError = "";
+            } else if (opsCacheJson == null) {
+                // first failure: emit a degraded doc so panels have shape
+                opsCacheJson = "{\"ok\":false,\"iso\":\"" + java.time.LocalDateTime.now().toString()
+                    + "\",\"source\":\"unavailable\",\"error\":\"" + opsLastError.replace("\\", "\\\\").replace("\"", "'")
+                    + "\",\"violations\":[],\"hexflow\":null}";
+                opsCacheSource = "unavailable";
+            }
+            opsCacheAtMs = now;
+            return opsCacheJson;
+        }
+    }
+
+    /** Extract a top-level numeric or string field from the cached ops doc without a JSON dep (regex over the raw JSON). */
+    private String opsField(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + key + "\"\\s*:\\s*(\"[^\"]*\"|[-0-9.eE+]+|true|false|null)")
+            .matcher(json);
+        return m.find() ? m.group(1) : "null";
+    }
+
+    /** Violations from the cached ops doc as a compact JSON array string ("[]" when none/unavailable). */
+    private String opsViolationsJson(String opsJson) {
+        if (opsJson == null) return "[]";
+        int i = opsJson.indexOf("\"violations\"");
+        if (i < 0) return "[]";
+        int start = opsJson.indexOf('[', i);
+        if (start < 0) return "[]";
+        int depth = 0;
+        for (int j = start; j < opsJson.length(); j++) {
+            char c = opsJson.charAt(j);
+            if (c == '[') depth++;
+            else if (c == ']') { depth--; if (depth == 0) return opsJson.substring(start, j + 1); }
+        }
+        return "[]";
+    }
+
+    /** Hexflow (INGEST..COMMIT) from the cached ops doc — the SHUTTLE view of the kanban board. */
+    private String hexflowFromOps(String opsJson) {
+        if (opsJson == null) return "null";
+        int i = opsJson.indexOf("\"hexflow\"");
+        if (i < 0) return "null";
+        int colon = opsJson.indexOf(':', i);
+        if (colon < 0) return "null";
+        int k = colon + 1;
+        while (k < opsJson.length() && Character.isWhitespace(opsJson.charAt(k))) k++;
+        if (k >= opsJson.length() || opsJson.charAt(k) != '{') return "null";   // hexflow: null / absent body
+        int depth = 0;
+        for (int j = k; j < opsJson.length(); j++) {
+            char c = opsJson.charAt(j);
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) return opsJson.substring(k, j + 1); }
+        }
+        return "null";
+    }
+
     // ==================== 24. FOW HEX MAP SVG — Web Dashboard Visualization ====================
     private String generateHexMapSvg() {
         StringBuilder svg = new StringBuilder();
@@ -3753,6 +3968,56 @@ public class GodHandApp extends Application {
         svg.append("<text x='400' y='600' fill='#c77dff' font-size='10'>⚙ TODOs</text>");
         svg.append("<text x='400' y='618' fill='#666' font-size='10'>FOW: dim = unexplored</text>");
         svg.append("<text x='400' y='633' fill='#666' font-size='10'>Colored = station hex</text>");
+
+        // GODHAND-2: ops hexflow ring — INGEST..COMMIT arc over the map, lit cell = live kanban stage
+        try {
+            String opsJson = getOpsSnapshotJson();
+            String hexflow = hexflowFromOps(opsJson);
+            String[] stages = {"INGEST", "SYNTH", "RESOLVE", "MUTATE", "VERIFY", "COMMIT"};
+            String[] stageColors = {"#666666", "#00d9ff", "#c77dff", "#ffaa00", "#00ff88", "#ff6b35"};
+            String liveStage = null;
+            String dir = "FORWARD";
+            int i0 = hexflow.indexOf("\"hex_stage\"");
+            if (i0 >= 0) {
+                int v0 = hexflow.indexOf(':', i0) + 1;
+                int e0 = hexflow.indexOf('"', hexflow.indexOf('"', v0) + 1) + 1;
+                liveStage = hexflow.substring(hexflow.indexOf('"', v0) + 1, e0 - 1);
+            }
+            int id = hexflow.indexOf("\"direction\"");
+            if (id >= 0) {
+                int vd = hexflow.indexOf(':', id) + 1;
+                int ed = hexflow.indexOf('"', hexflow.indexOf('"', vd) + 1) + 1;
+                dir = hexflow.substring(hexflow.indexOf('"', vd) + 1, ed - 1);
+            }
+            int cx = 720, cy = 92, R = 56;   // ring, top-right corner of the map
+            // ring caption: live stage + direction + violations badge
+            String violations = opsViolationsJson(opsJson);
+            boolean opsBad =!"[]".equals(violations);
+            String ringColor = opsBad ? "#ff3366" : ("null".equals(hexflow) ? "#444444" : "#00ff88");
+            svg.append("<text x='720' y='14' text-anchor='middle' fill='").append(ringColor)
+                .append("' font-size='11' font-weight='bold'>OPS RING</text>");
+            for (int s = 0; s < stages.length; s++) {
+                double ang = Math.toRadians(-90 + s * 60);            // start at 12 o'clock, clockwise
+                double hx = cx + R * Math.cos(ang), hy = cy + R * Math.sin(ang);
+                boolean lit = liveStage != null && liveStage.equals(stages[s]);
+                // hexagon cell
+                StringBuilder pts = new StringBuilder();
+                for (int v = 0; v < 6; v++) {
+                    double va = Math.toRadians(-90 + s * 60 + v * 60 + 30);
+                    pts.append(v == 0 ? "" : " ").append(String.format("%.1f", hx + 9 * Math.cos(va)))
+                        .append(",").append(String.format("%.1f", hy + 9 * Math.sin(va)));
+                }
+                svg.append("<polygon points='").append(pts).append("' fill='")
+                    .append(lit ? stageColors[s] : "#1a1a2e").append("' stroke='")
+                    .append(lit ? "#ffffff" : stageColors[s]).append("' stroke-opacity='")
+                    .append(lit ? "1" : "0.35").append("' stroke-width='").append(lit ? "2" : "1").append("'/>");
+                if (lit) svg.append("<circle cx='").append(String.format("%.1f", hx)).append("' cy='")
+                    .append(String.format("%.1f", hy)).append("' r='4' fill='#ffffff' fill-opacity='0.85'/>");
+            }
+            svg.append("<text x='720' y='160' text-anchor='middle' fill='").append(ringColor)
+                .append("' font-size='9'>stage: ").append(liveStage == null ? "n/a" : liveStage)
+                .append(" / ").append(dir).append(opsBad ? " / VIOLATIONS" : "").append("</text>");
+        } catch (Exception ignored) { /* ring must never break the map */ }
 
         svg.append("</svg>");
         return svg.toString();
