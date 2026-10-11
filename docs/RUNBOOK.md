@@ -6,9 +6,10 @@
 
 | What | Command |
 |------|---------|
-| Start | `scripts/service.bat start` or launch javaw manually |
-| Stop | `taskkill /F /IM javaw.exe` |
-| Status | `curl http://localhost:8899/api/status` |
+| Start (GUI) | `powershell -ExecutionPolicy Bypass -File scripts\start_godhand.ps1` |
+| Start (headless server) | `... scripts\start_godhand.ps1 -Headless` |
+| Stop | `powershell -ExecutionPolicy Bypass -File scripts\stop_godhand.ps1` (PID-file scoped — NEVER sweep all javaw; the MindPalace game is also javaw) |
+| Status | `curl http://localhost:8899/api/status` (loopback-only since d02faa1) |
 | Health | `curl http://localhost:8899/api/metrics` |
 | Logs | `tail -f logs/overnight-data.json` |
 | Evidence | `curl http://localhost:8899/api/evidence` |
@@ -35,7 +36,9 @@
 2. **Launch**
    ```bash
    cd C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx
-   scripts/service.bat start
+   powershell -ExecutionPolicy Bypass -File scripts\start_godhand.ps1
+   # headless (API-only, no GUI stage):
+   powershell -ExecutionPolicy Bypass -File scripts\start_godhand.ps1 -Headless
    ```
 
 3. **Verify**
@@ -70,10 +73,11 @@
 
 ```bash
 # Graceful (if GUI is accessible): File → Exit
-# Force:
-taskkill /F /IM javaw.exe
+# SAFE (kills only the launcher-recorded GodHand PID):
+powershell -ExecutionPolicy Bypass -File scripts\stop_godhand.ps1
+# NEVER: taskkill /F /IM javaw.exe  — that kills the MindPalace game too
 # Verify:
-tasklist /FI "IMAGENAME eq javaw.exe"  # should be empty
+tasklist  # exactly ONE GodHand javaw (plus the MindPalace game pair)
 ```
 
 ## HEALTH CHECKS
@@ -132,7 +136,7 @@ curl -s http://localhost:8899/api/clock | jq .offset_ms
 ### "javaw.exe using too much memory"
 1. Check: `curl http://localhost:8899/api/metrics | jq .memory`
 2. If > 600MB: OOM guard should be active
-3. Force restart: `taskkill /F /IM javaw.exe && scripts/service.bat start`
+3. Force restart: `scripts\stop_godhand.ps1; scripts\start_godhand.ps1`
 4. Logs rotate at 10MB automatically
 
 ### "GUI frozen / not responding"
@@ -161,12 +165,14 @@ curl -s http://localhost:8899/api/clock | jq .offset_ms
 
 ### Full restart
 ```bash
-taskkill /F /IM javaw.exe
+powershell -ExecutionPolicy Bypass -File scripts\stop_godhand.ps1
 sleep 3
 cd C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx
-scripts/service.bat start
-sleep 15
+powershell -ExecutionPolicy Bypass -File scripts\start_godhand.ps1
+sleep 10
 curl http://localhost:8899/api/status
+# L1 check: 8899 must listen on 127.0.0.1 only (never 0.0.0.0)
+netstat -ano | findstr :8899
 ```
 
 ### Ollama restart
@@ -177,6 +183,26 @@ ollama serve &
 sleep 5
 curl http://localhost:11434/api/tags
 # Circuit breaker auto-resets after 1 minute
+```
+
+## HEADLESS MODE + CODE MINING (added 2026-10-10, t_ef84df83)
+
+### Headless server (no GUI stage)
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\start_godhand.ps1 -Headless
+# Same API surface on 127.0.0.1:8899; public WiFi port 1338 is NOT bound headless.
+# Boot console: logs\godhand_headless_console.log / stderr log alongside.
+# Smoke pattern (CI-safe, port-overridden, child-kill only):
+#   java -Dcom.aigen.sims.headless=true -Dcom.aigen.sims.port=9420 -cp <classes+deps> com.aigen.sims.GodHandApp
+#   -> /api/status 200 must come up on 127.0.0.1:9420 (verified 2026-10-10)
+```
+
+### CodeMiner (suggestion mining)
+```bash
+# One-shot mine→deploy→tune report (writes ONLY to C:\Users\viper\suggestions + C:\Users\viper\SIMS1337):
+java -cp "target/classes;<jackson/sqlite/slf4j/logback jars>" com.aigen.sims.HeadlessPipeline
+# 2026-10-10 fix: worktree repos (.git FILES, not dirs) now counted (Scanned 70, was 0);
+# file walk skips .git/target/node_modules noise. Suggestions only generate for DIRTY repos.
 ```
 
 ### Data recovery
