@@ -124,6 +124,23 @@ public class GodHandApp extends Application {
     private Pane windowOverlay;
 
     public static void main(String[] args) {
+        // === HEADLESS SERVER MODE part 1 (GODHAND-1, t_ef84df83 / t_b022e64b) ===
+        // Headless must NEVER start the JavaFX toolkit: Application.launch() boots
+        // glass/prism natives even when start() immediately skips the stage, which
+        // (diagnosed 2026-10-11, t_b022e64b smoke) hung in NativeLibLoader and
+        // silently died without ever binding the dashboard port. In headless mode
+        // we run the API server straight off main() — pure backend, no toolkit.
+        if (Boolean.getBoolean("com.aigen.sims.headless")) {
+            System.out.println("[GODHAND] HEADLESS server mode: JavaFX toolkit not started; running API server directly");
+            new GodHandApp().initBackendSystems();
+            System.out.println("[GODHAND] HEADLESS init complete; API server stays up (main thread parked)");
+            try {
+                Thread.currentThread().join(); // park main forever; daemon API threads keep serving
+            } catch (InterruptedException ignored) {
+                // main interrupted (never in practice): fall through and exit
+            }
+            return;
+        }
         launch(args);
     }
 

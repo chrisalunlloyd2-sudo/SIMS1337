@@ -96,6 +96,9 @@ if ($Headless) {
     $jargs = @("-Dprism.order=sw","-Dprism.vsync=false","-XX:+UseG1GC","-Xms256m","-Xmx512m",
                "-Dfile.encoding=UTF-8",
                "-Dcom.aigen.sims.headless=true",
+               "-Dcom.aigen.sims.port=$PORT",
+               "--module-path", $MP,
+               "--add-modules", "javafx.controls,javafx.fxml",
                "-cp", $CP,
                "com.aigen.sims.GodHandApp")
 } else {
