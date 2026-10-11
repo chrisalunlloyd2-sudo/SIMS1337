@@ -197,6 +197,7 @@ public class GodHandApp extends Application {
             lastUiFlush = now;
             List<String> batch = new ArrayList<>(uiBuffer);
             uiBuffer.clear();
+            if (godChat == null) return; // headless mode: stdout log() already recorded it
             safeUiUpdate(() -> {
                 for (String e : batch) godChat.appendText(e);
                 // Truncate if over limit
@@ -492,6 +493,20 @@ public class GodHandApp extends Application {
         if (!INSTANCE_RUNNING.compareAndSet(false, true)) {
             log("⛔ SIMS1337 is already running! Only ONE GUI allowed. Exiting duplicate.");
             Platform.exit();
+            return;
+        }
+        // === HEADLESS SERVER MODE (t_ef84df83 #6) ===
+        // -Dcom.aigen.sims.headless=true: no JavaFX stage, no build*() calls.
+        // Serves the real :8899 dashboard + all /api endpoints via initAll(),
+        // so /api/status smoke tests run without a desktop. GUI mode untouched.
+        if (Boolean.getBoolean("com.aigen.sims.headless")) {
+            log("🖥️ HEADLESS server mode: JavaFX stage skipped; dashboard APIs stay up");
+            primaryStageRef = null;
+            // No stage is ever shown in this mode; without this the toolkit would
+            // implicit-exit right after start() returns and kill the API server.
+            Platform.setImplicitExit(false);
+            initAll();
+            refreshInstalledModels();
             return;
         }
         primaryStageRef = stage;
@@ -2324,13 +2339,22 @@ public class GodHandApp extends Application {
 
     private void webDashboardInit() {
         try {
-            webServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 8899), 0); // L3: loopback-only — never expose dashboard to LAN
-            // Public WiFi server on port 1338 bound to 0.0.0.0
-            com.sun.net.httpserver.HttpServer publicServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("0.0.0.0", 1338), 0);
-            publicServer.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
-            publicServer.start();
-            log("🌐 Public WiFi UI: http://192.168.0.187:1338 (0.0.0.0:1338)");
-            addToGodChat("🌐 WIFI", "System", "Public UI on port 1338 — open to LAN");
+            // L3/L1: loopback-only — never expose dashboard to LAN (task t_ef84df83).
+            // Port override for headless smoke tests: -Dcom.aigen.sims.port=9420
+            int dashPort = Integer.getInteger("com.aigen.sims.port", 8899);
+            boolean headlessServer = Boolean.getBoolean("com.aigen.sims.headless");
+            webServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", dashPort), 0); // L3: loopback-only
+            com.sun.net.httpserver.HttpServer publicServer = null;
+            if (headlessServer) {
+                log("🌐 Headless mode: public WiFi UI (0.0.0.0:1338) skipped; dashboard on 127.0.0.1:" + dashPort);
+            } else {
+                // Public WiFi server on port 1338 bound to 0.0.0.0
+                publicServer = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("0.0.0.0", 1338), 0);
+                publicServer.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
+                publicServer.start();
+                log("🌐 Public WiFi UI: http://192.168.0.187:1338 (0.0.0.0:1338)");
+                addToGodChat("🌐 WIFI", "System", "Public UI on port 1338 — open to LAN");
+            }
 
             // Shared handler for both servers
             com.sun.net.httpserver.HttpHandler dashboardHandler = exchange -> {
@@ -2511,7 +2535,7 @@ public class GodHandApp extends Application {
 
             // Register on both servers
             webServer.createContext("/", dashboardHandler);
-            publicServer.createContext("/", dashboardHandler);
+            if (publicServer != null) publicServer.createContext("/", dashboardHandler);
 
             // API endpoint
             webServer.createContext("/api/status", exchange -> {
