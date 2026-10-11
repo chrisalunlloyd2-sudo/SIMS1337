@@ -13,7 +13,9 @@ public class CodeMiner {
         File[] dirs = baseDir.listFiles(File::isDirectory);
         if (dirs == null) return repos;
         for (File dir : dirs) {
-            if (new File(dir, ".git").isDirectory()) {
+            // exists() covers BOTH repos (.git dir) and hermes worktrees (.git file) —
+            // worktrees were silently skipped before (t_ef84df83: "Scanned 0/Generated 0")
+            if (new File(dir, ".git").exists()) {
                 RepoContext ctx = scanRepo(dir.getName(), dir.getAbsolutePath());
                 if (ctx != null) repos.add(ctx);
             }
@@ -25,14 +27,27 @@ public class CodeMiner {
             String diff = execGit(path, "diff", "HEAD", "--stat");
             List<String> commits = execGitLines(path, "log", "--oneline", "-5");
             Map<String, String> contents = new HashMap<>();
-            Files.walk(Paths.get(path))
-                .filter(p -> p.toString().endsWith(".java"))
-                .limit(10)
-                .forEach(p -> {
-                    try { String rel = Paths.get(path).relativize(p).toString();
-                           contents.put(rel, Files.readString(p)); }
-                    catch (IOException e) {}
-                });
+            List<String> skipDirs = Arrays.asList(".git", "target", "node_modules", "build",
+                    "dist", "venv", "__pycache__", ".idea", ".worktrees");
+            List<Path> javaFiles = new ArrayList<>();
+            try (java.util.stream.Stream<Path> walk = Files.walk(Paths.get(path))) {
+                walk.filter(p -> p.toString().endsWith(".java"))
+                    .filter(p -> {
+                        String s = p.toString();
+                        for (String skip : skipDirs) {
+                            if (s.contains(File.separator + skip + File.separator)) return false;
+                        }
+                        return true;
+                    })
+                    .limit(10)
+                    .forEach(javaFiles::add);
+            }
+            for (Path p : javaFiles) {
+                try {
+                    String rel = Paths.get(path).relativize(p).toString();
+                    contents.put(rel, Files.readString(p));
+                } catch (IOException e) {}
+            }
             List<String> patterns = extractPatterns(contents);
             int[] hex = hashToHex(name);
             return new RepoContext(name, path, diff, commits, contents, patterns, hex[0], hex[1]);
