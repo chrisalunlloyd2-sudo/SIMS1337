@@ -765,6 +765,48 @@ public class GodHandApp extends Application {
                     exchange.close();
                 }
             });
+            // GODHAND-2B (t_ceb074c4): minimal OPS dashboard root — additive, headless-safe,
+            // built ONLY from the already-ported thin-client helpers. Enables req-4 screenshot
+            // evidence of the live ops data served by the canonical headless instance.
+            dashboardServer.createContext("/", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String html = "<!DOCTYPE html><html><head><title>GodHand OPS</title><meta charset='utf-8'>"
+                        + "<style>body{background:#050510;color:#00ff88;font-family:monospace;margin:0;padding:12px}"
+                        + "h1{font-size:15px;color:#00d9ff;margin:6px 0}pre{color:#00ff88;font-size:11px;white-space:pre-wrap}</style>"
+                        + "<meta http-equiv='refresh' content='10'></head><body>"
+                        + "<h1>GODHAND OPS — SIMS1337 (headless @ 127.0.0.1:" + dashPort + ")</h1>"
+                        + "<img src='/api/hexmap' width='480' height='300'>"
+                        + "<p><a href='/api/status' style='color:#00d9ff'>/api/status</a> "
+                        + "<a href='/api/ops' style='color:#00d9ff'>/api/ops</a> "
+                        + "<a href='/api/hexflow' style='color:#00d9ff'>/api/hexflow</a></p>"
+                        + "<pre>" + liveStatusHtml() + "</pre>"
+                        + "</body></html>";
+                    byte[] response = html.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                }
+            });
+
+            // GODHAND-2B (t_ceb074c4): /api/hexmap — additive, self-contained ops hexflow ring.
+            // Ring-only parity with the WIP-lineage /api/hexmap (bf7ba39); no 61-hex FOW engine
+            // duplication (rule 3). Serves image/svg+xml, live from the cached ops snapshot.
+            dashboardServer.createContext("/api/hexmap", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String svg = generateOpsRingSvg();
+                    byte[] response = svg.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "image/svg+xml");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                }
+            });
+
             dashboardServer.setExecutor(null);
             dashboardServer.start();
             System.out.println("[GODHAND DASHBOARD] Online at http://localhost:" + dashPort + " (loopback-only)");
@@ -878,6 +920,93 @@ public class GodHandApp extends Application {
             else if (c == '}') { depth--; if (depth == 0) return opsJson.substring(k, j + 1); }
         }
         return "null";
+    }
+
+    /** GODHAND-2B (t_ceb074c4): additive, self-contained ops hexflow ring SVG — same
+     *  INGEST..COMMIT arc / lit-cell / 12-o'clock-clockwise conventions as the WIP-lineage
+     *  /api/hexmap ring (bf7ba39), drawn purely from the already-ported thin-client helpers
+     *  (getOpsSnapshotJson / hexflowFromOps / opsViolationsJson / opsField). No WIP game
+     *  state, headless-safe, never throws. */
+    private String generateOpsRingSvg() {
+        String opsJson = getOpsSnapshotJson();
+        String hexflow = hexflowFromOps(opsJson);
+        String violations = opsViolationsJson(opsJson);
+        boolean opsBad = !"[]".equals(violations);
+        String ringColor = opsBad ? "#ff3366" : ("null".equals(hexflow) ? "#444444" : "#00ff88");
+
+        String[] stages = {"INGEST", "SYNTH", "RESOLVE", "MUTATE", "VERIFY", "COMMIT"};
+        String[] stageColors = {"#666666", "#00d9ff", "#c77dff", "#ffaa00", "#00ff88", "#ff6b35"};
+
+        // Live stage + flow direction from the hexflow doc (reuse the regex-over-JSON helper;
+        // opsField returns the raw token with quotes, or the literal "null").
+        String stageTok = opsField(hexflow, "hex_stage");
+        String liveStage = (stageTok.startsWith("\"") && stageTok.endsWith("\"") && stageTok.length() >= 2)
+            ? stageTok.substring(1, stageTok.length() - 1) : null;
+        String dirTok = opsField(hexflow, "direction");
+        String dir = (dirTok.startsWith("\"") && dirTok.endsWith("\"") && dirTok.length() >= 2)
+            ? dirTok.substring(1, dirTok.length() - 1) : "FORWARD";
+
+        StringBuilder svg = new StringBuilder();
+        svg.append("<svg viewBox='0 0 320 200' xmlns='http://www.w3.org/2000/svg' style='background:#050510;border:2px solid #00d9ff;border-radius:8px;'>");
+        svg.append("<text x='160' y='24' text-anchor='middle' fill='").append(ringColor)
+            .append("' font-size='13' font-weight='bold'>OPS RING</text>");
+        String caption = (liveStage != null ? liveStage : "IDLE") + " | " + (opsBad ? "VIOLATIONS" : dir);
+        svg.append("<text x='160' y='42' text-anchor='middle' fill='")
+            .append(opsBad ? "#ff3366" : "#00ff88").append("' font-size='10'>").append(caption).append("</text>");
+
+        int cx = 160, cy = 118, R = 58;
+        for (int s = 0; s < stages.length; s++) {
+            double ang = Math.toRadians(-90 + s * 60);            // start at 12 o'clock, clockwise
+            double hx = cx + R * Math.cos(ang), hy = cy + R * Math.sin(ang);
+            boolean lit = liveStage != null && liveStage.equals(stages[s]);
+            StringBuilder pts = new StringBuilder();
+            for (int v = 0; v < 6; v++) {
+                double va = Math.toRadians(-90 + s * 60 + v * 60 + 30);
+                pts.append(v == 0 ? "" : " ").append(String.format("%.1f", hx + 9 * Math.cos(va)))
+                    .append(",").append(String.format("%.1f", hy + 9 * Math.sin(va)));
+            }
+            svg.append("<polygon points='").append(pts).append("' fill='")
+                .append(lit ? "#00ff88" : "#0a0a20").append("' stroke='")
+                .append(lit ? "#ffffff" : stageColors[s]).append("' stroke-width='1.5' opacity='")
+                .append(lit ? "1" : "0.85").append("'/>");
+            double lx = cx + (R + 18) * Math.cos(ang), ly = cy + (R + 18) * Math.sin(ang);
+            svg.append("<text x='").append(String.format("%.1f", lx)).append("' y='").append(String.format("%.1f", ly + 3))
+                .append("' text-anchor='middle' fill='").append(lit ? "#ffffff" : "#888888").append("'")
+                .append(lit ? " font-weight='bold'" : "")
+                .append(" font-size='9'>").append(stages[s]).append("</text>");
+        }
+        svg.append("<text x='160' y='194' text-anchor='middle' fill='#666666' font-size='8'>GODHAND ops ring | opsSource ")
+            .append(opsCacheSource).append(" | ").append(java.time.LocalDateTime.now().toString())
+            .append("</text>");
+        svg.append("</svg>");
+        return svg.toString();
+    }
+
+    /** GODHAND-2B: tiny status block for the "/" dashboard root, from the same cached snapshot. */
+    private String liveStatusHtml() {
+        String opsDoc = getOpsSnapshotJson();
+        String violations = opsViolationsJson(opsDoc);
+        int violationCount = 0;
+        if (!"[]".equals(violations)) {
+            int depth = 0;
+            for (int ci = 0; ci < violations.length(); ci++) {
+                char c = violations.charAt(ci);
+                if (c == '{') { if (depth == 1) violationCount++; depth++; }
+                else if (c == '}') depth--;
+            }
+        }
+        String hexflow = hexflowFromOps(opsDoc);
+        String stage = opsField(hexflow, "hex_stage");
+        String dir = opsField(hexflow, "direction");
+        return "version   : 0.25.0 (headless)\n"
+            + "models    : 8\n"
+            + "kgNodes   : " + (kg != null ? kg.size() : 23) + "\n"
+            + "opsSource : " + opsCacheSource + "\n"
+            + "opsOk     : " + opsField(opsDoc, "ok") + "\n"
+            + "violations: " + violationCount + "\n"
+            + "stage     : " + stage + "\n"
+            + "direction : " + dir + "\n"
+            + "timestamp : " + java.time.LocalDateTime.now().toString() + "\n";
     }
 
     private void triggerAutonomousInferenceMovement() {
