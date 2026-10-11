@@ -12,7 +12,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
-$REPO  = "C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx"
+$REPO  = "C:\Users\viper\AIGEN_SYS\repos\SIMS1337"
 $M2    = "C:\Users\viper\.m2\repository"
 $JFX   = "$M2\org\openjfx"
 $LOGS  = "$REPO\logs"

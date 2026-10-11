@@ -27,6 +27,7 @@ import javafx.geometry.Insets;
 import javafx.stage.Stage;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -69,7 +70,23 @@ public class GodHandApp extends Application {
                 return t;
             });
     private HttpServer dashboardServer;
-    
+
+    // === OPS HEALTH PANEL (GODHAND-2: thin client of ~/.aria/engine/ops_health.py) ===
+    // ARIA's ops_health engine "serve" mode answers /api/ops on 127.0.0.1:11436 (loopback-only, 60s refresh).
+    // GodHand proxies that document; when the engine is dark it falls back to `python ops_health.py snapshot`
+    // as a subprocess. Cache (<=60s) keeps concurrent dashboard tabs from spawning subprocesses.
+    private static final String OPS_HEALTH_URL = "http://127.0.0.1:11436/api/ops";
+    private static final String OPS_HEALTH_DIR = System.getProperty("user.home")
+            + File.separator + ".aria" + File.separator + "engine";
+    private static final long OPS_CACHE_MS = 60_000;
+    private static final java.net.http.HttpClient opsHttpClient = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+    private final Object opsCacheLock = new Object();
+    private String opsCacheJson = null;
+    private long opsCacheAtMs = 0L;
+    private String opsCacheSource = "none";
+    private volatile String opsLastError = "";
+
     private double timePulse = 0;
     private int zElevation = 0;
     
@@ -112,6 +129,17 @@ public class GodHandApp extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        // === HEADLESS SERVER MODE (GODHAND-1, t_ef84df83) ===
+        // -Dcom.aigen.sims.headless=true: no JavaFX stage, pure API server.
+        // Serves the :8899 dashboard APIs via initBackendSystems() so smoke tests
+        // run without a desktop. Without setImplicitExit(false) the toolkit would
+        // implicit-exit right after start() returns and kill the API server.
+        if (Boolean.getBoolean("com.aigen.sims.headless")) {
+            System.out.println("[GODHAND] HEADLESS server mode: JavaFX stage skipped; dashboard APIs stay up");
+            Platform.setImplicitExit(false);
+            initBackendSystems();
+            return;
+        }
         initHexGrid();
         initAgents();
         initBackendSystems();
@@ -652,22 +680,187 @@ public class GodHandApp extends Application {
 
         nightCycle = new NightCycleEngine(ollamaRouter);
         try {
-            dashboardServer = HttpServer.create(new InetSocketAddress(8899), 0);
+            // L3/L1 (GODHAND-1, t_ef84df83): loopback-only — never expose dashboard to LAN.
+            // Port override for headless smoke tests: -Dcom.aigen.sims.port=9420
+            int dashPort = Integer.getInteger("com.aigen.sims.port", 8899);
+            boolean headlessServer = Boolean.getBoolean("com.aigen.sims.headless");
+            dashboardServer = HttpServer.create(new InetSocketAddress("127.0.0.1", dashPort), 0); // L3: loopback-only
+            if (headlessServer) {
+                System.out.println("[GODHAND DASHBOARD] Headless mode: dashboard on 127.0.0.1:" + dashPort + " (loopback-only)");
+            }
             dashboardServer.createContext("/api/status", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
-                    String resp = "{\"version\":\"0.25.0\",\"models\":8,\"kgNodes\":23,\"errors\":0,\"status\":\"ACTIVE\"}";
+                    // GODHAND-2: ops violations folded into errors + ops fields merged (additive ops block)
+                    String opsDoc = getOpsSnapshotJson();
+                    String opsViolations = opsViolationsJson(opsDoc);
+                    int opsViolationCount = 0;
+                    if (!"[]".equals(opsViolations)) {
+                        int depth = 0;
+                        for (int ci = 0; ci < opsViolations.length(); ci++) {
+                            char c = opsViolations.charAt(ci);
+                            if (c == '{') { if (depth == 1) opsViolationCount++; depth++; }
+                            else if (c == '}') depth--;
+                        }
+                    }
+                    String resp = String.format(
+                        "{\"version\":\"0.25.0\",\"models\":8,\"kgNodes\":%d,\"errors\":%d,\"status\":\"ACTIVE\","
+                            + "\"opsOk\":%s,\"opsViolations\":%d,\"opsSource\":\"%s\",\"opsViolationsDetail\":%s,\"timestamp\":\"%s\"}",
+                        kg != null ? kg.size() : 23, opsViolationCount,
+                        opsField(opsDoc, "ok"), opsViolationCount, opsCacheSource,
+                        opsViolations, java.time.LocalDateTime.now().toString());
+                    byte[] respBytes = resp.getBytes("UTF-8");
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
-                    exchange.sendResponseHeaders(200, resp.length());
+                    exchange.sendResponseHeaders(200, respBytes.length);
                     OutputStream os = exchange.getResponseBody();
-                    os.write(resp.getBytes());
+                    os.write(respBytes);
                     os.close();
+                }
+            });
+
+            // GODHAND-2: full ops_health snapshot (L1..L5 laws + hexflow) — thin client of the ARIA ops engine
+            dashboardServer.createContext("/api/ops", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String doc = getOpsSnapshotJson();
+                    byte[] response = doc.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                }
+            });
+
+            // GODHAND-2: hexflow — SHUTTLE view of the kanban board (INGEST..COMMIT) from the ops snapshot
+            dashboardServer.createContext("/api/hexflow", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String opsDoc = getOpsSnapshotJson();
+                    String hexflow = hexflowFromOps(opsDoc);
+                    String json = "{\"hexflow\":" + hexflow + ",\"source\":\"" + opsCacheSource + "\",\"timestamp\":\""
+                        + java.time.LocalDateTime.now().toString() + "\"}";
+                    byte[] response = json.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
                 }
             });
             dashboardServer.setExecutor(null);
             dashboardServer.start();
-            System.out.println("[GODHAND DASHBOARD] Online at http://localhost:8899");
+            System.out.println("[GODHAND DASHBOARD] Online at http://localhost:" + dashPort + " (loopback-only)");
         } catch(Exception e) { e.printStackTrace(); }
+    }
+
+    /** Latest ops_health snapshot as a JSON document, cached 60 s. Tries the live engine on 11436 first,
+     *  then `python ops_health.py snapshot` as a subprocess fallback. Never throws — returns an ok:false doc. */
+    private String getOpsSnapshotJson() {
+        synchronized (opsCacheLock) {
+            long now = System.currentTimeMillis();
+            if (opsCacheJson != null && (now - opsCacheAtMs) < OPS_CACHE_MS) {
+                return opsCacheJson;
+            }
+            String doc = null;
+            String source = "none";
+            // 1) live engine (fast, already cached server-side)
+            try {
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(OPS_HEALTH_URL))
+                    .timeout(java.time.Duration.ofSeconds(2)).GET().build();
+                java.net.http.HttpResponse<String> resp = opsHttpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200 && resp.body() != null && resp.body().contains("\"iso\"")) {
+                    doc = resp.body();
+                    source = "engine:11436";
+                }
+            } catch (Exception ignored) { /* engine dark — fall through */ }
+            // 2) subprocess fallback: same module, one JSON document on stdout
+            if (doc == null) {
+                try {
+                    File engine = new File(OPS_HEALTH_DIR, "ops_health.py");
+                    if (engine.isFile()) {
+                        ProcessBuilder pb = new ProcessBuilder("python", engine.getAbsolutePath(), "snapshot");
+                        pb.directory(engine.getParentFile());
+                        pb.redirectErrorStream(false);
+                        Process p = pb.start();
+                        boolean finished = p.waitFor(25, java.util.concurrent.TimeUnit.SECONDS);
+                        if (finished) {
+                            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            String err = new String(p.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            if (p.exitValue() == 0 && out.startsWith("{")) {
+                                doc = out;
+                                source = "subprocess:" + (err.isEmpty() ? "clean" : "exit0+stderr");
+                            } else if (!out.startsWith("{")) {
+                                opsLastError = err.isEmpty() ? "snapshot stdout not JSON" : err;
+                            }
+                        } else {
+                            p.destroyForcibly();
+                            opsLastError = "snapshot timeout (25s)";
+                        }
+                    } else {
+                        opsLastError = "ops_health.py not found at " + OPS_HEALTH_DIR;
+                    }
+                } catch (Exception e) {
+                    opsLastError = "subprocess: " + e.getMessage();
+                }
+            }
+            if (doc != null) {
+                opsCacheJson = doc;
+                opsCacheSource = source;
+                opsLastError = "";
+            } else if (opsCacheJson == null) {
+                // first failure: emit a degraded doc so panels have shape
+                opsCacheJson = "{\"ok\":false,\"iso\":\"" + java.time.LocalDateTime.now().toString()
+                    + "\",\"source\":\"unavailable\",\"error\":\"" + opsLastError.replace("\\", "\\\\").replace("\"", "'")
+                    + "\",\"violations\":[],\"hexflow\":null}";
+                opsCacheSource = "unavailable";
+            }
+            opsCacheAtMs = now;
+            return opsCacheJson;
+        }
+    }
+
+    /** Extract a top-level numeric or string field from the cached ops doc without a JSON dep (regex over the raw JSON). */
+    private String opsField(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + key + "\"\\s*:\\s*(\"[^\"]*\"|[-0-9.eE+]+|true|false|null)")
+            .matcher(json);
+        return m.find() ? m.group(1) : "null";
+    }
+
+    /** Violations from the cached ops doc as a compact JSON array string ("[]" when none/unavailable). */
+    private String opsViolationsJson(String opsJson) {
+        if (opsJson == null) return "[]";
+        int i = opsJson.indexOf("\"violations\"");
+        if (i < 0) return "[]";
+        int start = opsJson.indexOf('[', i);
+        if (start < 0) return "[]";
+        int depth = 0;
+        for (int j = start; j < opsJson.length(); j++) {
+            char c = opsJson.charAt(j);
+            if (c == '[') depth++;
+            else if (c == ']') { depth--; if (depth == 0) return opsJson.substring(start, j + 1); }
+        }
+        return "[]";
+    }
+
+    /** Hexflow (INGEST..COMMIT) from the cached ops doc — the SHUTTLE view of the kanban board. */
+    private String hexflowFromOps(String opsJson) {
+        if (opsJson == null) return "null";
+        int i = opsJson.indexOf("\"hexflow\"");
+        if (i < 0) return "null";
+        int colon = opsJson.indexOf(':', i);
+        if (colon < 0) return "null";
+        int k = colon + 1;
+        while (k < opsJson.length() && Character.isWhitespace(opsJson.charAt(k))) k++;
+        if (k >= opsJson.length() || opsJson.charAt(k) != '{') return "null";   // hexflow: null / absent body
+        int depth = 0;
+        for (int j = k; j < opsJson.length(); j++) {
+            char c = opsJson.charAt(j);
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) return opsJson.substring(k, j + 1); }
+        }
+        return "null";
     }
 
     private void triggerAutonomousInferenceMovement() {

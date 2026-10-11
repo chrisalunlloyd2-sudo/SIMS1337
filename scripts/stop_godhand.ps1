@@ -3,7 +3,7 @@
 # after verifying it is a java-family process running GodHandApp.
 # NEVER sweeps other java processes. Never called with a hand-typed PID.
 $ErrorActionPreference = "Stop"
-$PIDFILE = "C:\Users\viper\AIGEN_SYS\repos\sims-java-neo-fx\logs\godhand.pid"
+$PIDFILE = "C:\Users\viper\AIGEN_SYS\repos\SIMS1337\logs\godhand.pid"
 
 if (-not (Test-Path $PIDFILE)) {
     Write-Output "[OK] no godhand.pid state file - nothing of ours to stop"
