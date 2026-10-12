@@ -45,6 +45,8 @@ import com.sun.net.httpserver.HttpExchange;
 import java.net.InetSocketAddress;
 import java.io.IOException;
 import com.aigen.sims.engine.KnowledgeGraph;
+import com.aigen.sims.laws.LawEnforcer;
+import com.aigen.sims.laws.LoopbackGuard;
 
 /**
  * SIMS1337 v0.25.0 - GodHandApp
@@ -124,6 +126,12 @@ public class GodHandApp extends Application {
     private Pane windowOverlay;
 
     public static void main(String[] args) {
+        // === GODHAND-3 LAW 1: single-instance lock at boot ===
+        // Acquired BEFORE anything else (no JavaFX toolkit, no server bind).
+        // A second instance exits with code 17 without touching the live one.
+        if (!LawEnforcer.boot()) {
+            System.exit(LawEnforcer.LOCK_EXIT_CODE);
+        }
         // === HEADLESS SERVER MODE part 1 (GODHAND-1, t_ef84df83 / t_b022e64b) ===
         // Headless must NEVER start the JavaFX toolkit: Application.launch() boots
         // glass/prism natives even when start() immediately skips the stage, which
@@ -205,6 +213,8 @@ public class GodHandApp extends Application {
             
             @Override
             public void handle(long now) {
+                // GODHAND-3 LAW 5c: sim is ticking — game priority flag for admission
+                LawEnforcer.setGameRunning(true);
                 timePulse += 0.02;
                 
                 // Decay stress level slowly towards baseline
@@ -291,9 +301,13 @@ public class GodHandApp extends Application {
         primaryStage.setTitle("SIMS1337 v0.25.0 - 6D Hexeract Geospatial Manifold Organism");
         primaryStage.setScene(scene);
         primaryStage.show();
-        
+
         timer.start();
         nightCycle.startClock();
+        // GODHAND-3 LAW 5c: stage shown and looping — clear the flag on stop so
+        // admission returns to idle-house mode the moment the game is not ticking.
+        primaryStage.setOnCloseRequest(e -> LawEnforcer.setGameRunning(false));
+        primaryStage.setOnHidden(e -> LawEnforcer.setGameRunning(false));
     }
 
     private void openWindow(String title, javafx.scene.Node content, double width, double height) {
@@ -701,6 +715,8 @@ public class GodHandApp extends Application {
             // Port override for headless smoke tests: -Dcom.aigen.sims.port=9420
             int dashPort = Integer.getInteger("com.aigen.sims.port", 8899);
             boolean headlessServer = Boolean.getBoolean("com.aigen.sims.headless");
+            // GODHAND-3 LAW 3: explicit loopback guard — refuse non-loopback binds.
+            LoopbackGuard.assertLoopback(new InetSocketAddress("127.0.0.1", dashPort));
             dashboardServer = HttpServer.create(new InetSocketAddress("127.0.0.1", dashPort), 0); // L3: loopback-only
             if (headlessServer) {
                 System.out.println("[GODHAND DASHBOARD] Headless mode: dashboard on 127.0.0.1:" + dashPort + " (loopback-only)");
@@ -740,6 +756,21 @@ public class GodHandApp extends Application {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
                     String doc = getOpsSnapshotJson();
+                    byte[] response = doc.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                }
+            });
+
+            // GODHAND-3 (t_22bb44a7): /api/laws — one JSON doc of every law's live state.
+            // Additive, bound alongside the existing loopback dashboard only.
+            dashboardServer.createContext("/api/laws", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String doc = LawEnforcer.lawsStatusJson();
                     byte[] response = doc.getBytes("UTF-8");
                     exchange.getResponseHeaders().set("Content-Type", "application/json");
                     exchange.getResponseHeaders().set("Cache-Control", "no-cache");

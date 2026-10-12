@@ -17,6 +17,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.aigen.sims.laws.AdmissionControl;
+import com.aigen.sims.laws.LawEnforcer;
+import com.aigen.sims.laws.ModelPolicy;
+
 /**
  * SIMS1337 - ModelBus
  *
@@ -66,10 +70,12 @@ public final class ModelBus {
         final String model;
         final String prompt;
         final int numPredict;
+        final boolean embed; // GODHAND-3: embed jobs are L4 residency-exempt
         final CountDownLatch done = new CountDownLatch(1);
         volatile String result = BUSY;
         Job(String model, String prompt, int numPredict) {
             this.model = model; this.prompt = prompt; this.numPredict = numPredict;
+            this.embed = model != null && (model.contains("embed") || model.contains("nomic"));
         }
     }
 
@@ -103,6 +109,13 @@ public final class ModelBus {
     public static String ask(String model, String prompt, int numPredict) {
         if (model == null || model.isEmpty()) {
             log.warn("[MODELBUS] reject: null/empty model");
+            return BUSY;
+        }
+        // GODHAND-3 LAW 5e: cheap policy gate at enqueue (banned/unknown deny instantly,
+        // no queue slot consumed). Full resource admission still runs at dispatch (worker).
+        ModelPolicy.Verdict policy = ModelPolicy.checkModel(model);
+        if (!policy.allowed) {
+            log.warn("[MODELBUS] LAW5 policy deny {}: {}", model, policy.reason);
             return BUSY;
         }
         final int np = numPredict > 0 ? numPredict : 220;
@@ -150,6 +163,19 @@ public final class ModelBus {
             }
             long t0 = System.currentTimeMillis();
             String via = null;
+            // GODHAND-3 LAW 5 (full admission at dispatch): resources + residency +
+            // game priority decided the moment the job leaves the queue. Rejected
+            // jobs complete instantly with BUSY — the caller's timeout never fires.
+            AdmissionControl.Kind kind = job.embed ? AdmissionControl.Kind.EMBED : AdmissionControl.Kind.INFER;
+            AdmissionControl.Verdict v = LawEnforcer.admit(job.model, kind);
+            if (!v.allowed) {
+                job.result = BUSY;
+                log.warn("[MODELBUS] LAW5 admission deny {}: {}", job.model, v);
+                job.done.countDown();
+                continue;
+            }
+            LawEnforcer.residencyAcquire(job.embed ? 0 : 1); // LAW 4: count residency (embed excluded)
+            LawEnforcer.record("modelbus", "infer", job.model);
             try {
                 if (orchestratorHealthy()) {
                     via = "DELEGATE";
@@ -181,6 +207,8 @@ public final class ModelBus {
             log.info("[MODELBUS] DONE {} via {} in {}ms chars={} ok={}",
                     job.model, via, System.currentTimeMillis() - t0,
                     job.result.length(), isRealText(job.result));
+            LawEnforcer.residencyRelease(job.embed ? 0 : 1); // LAW 4 residency freed
+            LawEnforcer.record("modelbus", "done", job.model + " via " + via);
             job.done.countDown();
         }
     }

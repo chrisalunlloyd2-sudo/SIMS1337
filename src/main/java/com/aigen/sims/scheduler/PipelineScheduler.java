@@ -5,6 +5,7 @@ import com.aigen.sims.commander.PipelineMonitor;
 import com.aigen.sims.deploy.DeployOrchestrator;
 import com.aigen.sims.deploy.GateKeeper;
 import com.aigen.sims.gui.GuiGardener;
+import com.aigen.sims.laws.LawEnforcer;
 import com.aigen.sims.lora.AdapterRegistry;
 import com.aigen.sims.lora.LoRATuner;
 import com.aigen.sims.mining.CodeMinerOrchestrator;
@@ -73,45 +74,69 @@ public class PipelineScheduler {
     }
 
     private void runMine() {
+        LawEnforcer.record("mine", "begin");
+        LawEnforcer.watchdog().begin("mine");
         try {
             CodeMinerOrchestrator miner = new CodeMinerOrchestrator(home + "/AIGEN_SYS/repos", suggestionsPath);
             var report = miner.runMiningCycle();
             cycleLog.append("mine: ").append(report.toEmailString()).append("\n");
+            LawEnforcer.watchdog().end("mine");
+            LawEnforcer.record("mine", "end");
             bus.publish("mine_complete", report);
         } catch (Exception e) {
+            LawEnforcer.watchdog().end("mine");
+            LawEnforcer.record("mine", "cancel", String.valueOf(e.getMessage()));
             bus.publish("phase_failed", "mine: " + e.getMessage());
         }
     }
 
     private void runDeploy() {
+        LawEnforcer.record("deploy", "begin");
+        LawEnforcer.watchdog().begin("deploy");
         try {
             SuggestionRegistry reg = new SuggestionRegistry(suggestionsPath);
             DeployOrchestrator deployer = new DeployOrchestrator(repoPath, gateKeeper);
             var report = deployer.runDeployCycle(reg, repoPath);
             cycleLog.append("deploy: ").append(report.toEmailString()).append("\n");
+            LawEnforcer.watchdog().end("deploy");
+            LawEnforcer.record("deploy", "end");
             bus.publish("deploy_complete", report);
         } catch (Exception e) {
+            LawEnforcer.watchdog().end("deploy");
+            LawEnforcer.record("deploy", "cancel", String.valueOf(e.getMessage()));
             bus.publish("phase_failed", "deploy: " + e.getMessage());
         }
     }
 
     private void runTune() {
+        LawEnforcer.record("tune", "begin");
+        LawEnforcer.watchdog().begin("tune");
         try {
             LoRATuner tuner = new LoRATuner(adapterRegistry);
             var report = tuner.runTuningCycle();
             cycleLog.append("tune: ").append(report.toEmailString()).append("\n");
+            LawEnforcer.watchdog().end("tune");
+            LawEnforcer.record("tune", "end");
             bus.publish("tune_complete", report);
         } catch (Exception e) {
+            LawEnforcer.watchdog().end("tune");
+            LawEnforcer.record("tune", "cancel", String.valueOf(e.getMessage()));
             bus.publish("phase_failed", "tune: " + e.getMessage());
         }
     }
 
     private void runGrow() {
+        LawEnforcer.record("grow", "begin");
+        LawEnforcer.watchdog().begin("grow");
         try {
             GuiGardener gardener = new GuiGardener();
             cycleLog.append("grow: ").append(gardener.getComponentMapString()).append("\n");
+            LawEnforcer.watchdog().end("grow");
+            LawEnforcer.record("grow", "end");
             bus.publish("grow_complete", gardener);
         } catch (Exception e) {
+            LawEnforcer.watchdog().end("grow");
+            LawEnforcer.record("grow", "cancel", String.valueOf(e.getMessage()));
             bus.publish("phase_failed", "grow: " + e.getMessage());
         }
     }
