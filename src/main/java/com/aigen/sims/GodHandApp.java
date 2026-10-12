@@ -81,6 +81,10 @@ public class GodHandApp extends Application {
     private static final String OPS_HEALTH_DIR = System.getProperty("user.home")
             + File.separator + ".aria" + File.separator + "engine";
     private static final long OPS_CACHE_MS = 60_000;
+    // GODHAND-3 (t_22bb44a7): hardening — measured snapshot wall time under full-box load is
+    // ~29 s (model warmups); 25 s timed out while the handler thread still blocked ~29 s and the
+    // degraded doc stayed sticky for a full cache window. Budget 40 s with headroom, named constant.
+    private static final int OPS_SNAPSHOT_TIMEOUT_S = 40;
     private static final java.net.http.HttpClient opsHttpClient = java.net.http.HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final Object opsCacheLock = new Object();
@@ -874,7 +878,7 @@ public class GodHandApp extends Application {
                         pb.directory(engine.getParentFile());
                         pb.redirectErrorStream(false);
                         Process p = pb.start();
-                        boolean finished = p.waitFor(25, java.util.concurrent.TimeUnit.SECONDS);
+                        boolean finished = p.waitFor(OPS_SNAPSHOT_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS);
                         if (finished) {
                             String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
                             String err = new String(p.getErrorStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
@@ -886,7 +890,7 @@ public class GodHandApp extends Application {
                             }
                         } else {
                             p.destroyForcibly();
-                            opsLastError = "snapshot timeout (25s)";
+                            opsLastError = "snapshot timeout (" + OPS_SNAPSHOT_TIMEOUT_S + "s)";
                         }
                     } else {
                         opsLastError = "ops_health.py not found at " + OPS_HEALTH_DIR;
