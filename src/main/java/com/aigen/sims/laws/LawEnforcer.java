@@ -35,6 +35,11 @@ public final class LawEnforcer {
 
     private static volatile PhaseWatchdog watchdog = new PhaseWatchdog();
     private static volatile HexflowLedger ledger = null;
+    // GODHAND-3 L2 poller: only AutoLoop's JVM runs pipeline phases, so the
+    // watchdog stall check must live there too. One daemon thread per JVM.
+    private static volatile Thread watchdogPoller = null;
+    /** Test seam: poll cadence in ms (prod = 30 000). Package-private on purpose. */
+    static volatile long watchdogPollMs = 30_000L;
 
     private LawEnforcer() { /* static-only */ }
 
@@ -59,6 +64,65 @@ public final class LawEnforcer {
             ledger = null; // law 7: ledger off ≠ instance off
             System.err.println("[LAWS] hexflow ledger unavailable (degraded): " + t);
         }
+    }
+
+    /**
+     * GODHAND-3 L2/L6 harness mode: attach ONLY the hexflow ledger in a JVM
+     * that did NOT boot() (i.e. AutoLoop, where the L1 lock belongs to the
+     * GodHand dashboard instance). Phase phase-transition records then reach
+     * the same shared ledger chain instead of being silently dropped.
+     * Never acquires the lock, never binds, idempotent.
+     */
+    public static void attachLedgerOnly() {
+        if (ledger == null) openLedger();
+    }
+
+    /**
+     * GODHAND-3 L2: start the watchdog stall poller (daemon, 30 s cadence).
+     * The poller never kills threads — PhaseWatchdog cancellation is a recorded
+     * status change; here it is logged and pushed to the ledger for the
+     * pipeline runner to observe on its next drain. Idempotent.
+     */
+    public static synchronized void startWatchdogPoller() {
+        if (watchdogPoller != null && watchdogPoller.isAlive()) return;
+        watchdogPoller = new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(watchdogPollMs);
+                    PhaseWatchdog wd = watchdog; // snapshot
+                    for (PhaseWatchdog.Cancel c : wd.check()) {
+                        System.err.println("[LAWS] " + c);
+                        record(c.phase, "cancel", c.reason);
+                    }
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return; // JVM shutting down
+                } catch (Throwable t) {
+                    System.err.println("[LAWS] watchdog poller hiccup (continuing): " + t);
+                }
+            }
+        }, "godhand-watchdog-poller");
+        watchdogPoller.setDaemon(true);
+        watchdogPoller.start();
+        System.out.println("[LAWS] L2 watchdog poller started (" + (watchdogPollMs / 1000) + "s cadence, daemon)");
+    }
+
+    /** Test seam: stops the poller thread (test class shutdown only). */
+    static void stopWatchdogPollerForTest() {
+        Thread t = watchdogPoller;
+        watchdogPoller = null;
+        if (t != null) t.interrupt(); // loop sees InterruptedException and returns
+    }
+
+    /** Test seam: force ledger state (null = detached). */
+    static void setLedgerForTest(HexflowLedger l) {
+        ledger = l;
+    }
+
+    /** Test seam: poller thread liveness (test proves error-survival). */
+    static boolean watchdogPollerAliveForTest() {
+        Thread t = watchdogPoller;
+        return t != null && t.isAlive();
     }
 
     // ---- LAW 5 admission ----

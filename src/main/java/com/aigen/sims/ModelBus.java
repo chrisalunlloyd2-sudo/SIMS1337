@@ -202,13 +202,17 @@ public final class ModelBus {
                     log.error("[MODELBUS] DONE error path: {}", e.toString());
                     job.result = BUSY;
                 }
+            } finally {
+                // GODHAND-3 L4: residency must be freed on EVERY exit path — an
+                // Error escaping the catch above would otherwise wedge the
+                // resident cap at full forever (admission permanently denies).
+                LawEnforcer.residencyRelease(job.embed ? 0 : 1);
+                LawEnforcer.record("modelbus", "done", job.model + " via " + via);
             }
             activeModel = job.model;
             log.info("[MODELBUS] DONE {} via {} in {}ms chars={} ok={}",
                     job.model, via, System.currentTimeMillis() - t0,
                     job.result.length(), isRealText(job.result));
-            LawEnforcer.residencyRelease(job.embed ? 0 : 1); // LAW 4 residency freed
-            LawEnforcer.record("modelbus", "done", job.model + " via " + via);
             job.done.countDown();
         }
     }

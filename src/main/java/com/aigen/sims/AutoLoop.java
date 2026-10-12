@@ -27,6 +27,13 @@ public class AutoLoop {
             System.err.println("⚠️  WebDashboard failed to start (continuing headless): " + e.getMessage());
         }
 
+        // GODHAND-3 L2/L6: AutoLoop's JVM runs the pipeline phases, so it must be
+        // the JVM that (a) feeds the shared hexflow ledger and (b) polls the
+        // watchdog so stalled phases actually cancel. The L1 lock stays with the
+        // GodHand dashboard instance — this harness-mode attach does NOT take it.
+        com.aigen.sims.laws.LawEnforcer.attachLedgerOnly();
+        com.aigen.sims.laws.LawEnforcer.startWatchdogPoller();
+
         System.out.println("🔄 SIMS1337 — Autonomous Loop Started");
         System.out.println("   Interval: " + (intervalMs / 60000) + " minutes");
         System.out.println("   Phases: mine → deploy → tune → grow (dependency-triggered via EventBus)\n");

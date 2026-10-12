@@ -51,9 +51,13 @@ public final class HexflowLedger {
 
     /** Default location: AIGEN_SYS/mindpalace_memory/godhand/hexflow_ledger.jsonl */
     public static HexflowLedger defaultLedger() {
+        String p = System.getProperty("com.aigen.sims.hexflowledger");
+        if (p != null && !p.isEmpty()) {
+            return new HexflowLedger(Paths.get(p));
+        }
         String home = System.getProperty("user.home", ".");
-        Path p = Paths.get(home, "AIGEN_SYS", "mindpalace_memory", "godhand", "hexflow_ledger.jsonl");
-        return new HexflowLedger(p);
+        Path path = Paths.get(home, "AIGEN_SYS", "mindpalace_memory", "godhand", "hexflow_ledger.jsonl");
+        return new HexflowLedger(path); // GODHAND-3 L6: appends only, never rewrites
     }
 
     /** Rebuild seq + chain from the existing file so appends across restarts continue it. */
