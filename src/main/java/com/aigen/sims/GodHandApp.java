@@ -87,6 +87,14 @@ public class GodHandApp extends Application {
     private static final int OPS_SNAPSHOT_TIMEOUT_S = 40;
     private static final java.net.http.HttpClient opsHttpClient = java.net.http.HttpClient.newBuilder()
             .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+    // GODHAND-4 (t_ebf78b69): /api/jobs thin client of the ARIA job engine (job_server.py, loopback).
+    // Same shape as the ops thin client: live engine first, subprocess fallback second.
+    private static final String JOBS_URL = "http://127.0.0.1:1339/api/jobs";
+    private static final long JOBS_CACHE_MS = 10_000;
+    private final Object jobsCacheLock = new Object();
+    private String jobsCacheJson = null;
+    private long jobsCacheAtMs = 0L;
+    private String jobsCacheSource = "none";
     private final Object opsCacheLock = new Object();
     private String opsCacheJson = null;
     private long opsCacheAtMs = 0L;
@@ -814,7 +822,19 @@ public class GodHandApp extends Application {
                         + "<img src='/api/hexmap' width='480' height='300'>"
                         + "<p><a href='/api/status' style='color:#00d9ff'>/api/status</a> "
                         + "<a href='/api/ops' style='color:#00d9ff'>/api/ops</a> "
-                        + "<a href='/api/hexflow' style='color:#00d9ff'>/api/hexflow</a></p>"
+                        + "<a href='/api/hexflow' style='color:#00d9ff'>/api/hexflow</a> "
+                        + "<a href='/api/jobs' style='color:#00d9ff'>/api/jobs</a></p>"
+                        + "<h2>job dashboard (GODHAND-4)</h2>"
+                        + "<p><span style='color:#00d9ff'>queue</span> ";
+            String jobsDoc = getJobsJson();
+            html = html
+                        + opsField(jobsDoc, "depth") + "/" + opsField(jobsDoc, "cap")
+                        + " &middot; running " + opsField(jobsDoc, "running")
+                        + " &middot; oldest wait " + opsField(jobsDoc, "oldest_wait_s") + "s"
+                        + " &middot; stall alarm " + opsField(jobsDoc, "alarm")
+                        + " &middot; paused " + opsField(jobsDoc, "paused_all")
+                        + " &middot; drain " + opsField(jobsDoc, "drain")
+                        + " &middot; source " + jobsCacheSource + "</p>"
                         + "<pre>" + liveStatusHtml() + "</pre>"
                         + "</body></html>";
                     byte[] response = html.getBytes("UTF-8");
@@ -842,10 +862,83 @@ public class GodHandApp extends Application {
                 }
             });
 
+            // GODHAND-4 (t_ebf78b69): /api/jobs — thin client of the ARIA job engine
+            // (job_server.py on 1339; subprocess fallback like ops). Pure GET, no controls.
+            dashboardServer.createContext("/api/jobs", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    String doc = getJobsJson();
+                    byte[] response = doc.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.getResponseHeaders().set("Cache-Control", "no-cache");
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                    exchange.close();
+                }
+            });
             dashboardServer.setExecutor(null);
             dashboardServer.start();
             System.out.println("[GODHAND DASHBOARD] Online at http://localhost:" + dashPort + " (loopback-only)");
         } catch(Exception e) { e.printStackTrace(); }
+    }
+
+    /** GODHAND-4: latest /api/jobs doc from the ARIA job engine, cached 10 s. Tries the live engine
+     *  on 1339 first, then `python job_server.py view` as a subprocess fallback. Never throws. */
+    private String getJobsJson() {
+        synchronized (jobsCacheLock) {
+            long now = System.currentTimeMillis();
+            if (jobsCacheJson != null && (now - jobsCacheAtMs) < JOBS_CACHE_MS) {
+                return jobsCacheJson;
+            }
+            String doc = null;
+            String source = "none";
+            try {
+                java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(JOBS_URL))
+                    .timeout(java.time.Duration.ofSeconds(3)).GET().build();
+                java.net.http.HttpResponse<String> resp = opsHttpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                if (resp.statusCode() == 200 && resp.body() != null && resp.body().contains("\"iso\"")) {
+                    doc = resp.body();
+                    source = "engine:1339";
+                }
+            } catch (Exception ignored) { /* engine dark — fall through */ }
+            if (doc == null) {
+                try {
+                    File engine = new File(OPS_HEALTH_DIR, "job_server.py");
+                    if (engine.isFile()) {
+                        ProcessBuilder pb = new ProcessBuilder("python", engine.getAbsolutePath(), "view");
+                        pb.directory(engine.getParentFile());
+                        pb.redirectErrorStream(false);
+                        Process p = pb.start();
+                        boolean finished = p.waitFor(15, java.util.concurrent.TimeUnit.SECONDS);
+                        if (finished) {
+                            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                            if (p.exitValue() == 0 && out.startsWith("{")) {
+                                doc = out;
+                                source = "subprocess:job_server";
+                            } else {
+                                opsLastError = "job_server stdout not JSON";
+                            }
+                        } else {
+                            p.destroyForcibly();
+                            opsLastError = "job_server view timeout (15s)";
+                        }
+                    }
+                } catch (Exception e) {
+                    opsLastError = "jobs subprocess: " + e.getMessage();
+                }
+            }
+            if (doc != null) {
+                jobsCacheJson = doc;
+                jobsCacheSource = source;
+            } else if (jobsCacheJson == null) {
+                jobsCacheJson = "{\"ok\":false,\"iso\":\"" + java.time.LocalDateTime.now().toString()
+                    + "\",\"source\":\"unavailable\",\"cap\":16,\"depth\":0,\"error\":\"engine dark\"}";
+                jobsCacheSource = "unavailable";
+            }
+            jobsCacheAtMs = now;
+            return jobsCacheJson;
+        }
     }
 
     /** Latest ops_health snapshot as a JSON document, cached 60 s. Tries the live engine on 11436 first,
