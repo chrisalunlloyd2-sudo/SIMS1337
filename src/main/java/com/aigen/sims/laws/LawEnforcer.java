@@ -90,9 +90,11 @@ public final class LawEnforcer {
                 try {
                     Thread.sleep(watchdogPollMs);
                     PhaseWatchdog wd = watchdog; // snapshot
-                    for (PhaseWatchdog.Cancel c : wd.check()) {
-                        System.err.println("[LAWS] " + c);
-                        record(c.phase, "cancel", c.reason);
+                    if (wd != null) { // test seams may null it mid-run: skip tick, don't spam
+                        for (PhaseWatchdog.Cancel c : wd.check()) {
+                            System.err.println("[LAWS] " + c);
+                            record(c.phase, "cancel", c.reason);
+                        }
                     }
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
