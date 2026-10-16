@@ -73,6 +73,16 @@ public class GodHandApp extends Application {
             });
     private HttpServer dashboardServer;
 
+    // === GODHAND-2C (t_63a51063): read-only public phone UI ===
+    // Ported from sims-java-neo-fx @ bf7ba39 (mobile dashboardHandler ~L2370-2585).
+    // Binds 0.0.0.0:1338 in GUI mode ONLY (headless never opens it — selftest asserts).
+    // READ-ONLY by construction: the public server registers ONLY the "/" context
+    // serving the mobile HTML page; every other path (incl. /api/*, /index.html)
+    // answers 404. The loopback 8899 dashboard above is untouched (LAW 3 governs it);
+    // the public bind is the deliberate, task-mandated exposure.
+    private static final int PUBLIC_UI_PORT = 1338;
+    private HttpServer publicServer;
+
     // === OPS HEALTH PANEL (GODHAND-2: thin client of ~/.aria/engine/ops_health.py) ===
     // ARIA's ops_health engine "serve" mode answers /api/ops on 127.0.0.1:11436 (loopback-only, 60s refresh).
     // GodHand proxies that document; when the engine is dark it falls back to `python ops_health.py snapshot`
@@ -92,14 +102,20 @@ public class GodHandApp extends Application {
     private static final String JOBS_URL = "http://127.0.0.1:1339/api/jobs";
     private static final long JOBS_CACHE_MS = 10_000;
     private final Object jobsCacheLock = new Object();
-    private String jobsCacheJson = null;
-    private long jobsCacheAtMs = 0L;
+    private volatile String jobsCacheJson = null;
+    private volatile long jobsCacheAtMs = 0L;
     private String jobsCacheSource = "none";
     private final Object opsCacheLock = new Object();
-    private String opsCacheJson = null;
-    private long opsCacheAtMs = 0L;
+    private volatile String opsCacheJson = null;
+    private volatile long opsCacheAtMs = 0L;
     private String opsCacheSource = "none";
     private volatile String opsLastError = "";
+    // GODHAND-2C: last-served mirrors of the ops/jobs thin clients for the phone page.
+    // HTTP threads only READ these (never grab the thin-client locks); a single
+    // background warmer refreshes them so a cold/down engine never blocks a request.
+    private volatile String lastOpsDoc = null;
+    private volatile String lastJobsDoc = null;
+    private final java.util.concurrent.atomic.AtomicBoolean phoneWarmRunning = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private double timePulse = 0;
     private int zElevation = 0;
@@ -879,7 +895,254 @@ public class GodHandApp extends Application {
             dashboardServer.setExecutor(null);
             dashboardServer.start();
             System.out.println("[GODHAND DASHBOARD] Online at http://localhost:" + dashPort + " (loopback-only)");
+
+            // === GODHAND-2C (t_63a51063): public read-only phone UI on 0.0.0.0:1338 ===
+            // GUI mode only — headless stays loopback-only (dashboard + tests never bind LAN).
+            publicServer = startPublicPhoneUi(!headlessServer);
         } catch(Exception e) { e.printStackTrace(); }
+    }
+
+    /**
+     * GODHAND-2C (t_63a51063): starts the read-only public phone UI when running in
+     * GUI mode; returns null in headless mode (loopback-only instance — the selftest
+     * asserts headless NEVER binds 1338). The server registers ONLY the "/" context
+     * (mobile HTML); every other path is 404. Test seam: port overridable via
+     * -Dcom.aigen.sims.publicPort (production default stays 1338).
+     *
+     * @param guiMode true in GUI/launcher mode, false in headless server mode
+     * @return the started {@link HttpServer}, or null when skipped/failed
+     */
+    HttpServer startPublicPhoneUi(boolean guiMode) {
+        if (!guiMode) {
+            System.out.println("[GODHAND-2C] Headless mode: public phone UI :1338 skipped (loopback-only instance)");
+            return null;
+        }
+        int publicPort = Integer.getInteger("com.aigen.sims.publicPort", PUBLIC_UI_PORT);
+        try {
+            HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", publicPort), 0);
+            server.createContext("/", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    if (!"/".equals(exchange.getRequestURI().getPath())) {
+                        // READ-ONLY: no API endpoints, no assets — everything else 404s.
+                        exchange.sendResponseHeaders(404, -1);
+                        exchange.close();
+                        return;
+                    }
+                    byte[] page;
+                    try {
+                        page = publicPhonePageHtml();
+                    } catch (Throwable t) {
+                        // Never let a thin-client hiccup blank the page — degraded static card.
+                        page = ("<html><head><title>SIMS1337</title></head><body>"
+                                + "<h1>SIMS1337</h1><p>read-only public UI (degraded snapshot)</p></body></html>")
+                                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                    exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                    exchange.sendResponseHeaders(200, page.length);
+                    exchange.getResponseBody().write(page);
+                    exchange.close();
+                }
+            });
+            server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
+            server.start();
+            System.out.println("[GODHAND-2C] Public phone UI online at http://0.0.0.0:" + publicPort + " (read-only)");
+            // Warm the thin-client caches now so the first phone open is already warm.
+            warmPhoneCachesIfNeeded();
+            synchronized (godChat) {
+                if (godChat.size() > 50) godChat.remove(0);
+                godChat.add("[GODHAND-2C] Public UI on port " + publicPort + " — open to LAN (read-only)");
+            }
+            return server;
+        } catch (java.net.BindException be) {
+            System.out.println("[GODHAND-2C] Port " + publicPort + " occupied — public UI not started: " + be.getMessage());
+            return null;
+        } catch (IOException e) {
+            System.out.println("[GODHAND-2C] Public UI failed to start: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * GODHAND-2C (t_63a51063): mobile phone page for the public 1338 UI, ported from
+     * sims-java-neo-fx @ bf7ba39 (dashboardHandler, mobile HTML). Read-only static
+     * snapshot of the same live state the 8899 dashboard proxies (ops/hexflow/jobs
+     * thin-client helpers) — no API endpoints, no POST controls, auto-meta-refresh.
+     * Headless-safe: never calls JavaFX, never throws — any failure renders a
+     * degraded card instead of a stack trace.
+     */
+    private byte[] publicPhonePageHtml() {
+        StringBuilder html = new StringBuilder(16_384);
+        html.append("<!DOCTYPE html><html lang='en'><head>");
+        html.append("<meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0,user-scalable=no'>");
+        html.append("<meta name='apple-mobile-web-app-capable' content='yes'><meta name='theme-color' content='#050510'>");
+        html.append("<meta http-equiv='refresh' content='30'>");
+        html.append("<title>SIMS1337</title><style>");
+        html.append("*{box-sizing:border-box;margin:0;padding:0}");
+        html.append("body{background:#050510;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',monospace;font-size:13px;line-height:1.4;min-height:100vh}");
+        html.append(".header{background:linear-gradient(135deg,#0a0a20,#16213e);padding:12px 16px;position:sticky;top:0;z-index:10;border-bottom:2px solid #00d9ff;display:flex;justify-content:space-between;align-items:center}");
+        html.append(".header h1{font-size:16px;color:#00d9ff;margin:0}");
+        html.append(".header .status-dot{width:10px;height:10px;border-radius:50%;background:#00ff88;display:inline-block;margin-right:6px;animation:pulse 2s infinite}");
+        html.append("@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}");
+        html.append(".card{background:#0a0a20;border:1px solid #1a1a40;border-radius:10px;padding:12px;margin:8px}");
+        html.append(".card h2{font-size:14px;color:#00d9ff;margin-bottom:8px}");
+        html.append(".metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}");
+        html.append(".metric-item{background:#0d0d2a;padding:10px;border-radius:8px;text-align:center}");
+        html.append(".metric-item .val{font-size:20px;font-weight:bold;color:#00ff88}");
+        html.append(".metric-item .lbl{font-size:10px;color:#666;margin-top:2px}");
+        html.append(".badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:bold}");
+        html.append(".badge-ok{background:#003300;color:#00ff88}");
+        html.append(".badge-warn{background:#330000;color:#ff6b6b}");
+        html.append(".badge-info{background:#001a33;color:#00d9ff}");
+        html.append(".agent-card{display:flex;align-items:center;gap:10px;padding:10px;background:#0d0d2a;border-radius:8px;margin:4px 0}");
+        html.append(".agent-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}");
+        html.append(".agent-name{font-size:13px;font-weight:bold}");
+        html.append(".agent-pos{font-size:10px;color:#666}");
+        html.append(".log-line{font-size:10px;color:#666;padding:2px 0;border-bottom:1px solid #0d0d2a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}");
+        html.append(".refresh-bar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#0a0a20;font-size:10px;color:#444;position:sticky;bottom:0;border-top:1px solid #1a1a40}");
+        html.append(".model-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a40}");
+        html.append(".model-name{font-size:12px;color:#e0e0e0}");
+        html.append("</style></head><body>");
+
+        // Header
+        html.append("<div class='header'><div><span class='status-dot'></span><h1 style='display:inline'>SIMS1337</h1></div>");
+        html.append("<span style='font-size:10px;color:#666'>v0.25.0 read-only</span></div>");
+
+        // Overview metrics — live counts from canonical state (kg + jobs + ops).
+        // GODHAND-2C: warm the thin-client caches in the background and serve the last
+        // known docs — the phone thread never blocks on a cold/down engine (both GETs
+        // can otherwise serialize ~2s HTTP timeouts + a 40s subprocess on first hit).
+        PhoneWarm warm = warmPhoneCachesIfNeeded();
+        String opsDoc = warm.opsAfter;
+        String opsViolations = opsViolationsJson(opsDoc);
+        boolean opsBad = !"[]".equals(opsViolations);
+        String opsOk = opsField(opsDoc, "ok");
+        String opsIso = opsField(opsDoc, "iso");
+        String hexflow = hexflowFromOps(opsDoc);
+        String jobsDoc = warm.jobsAfter;
+        html.append("<div class='card'><h2>📊 Overview</h2><div class='metric-grid'>");
+        html.append("<div class='metric-item'><div class='val'>").append(kg != null ? kg.size() : 23).append("</div><div class='lbl'>KG Nodes</div></div>");
+        html.append("<div class='metric-item'><div class='val'>").append(opsField(jobsDoc, "depth")).append("</div><div class='lbl'>Job Queue</div></div>");
+        html.append("<div class='metric-item'><div class='val'>").append(agents.size()).append("</div><div class='lbl'>Agents</div></div>");
+        html.append("<div class='metric-item'><div class='val'>").append(godChat.size()).append("</div><div class='lbl'>Log Lines</div></div>");
+        html.append("</div></div>");
+
+        // System badges (from the same cached ops snapshot the 8899 dashboard serves via /api/status)
+        html.append("<div class='card'><h2>🔧 System</h2>");
+        html.append("<span class='badge ").append("true".equals(opsOk) ? "badge-ok'>OPS OK" : "badge-warn'>OPS VIOLATIONS").append("</span> ");
+        html.append("<span class='badge badge-info'>source: ").append(opsCacheSource).append("</span> ");
+        html.append("<span class='badge badge-info'>").append(opsIso).append("</span> ");
+        html.append("<span class='badge'>").append(opsLastError == null || opsLastError.isEmpty() ? "no errors" : "warn").append("</span>");
+        html.append("</div>");
+
+        // Ops law violations card (read-only mirror of the 8899 ops panel)
+        if (opsBad) {
+            html.append("<div class='card'><h2>⚠ Active Violations</h2>");
+            html.append("<div style='font-size:10px;color:#ff6b6b;white-space:pre-wrap'>").append(opsViolations).append("</div></div>");
+        }
+
+        // Hexflow stage grid (INGEST..COMMIT) — the SHUTTLE view, same counts as /api/hexflow
+        html.append("<div class='card'><h2>⬡ Hexflow (SHUTTLE)</h2><div class='metric-grid'>");
+        String[] stages = {"INGEST", "SYNTH", "RESOLVE", "MUTATE", "VERIFY", "COMMIT"};
+        for (String stage : stages) {
+            int cnt = 0;
+            int idx = hexflow.indexOf("\\\"" + stage + "\\\":");
+            if (idx >= 0) {
+                int vs = idx + ("\\\"" + stage + "\\\":").length();
+                StringBuilder num = new StringBuilder();
+                while (vs < hexflow.length() && Character.isDigit(hexflow.charAt(vs))) { num.append(hexflow.charAt(vs)); vs++; }
+                try { cnt = Integer.parseInt(num.toString()); } catch (NumberFormatException ignored) { cnt = 0; }
+            }
+            html.append("<div class='metric-item'><div class='val'>").append(cnt).append("</div><div class='lbl'>").append(stage).append("</div></div>");
+        }
+        html.append("</div></div>");
+
+        // Agents — live hex positions from the canonical inner Agent state (fallback coords when GUI grid not yet initialized)
+        html.append("<div class='card'><h2>👥 Agents</h2>");
+        String[][] agentData = {
+            {"Agent Alpha", "#00ff88", "0,0"},
+            {"Agent Beta", "#00d9ff", "3,-2"},
+            {"Agent Gamma", "#ffaa00", "-3,2"},
+            {"Agent Delta", "#ff6b35", "-1,-3"}
+        };
+        for (int i = 0; i < agentData.length; i++) {
+            String[] a = agentData[i];
+            String pos = a[2];
+            if (i < agents.size() && agents.get(i) != null) pos = agents.get(i).q + "," + agents.get(i).r;
+            html.append("<div class='agent-card'>");
+            html.append("<div class='agent-dot' style='background:").append(a[1]).append(";box-shadow:0 0 8px ").append(a[1]).append("'></div>");
+            html.append("<div style='flex:1'><div class='agent-name' style='color:").append(a[1]).append("'>").append(a[0]).append("</div>");
+            html.append("<div class='agent-pos'>Hex ").append(pos).append("</div></div></div>");
+        }
+        html.append("</div>");
+
+        // Recent activity — tail of godChat, same source the 8899 root page serves via liveStatusHtml
+        html.append("<div class='card'><h2>📡 Recent Activity</h2>");
+        int recentStart = Math.max(0, godChat.size() - 15);
+        for (int i = recentStart; i < godChat.size(); i++) {
+            html.append("<div class='log-line'>").append(String.valueOf(godChat.get(i))
+                .replace("<", "&lt;").replace(">", "&gt;")).append("</div>");
+        }
+        html.append("</div></div>");
+
+        // Refresh bar
+        html.append("<div class='refresh-bar'>");
+        html.append("<span>🕐 ").append(java.time.LocalTime.now().toString().substring(0, 8)).append("</span>");
+        html.append("<button onclick='location.reload()'>🔄 Refresh</button>");
+        html.append("</div>");
+
+        html.append("</body></html>");
+        return html.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    /** GODHAND-2C test hook: render the phone page directly without an HTTP hop. */
+    byte[] publicPhonePageForTest() {
+        return publicPhonePageHtml();
+    }
+
+    /** GODHAND-2C: snapshot of the ops/jobs docs the phone page renders (never blocks the request). */
+    record PhoneWarm(String opsAfter, String jobsAfter) { }
+
+    /**
+     * GODHAND-2C: serve the phone page from last-known thin-client docs and warm stale
+     * caches in the background. Pure lock-free volatile reads — never grabs jobsCacheLock/
+     * opsCacheLock (a warmer inside getOpsSnapshotJson can hold opsCacheLock up to ~40s
+     * on its subprocess; that must never block a phone request). If the docs are missing
+     * or stale, kicks ONE daemon warmer (single-flight) and serves the last-known-or-
+     * degraded shape immediately; the next meta-refresh (30s) picks up the fresh doc.
+     */
+    PhoneWarm warmPhoneCachesIfNeeded() {
+        long now = System.currentTimeMillis();
+        String opsDoc = lastOpsDoc;
+        String jobsDoc = lastJobsDoc;
+        // Cache age probe: volatile timestamps only — fully lock-free, no contact with
+        // jobsCacheLock/opsCacheLock while a warmer holds them on its subprocess.
+        boolean jobsFresh = jobsCacheJson != null && (now - jobsCacheAtMs) < JOBS_CACHE_MS;
+        boolean opsFresh = opsCacheJson != null && (now - opsCacheAtMs) < OPS_CACHE_MS;
+        if (!jobsFresh || !opsFresh) {
+            if (phoneWarmRunning.compareAndSet(false, true)) {
+                Thread w = new Thread(() -> {
+                    try {
+                        getOpsSnapshotJson();
+                        getJobsJson();
+                    } finally {
+                        phoneWarmRunning.set(false);
+                    }
+                }, "godhand-phone-warm");
+                w.setDaemon(true);
+                w.start();
+            }
+            opsDoc = opsDoc != null ? opsDoc : degradedPhoneDoc("ops");
+            jobsDoc = jobsDoc != null ? jobsDoc : degradedPhoneDoc("jobs");
+        }
+        return new PhoneWarm(opsDoc, jobsDoc);
+    }
+    private static String degradedPhoneDoc(String kind) {
+        String iso = java.time.LocalDateTime.now().toString();
+        if ("jobs".equals(kind)) {
+            return "{\"ok\":false,\"iso\":\"" + iso + "\",\"source\":\"unavailable\",\"cap\":16,\"depth\":0,\"error\":\"warming\"}";
+        }
+        return "{\"ok\":false,\"iso\":\"" + iso + "\",\"source\":\"unavailable\",\"error\":\"warming\",\"violations\":[],\"hexflow\":null}";
     }
 
     /** GODHAND-4: latest /api/jobs doc from the ARIA job engine, cached 10 s. Tries the live engine
@@ -937,6 +1200,8 @@ public class GodHandApp extends Application {
                 jobsCacheSource = "unavailable";
             }
             jobsCacheAtMs = now;
+            // GODHAND-2C: mirror for the lock-free phone-page path (volatile write under this lock).
+            lastJobsDoc = jobsCacheJson;
             return jobsCacheJson;
         }
     }
@@ -1004,6 +1269,8 @@ public class GodHandApp extends Application {
                 opsCacheSource = "unavailable";
             }
             opsCacheAtMs = now;
+            // GODHAND-2C: mirror for the lock-free phone-page path (volatile write under this lock).
+            lastOpsDoc = opsCacheJson;
             return opsCacheJson;
         }
     }
@@ -1599,6 +1866,8 @@ public class GodHandApp extends Application {
         modelExecutor.shutdownNow();
         threadPool.shutdownNow();
         if(dashboardServer != null) dashboardServer.stop(0);
+        // GODHAND-2C: cleanly stop the public phone UI (GUI lifecycle only).
+        if(publicServer != null) publicServer.stop(0);
     }
 
     // --- Draggable Sub-Window Custom Component ---
