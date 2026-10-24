@@ -21,7 +21,7 @@ Supported models:
 
 import subprocess, sys, os, json, urllib.request, hashlib, time
 
-OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_HOST = "http://127.0.0.1:11435"
 
 # HuggingFace GGUF repos and filenames
 GGUF_MODELS = {
@@ -123,7 +123,7 @@ PARAMETER num_predict 256
 
 def main():
     if not check_ollama():
-        print("ERROR: Ollama not running at localhost:11434")
+        print("ERROR: orchestrator gateway not running at 127.0.0.1:11435")
         sys.exit(1)
     
     target = sys.argv[1] if len(sys.argv) > 1 else "all"

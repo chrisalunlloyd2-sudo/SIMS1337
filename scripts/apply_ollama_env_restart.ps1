@@ -64,7 +64,7 @@ Write-Host '=== 4. wait for API ==='
 $up = $false
 for ($i = 0; $i -lt 18; $i++) {
   Start-Sleep -Seconds 5
-  try { $v = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/version' -TimeoutSec 4; $up = $true; break } catch {}
+  try { $v = Invoke-RestMethod -Uri 'http://127.0.0.1:11435/api/version' -TimeoutSec 4; $up = $true; break } catch {}
 }
 if (-not $up) { Write-Host 'API never came up - err log tail:'; Get-Content $logErr -Tail 15; exit 3 }
 Write-Host "API UP: $($v.version)"

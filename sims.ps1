@@ -4,7 +4,7 @@
 param([string]$Cmd, [string]$Arg1, [string]$Arg2, [string]$Arg3)
 
 $API = "http://localhost:8899"
-$OLLAMA = "http://localhost:11434/api/generate"
+$OLLAMA = "http://127.0.0.1:11435/api/generate"
 $DATA = "$PSScriptRoot\logs\sims-state.json"
 
 function api { param($path) try { (Invoke-RestMethod "$API$path" -TimeoutSec 5) } catch { $null } }

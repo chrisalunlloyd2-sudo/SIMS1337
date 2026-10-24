@@ -54,7 +54,7 @@ app.post('/chat', async (req, res) => {
     const { prompt, model } = req.body;
     const selectedModel = model || 'qwen2.5:3b';
     try {
-        const ollamaRes = await fetch('http://127.0.0.1:11434/api/generate', {
+        const ollamaRes = await fetch('http://127.0.0.1:11435/api/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: selectedModel, prompt, stream: false })
@@ -63,14 +63,14 @@ app.post('/chat', async (req, res) => {
         res.json({ response: data.response, model: selectedModel, duration: data.total_duration });
     } catch (error) {
         console.error('Ollama Error:', error.message);
-        res.status(500).json({ error: 'Ollama connection failed — ensure it is running on port 11434' });
+        res.status(500).json({ error: 'orchestrator gateway connection failed — ensure it is running on port 11435' });
     }
 });
 
 // Models Endpoint
 app.get('/api/models', async (req, res) => {
     try {
-        const ollamaRes = await fetch('http://127.0.0.1:11434/api/tags');
+        const ollamaRes = await fetch('http://127.0.0.1:11435/api/tags');
         const data = await ollamaRes.json();
         res.json(data);
     } catch (error) {

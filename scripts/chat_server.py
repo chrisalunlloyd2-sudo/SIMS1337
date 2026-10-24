@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 chat_server.py — minimal HTTP chat server for the fleet.
-Exposes local models (Ollama :11434 or GGUF :5000) as an OpenAI-style
+Exposes local models (orchestrator gateway :11435 or GGUF :5000) as an OpenAI-style
 /v1/chat/completions endpoint so the desktop/web UI can talk to SLMs.
 
 Usage:
@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import Request, urlopen
 
 class ChatHandler(BaseHTTPRequestHandler):
-    backend_url = "http://localhost:11434"
+    backend_url = "http://127.0.0.1:11435"
     backend = "ollama"
     def log_message(self, *a): pass
 
@@ -73,7 +73,7 @@ def main():
     p.add_argument("--backend-url", default=None)
     args = p.parse_args()
     ChatHandler.backend = args.backend
-    ChatHandler.backend_url = args.backend_url or ("http://localhost:11434" if args.backend == "ollama" else "http://localhost:5000")
+    ChatHandler.backend_url = args.backend_url or ("http://127.0.0.1:11435" if args.backend == "ollama" else "http://localhost:5000")
     print(f"[chat_server] {args.backend} → {ChatHandler.backend_url} | :{args.port}")
     HTTPServer(("0.0.0.0", args.port), ChatHandler).serve_forever()
 
