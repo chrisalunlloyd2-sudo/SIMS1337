@@ -12,7 +12,8 @@
 #                   task not installed yet? falls back to direct Start-Process
 #   sophia         11500, dual-listen loopback + tailnet BY DESIGN (run_sophia.pyw hardcodes
 #                   both listeners; same policy class as hub 9444/1340 in ops_health.py)
-#                   -> task SophiaBots (existing; restart policy patched below)
+#                   -> task Unify-Sophia (same action as owner-locked legacy SophiaBots;
+#                   registered by unify2_install_tasks.ps1)
 #   node_poller    hub :9444        -> task Unify-NodePoller (falls back to pythonw direct start)
 #   crew_loop      gateway :11435   -> NOT supervised (invocation-terminated by design; polled, not restarted)
 #
@@ -126,8 +127,14 @@ function Repair-Orchestrator($listen, [bool]$dryRun) {
 function Repair-Sophia($listen, [bool]$dryRun) {
     $entries = @(if ($listen.ContainsKey(11500)) { $listen[11500] } else { @() })
     if ($entries.Count -gt 0) { return @{ ok = $true; state = 'up'; pid = $entries[0].pid } }
-    if (-not $dryRun) { Start-TaskDetached 'SophiaBots' }
-    return @{ ok = $false; state = 'start_requested'; action = 'Start-ScheduledTask SophiaBots' }
+    if (-not $dryRun) {
+        if (Get-ScheduledTask -TaskName 'Unify-Sophia' -ErrorAction SilentlyContinue) {
+            Start-TaskDetached 'Unify-Sophia'
+        } else {
+            Start-TaskDetached 'SophiaBots'  # legacy task, pre-installer fallback
+        }
+    }
+    return @{ ok = $false; state = 'start_requested'; action = 'Start Unify-Sophia (fallback: SophiaBots)' }
 }
 
 function Repair-NodePoller([bool]$dryRun) {
