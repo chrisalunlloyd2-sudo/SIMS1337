@@ -74,6 +74,7 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 from ctypes import wintypes
 
@@ -165,6 +166,7 @@ _EMBEDDED_POLICY = {
     "banned_name_patterns": ["cloud", "ollama.com", "gpt-oss:120b", "glm-4.6", "kimi"],
     # tier: S|M|L|embed|restricted ; ram_mb, max_tokens, timeout_s honoured here
     "models": {
+        "qwen2.5-coder:0.5b":    {"tier": "S", "ram_mb": 700,  "max_tokens": 256, "timeout_s": 60},
         "qwen2.5:0.5b":          {"tier": "S", "ram_mb": 700,  "max_tokens": 256, "timeout_s": 60},
         "tinyllama:1.1b":        {"tier": "S", "ram_mb": 900,  "max_tokens": 256, "timeout_s": 60},
         "llama3.2:1b":           {"tier": "S", "ram_mb": 1500, "max_tokens": 256, "timeout_s": 90},
@@ -352,6 +354,7 @@ class SingleFlight:
 
     def _process_job(self, caller, job):
         model = job["model"]
+        chat_body = job.get("chat_body")   # native /api/chat passthrough shape
         t0 = time.time()
 
         # ---- snapshot residency + free RAM, then policy decision -------
@@ -406,8 +409,12 @@ class SingleFlight:
         try:
             log_event("MODEL_LOAD_START", model=model, job_id=job["id"],
                       loaded_models=len(names), caller=caller)
-            code, body = self._generate(model, job["prompt"], num_predict,
-                                        timeout_s, num_thread)
+            if chat_body:
+                code, body = self._generate_chat(chat_body, num_predict,
+                                                 timeout_s, num_thread)
+            else:
+                code, body = self._generate(model, job["prompt"], num_predict,
+                                            timeout_s, num_thread)
             self.active_model = model
             names2, _ = ollama_ps()
             self.hot_model = names2[0] if names2 else model
@@ -468,6 +475,28 @@ class SingleFlight:
         return 200, {"response": d.get("response", ""),
                      "total_duration": d.get("total_duration"),
                      "load_duration": d.get("load_duration"),
+                     "eval_count": d.get("eval_count")}
+
+    def _generate_chat(self, chat_body, num_predict, timeout_s, num_thread=None):
+        """One blocking NATIVE /api/chat passthrough with hard timeout.
+        Messages and tools ride verbatim (tool_calls survive for the game);
+        only options are stamped/capped by the gateway. Single-flight only."""
+        opts = dict(chat_body.get("options") or {})
+        opts["num_predict"] = int(num_predict)
+        opts["num_ctx"] = NUM_CTX
+        if num_thread is not None:
+            opts["num_thread"] = int(num_thread)
+        body = dict(chat_body)
+        body["options"] = opts
+        body["stream"] = False
+        req = urllib.request.Request(OLLAMA + "/api/chat",
+                                     data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout_s) as r:
+            d = json.loads(r.read().decode("utf-8", "replace"))
+        return 200, {"message": d.get("message", {}),
+                     "done": d.get("done", True),
+                     "total_duration": d.get("total_duration"),
                      "eval_count": d.get("eval_count")}
 
 
@@ -585,27 +614,64 @@ def handler_for(sf, el):
             if caller not in CALLERS:
                 caller = "batch"
 
-            if path in ("/v1/run", "/api/generate", "/api/chat"):
+            if path in ("/v1/run", "/api/generate"):
                 return self._run_job(path, req, caller)
+            if path == "/api/chat":
+                return self._chat_native(req, caller)
+            if path == "/v1/chat/completions":
+                return self._chat_openai(req, caller)
             if path in ("/v1/embed", "/api/embeddings"):
                 return self._embed(path, req, caller)
+            if path == "/api/show":
+                return self._passthrough_post(path, req)
             return self._json(404, {"error": "not_found"})
 
         # ---- /v1/run + ollama compat ----------------------------------------
+        def _admit(self, caller, job):
+            """Identity policy gate BEFORE enqueue: never queue a banned name.
+            Returns (True, None) or (False, http_response). Identity checks
+            don't depend on residency -> skip /api/ps probe."""
+            ok, why, _caps = model_decision(
+                sf.policy, job["model"], 0,
+                resident=(), game_running=sf._game_flag(), kind="infer")
+            if not ok and identity_deny(why):
+                sf.stats["policy_deny_identity"] += 1
+                log_event("POLICY_DENY", model=job["model"], reason=why, http=403,
+                          caller=caller, stage="prequeue")
+                return False, self._json(403, {"error": "policy_deny",
+                                               "detail": why})
+            return True, None
+
+        def _enqueue_or_429(self, caller, job):
+            c = caller if caller in PRIORITY else "batch"
+            try:
+                sf.submit(caller, job)
+            except queue.Full:
+                sf.stats["reject_queue"] += 1
+                sf.stats["reject_queue_" + c] += 1
+                log_event("QUEUE_REJECT", model=job["model"], reason="queue_full",
+                          caller=caller, depth=QUEUE_CAPS[c])
+                return self._json(429, {"error": "queue_full",
+                                        "detail": (f"{c} queue capacity "
+                                                   f"{QUEUE_CAPS[c]} exceeded; "
+                                                   "back off and resubmit")})
+            return None
+
+        def _wait_out(self, caller, job, model):
+            """Blocked wait for a queued job's result. -> (code, body)."""
+            if not job["done_ev"].wait(timeout=JOB_TIMEOUT_S + 30):
+                sf.stats["timeout"] += 1
+                log_event("JOB_TIMEOUT", model=model, job_id=job["id"],
+                          elapsed_ms=None, reason="client_wait_timeout",
+                          caller=caller)
+                return 504, {"error": "wait_timeout", "job_id": job["id"]}
+            return job["out"] if job["out"] else (500, {"error": "no_result"})
+
         def _run_job(self, path, req, caller):
             model = req.get("model")
             if not model:
                 return self._json(400, {"error": "missing_model"})
             prompt = req.get("prompt")
-            if path == "/api/chat":
-                msgs = req.get("messages") or []
-                if not isinstance(msgs, list) or not msgs:
-                    return self._json(400, {"error": "missing_messages"})
-                parts = []
-                for m in msgs:
-                    if isinstance(m, dict) and m.get("content"):
-                        parts.append(str(m["content"]))
-                prompt = "\n\n".join(parts)
             if not isinstance(prompt, str) or prompt == "":
                 return self._json(400, {"error": "missing_prompt"})
             opts = req.get("options") or {}
@@ -631,53 +697,186 @@ def handler_for(sf, el):
                    "done_ev": threading.Event(),
                    "out": None}
 
-            # identity policy gate BEFORE enqueue: never queue a banned name.
-            # Identity checks don't depend on residency -> skip /api/ps probe.
-            ok, why, _caps = model_decision(
-                sf.policy, model, 0,
-                resident=(), game_running=sf._game_flag(), kind="infer")
-            if not ok and identity_deny(why):
-                sf.stats["policy_deny_identity"] += 1
-                log_event("POLICY_DENY", model=model, reason=why, http=403,
-                          caller=caller, stage="prequeue")
-                return self._json(403, {"error": "policy_deny", "detail": why})
-
-            try:
-                sf.submit(caller, job)
-            except queue.Full:
-                c = caller if caller in PRIORITY else "batch"
-                sf.stats["reject_queue"] += 1
-                sf.stats["reject_queue_" + c] += 1
-                log_event("QUEUE_REJECT", model=model, reason="queue_full",
-                          caller=caller, depth=QUEUE_CAPS[c])
-                return self._json(429, {"error": "queue_full",
-                                        "detail": (f"{c} queue capacity "
-                                                   f"{QUEUE_CAPS[c]} exceeded; "
-                                                   "back off and resubmit")})
+            ok, resp = self._admit(caller, job)
+            if not ok:
+                return resp
+            resp = self._enqueue_or_429(caller, job)
+            if resp:
+                return resp
 
             if not wait:
                 return self._json(202, {"job_id": job["id"], "status": "queued",
                                         "poll": "/v1/status"})
 
-            # wait for THIS job's completion (own per-job wall cap)
-            wait_s = JOB_TIMEOUT_S + 30
-            if not job["done_ev"].wait(timeout=wait_s):
-                sf.stats["timeout"] += 1
-                log_event("JOB_TIMEOUT", model=model, job_id=job["id"],
-                          elapsed_ms=None, reason="client_wait_timeout",
-                          caller=caller)
-                return self._json(504, {"error": "wait_timeout",
-                                        "job_id": job["id"]})
-            code, body = job["out"] if job["out"] else (500, {"error": "no_result"})
-            if path == "/api/chat":
-                body = dict(body) if isinstance(body, dict) else {"error": body}
-                body["message"] = {"role": "assistant",
-                                   "content": body.get("response", "")}
-            elif path == "/api/generate":
+            code, body = self._wait_out(caller, job, model)
+            if path == "/api/generate":
                 body = dict(body) if isinstance(body, dict) else {"error": body}
                 body["model"] = model
                 body["done"] = code == 200
             return self._json(code, body)
+
+        # ---- /api/chat (ollama-shape NATIVE passthrough) ---------------------
+        # UNIFY-1 migration upgrade: messages are NO LONGER folded into a
+        # prompt. The full ollama chat body rides the single flight verbatim,
+        # so the game's chatWithTools keeps `tool_calls` in the reply.
+        def _chat_native(self, req, caller):
+            model = req.get("model")
+            if not model:
+                return self._json(400, {"error": "missing_model"})
+            msgs = req.get("messages")
+            if not isinstance(msgs, list) or not msgs:
+                return self._json(400, {"error": "missing_messages"})
+            opts = req.get("options") or {}
+            num_predict = req.get("num_predict", opts.get("num_predict", 220))
+            try:
+                num_predict = int(num_predict)
+            except (TypeError, ValueError):
+                num_predict = 220
+            num_thread = req.get("num_thread", opts.get("num_thread"))
+            if num_thread is not None:
+                try:
+                    nt = int(num_thread)
+                    num_thread = min(max(nt, NUM_THREAD_CLAMP[0]), NUM_THREAD_CLAMP[1])
+                except (TypeError, ValueError):
+                    num_thread = None
+            if req.get("stream") is True:
+                # native /api/chat streaming is unserved by the single flight
+                return self._json(400, {"error": "stream_unsupported",
+                                        "detail": "gateway /api/chat is non-streaming; use stream=false"})
+            job = {"id": str(req.get("job_id") or time.time_ns()),
+                   "model": model,
+                   "chat_body": {"model": model, "messages": msgs,
+                                 "stream": False, "keep_alive": KEEP_ALIVE,
+                                 "options": {},
+                                 "tools": req.get("tools"),
+                                 "format": req.get("format")},
+                   "num_predict": num_predict,
+                   "num_thread": num_thread,
+                   "caller": caller,
+                   "done_ev": threading.Event(),
+                   "out": None}
+            job["chat_body"]["num_predict"] = num_predict
+
+            ok, resp = self._admit(caller, job)
+            if not ok:
+                return resp
+            resp = self._enqueue_or_429(caller, job)
+            if resp:
+                return resp
+            code, body = self._wait_out(caller, job, model)
+            if code == 200 and isinstance(body, dict):
+                body = dict(body)
+                body.setdefault("done", True)
+            return self._json(code, body)
+
+        # ---- /v1/chat/completions (OpenAI-shape compat) ----------------------
+        # OpenAI callers (aider-like tools, helper scripts) fold their messages
+        # into the single-flight prompt lane; the reply is re-dressed into
+        # OpenAI's response envelope. stream=true -> one-shot SSE chunk.
+        def _chat_openai(self, req, caller):
+            model = req.get("model")
+            if not model:
+                return self._json(400, {"error": "missing_model"})
+            msgs = req.get("messages")
+            if not isinstance(msgs, list) or not msgs:
+                return self._json(400, {"error": "missing_messages"})
+            parts = []
+            for m in msgs:
+                if isinstance(m, dict):
+                    c = m.get("content")
+                    if isinstance(c, list):   # OpenAI multimodal parts (text only)
+                        c = " ".join(str(p.get("text", ""))
+                                     for p in c if isinstance(p, dict))
+                    if c:
+                        parts.append(str(m.get("role", "user")) + ": " + str(c))
+            prompt = "\n".join(parts).strip()
+            if not prompt:
+                return self._json(400, {"error": "missing_messages"})
+            opts = req.get("options") or {}
+            max_tokens = req.get("max_tokens", opts.get("num_predict", 64))
+            try:
+                num_predict = int(max_tokens)
+            except (TypeError, ValueError):
+                num_predict = 64
+            num_thread = req.get("num_thread", opts.get("num_thread"))
+            if num_thread is not None:
+                try:
+                    nt = int(num_thread)
+                    num_thread = min(max(nt, NUM_THREAD_CLAMP[0]), NUM_THREAD_CLAMP[1])
+                except (TypeError, ValueError):
+                    num_thread = None
+            job = {"id": str(req.get("job_id") or time.time_ns()),
+                   "model": model,
+                   "prompt": "Chat log (reply as the final assistant turn):\n"
+                             + prompt,
+                   "num_predict": num_predict,
+                   "num_thread": num_thread,
+                   "caller": caller,
+                   "done_ev": threading.Event(),
+                   "out": None}
+            ok, resp = self._admit(caller, job)
+            if not ok:
+                return resp
+            resp = self._enqueue_or_429(caller, job)
+            if resp:
+                return resp
+            code, body = self._wait_out(caller, job, model)
+            content = body.get("response", "") if isinstance(body, dict) and code == 200 else ""
+            content = content or (body.get("detail", "") if isinstance(body, dict) else str(body))
+            created = int(time.time())
+            resp_body = {"id": "chatcmpl-" + str(job["id"]),
+                         "object": "chat.completion",
+                         "created": created,
+                         "model": model,
+                         "choices": [{"index": 0,
+                                      "message": {"role": "assistant",
+                                                  "content": content},
+                                      "finish_reason": "stop" if code == 200
+                                      else "error"}],
+                         "usage": {"prompt_tokens": None, "completion_tokens": None,
+                                   "total_tokens": None}}
+            if code != 200:
+                return self._json(502, resp_body)
+            if req.get("stream"):
+                # single-shot SSE: same envelope, one data: chunk + [DONE]
+                chunk = dict(resp_body)
+                chunk["choices"] = [{"index": 0,
+                                     "delta": {"role": "assistant",
+                                               "content": content},
+                                     "finish_reason": "stop"}]
+                payload = (b"data: " + json.dumps(chunk).encode("utf-8")
+                           + b"\n\ndata: [DONE]\n\n")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            return self._json(200, resp_body)
+
+        def _passthrough_post(self, path, req):
+            """Direct passthrough for non-inference ollama endpoints (/api/show).
+            No queue, no policy (nothing is loaded or generated)."""
+            try:
+                body = json.dumps(req).encode("utf-8")
+                reqq = urllib.request.Request(
+                    OLLAMA + path, data=body,
+                    headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(reqq, timeout=15) as r:
+                    d = r.read().decode("utf-8", "replace")
+                    try:
+                        return self._json(r.status, json.loads(d))
+                    except ValueError:
+                        return self._json(r.status, {"raw": d})
+            except urllib.error.HTTPError as e:
+                try:
+                    d = json.loads(e.read().decode("utf-8", "replace"))
+                except Exception:
+                    d = {"error": "ollama_http_%d" % e.code}
+                return self._json(e.code, d)
+            except Exception as e:
+                return self._json(502, {"error": "ollama_unreachable",
+                                        "detail": str(e)})
 
         # ---- /v1/embed + ollama compat --------------------------------------
         def _embed(self, path, req, caller):
@@ -762,6 +961,35 @@ def handler_for(sf, el):
                     "free_ram_gb": round(free_ram_gb(), 2),
                     "stats": dict(sf.stats),
                     "log_path": LOG_PATH,
+                })
+            # ---- ollama + openai compat GETs (direct passthrough, no queue)
+            if path == "/api/tags":
+                try:
+                    with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=10) as r:
+                        return self._json(200, json.loads(r.read().decode("utf-8", "replace")))
+                except Exception as e:
+                    return self._json(502, {"error": "ollama_unreachable",
+                                            "detail": str(e)})
+            if path == "/api/version":
+                try:
+                    with urllib.request.urlopen(OLLAMA + "/api/version", timeout=10) as r:
+                        return self._json(200, json.loads(r.read().decode("utf-8", "replace")))
+                except Exception as e:
+                    return self._json(502, {"error": "ollama_unreachable",
+                                            "detail": str(e)})
+            if path == "/v1/models":
+                try:
+                    with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=10) as r:
+                        d = json.loads(r.read().decode("utf-8", "replace"))
+                except Exception as e:
+                    return self._json(502, {"error": "ollama_unreachable",
+                                            "detail": str(e)})
+                now = int(time.time())
+                return self._json(200, {
+                    "object": "list",
+                    "data": [{"id": m.get("name"), "object": "model",
+                              "created": now, "owned_by": "ollama"}
+                             for m in d.get("models", [])],
                 })
             return self._json(404, {"error": "not_found"})
 

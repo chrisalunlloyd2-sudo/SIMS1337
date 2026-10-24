@@ -454,5 +454,151 @@ class GameSamplerTests(unittest.TestCase):
         self.assertFalse(sf._game_flag())
 
 
+# ======================================================================
+# Compat-layer tests (UNIFY-1 migration support): the gateway must speak
+# enough ollama AND OpenAI that migrated callers keep their shapes.
+# ======================================================================
+
+def make_chat_job(**kw):
+    """Worker-callable chat job (native /api/chat passthrough shape)."""
+    ORCH_M.job_seq += 1
+    chat_body = {
+        "model": kw.get("model", "qwen2.5:0.5b"),
+        "messages": kw.get("messages", [{"role": "user", "content": "hi"}]),
+        "stream": False,
+        "keep_alive": 0,
+        "options": {},
+    }
+    if kw.get("tools"):
+        chat_body["tools"] = kw["tools"]
+    return {"id": str(ORCH_M.job_seq),
+            "model": kw.get("model", "qwen2.5:0.5b"),
+            "chat_body": chat_body,
+            "num_predict": kw.get("num_predict", 64),
+            "num_thread": kw.get("num_thread"),
+            "caller": kw.get("caller", "batch"),
+            "done_ev": threading.Event(), "out": None}
+
+
+class ChatNativeWorkerTests(SingleFlightBase):
+    """/api/chat rides the same single flight; tool_calls must survive."""
+
+    def setUp(self):
+        super().setUp()
+        self.sf._generate = lambda *a, **k: self.fail(
+            "chat job must not hit the generate lane")
+        self.chat_calls = []
+
+        def fake_gen(chat_body, num_predict, timeout_s, num_thread=None):
+            self.chat_calls.append({"body": chat_body,
+                                    "num_predict": num_predict,
+                                    "timeout_s": timeout_s,
+                                    "num_thread": num_thread})
+            return 200, {"message": {"role": "assistant", "content": "ok",
+                                     "tool_calls": [{"function": {
+                                         "name": "read_file",
+                                         "arguments": {"path": "x"}}}],
+                                     "done": True}}
+
+        self.sf._generate_chat = fake_gen
+
+    def test_compat_01_chat_goes_to_chat_lane(self):
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_chat_job(caller="game")
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(len(self.chat_calls), 1)
+        self.assertEqual(job["out"][1]["message"]["tool_calls"][0]["function"]["name"],
+                         "read_file")
+
+    def test_compat_02_chat_options_capped_at_dispatch(self):
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_chat_job(caller="game", num_predict=512)
+        self.run_job(job)
+        sent = self.chat_calls[0]
+        # 512 requested; tier S caps qwen2.5:0.5b at 256 -> clamp wins in
+        # _process_job; the options-dict stamping itself is compat_04's
+        # job (real _generate_chat).
+        self.assertEqual(sent["num_predict"], 256)
+
+    def test_compat_03_chat_through_queue_keeps_priority(self):
+        """Chat jobs queue/prioritise exactly like generate jobs."""
+        order = []
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        self.sf._generate_chat = lambda b, n, t, nt=None: (
+            order.append("C:" + b["model"]) or (200, {"message": {}, "done": True}))
+        self.sf._generate = lambda m, p, n, t, nt=None: (
+            order.append("G:" + m) or (200, {"response": p}))
+        b = make_chat_job(caller="batch", model="gemma2:2b")
+        c_ = make_chat_job(caller="crew")
+        g = make_job(caller="game")
+        self.run_through_worker([b, c_, g])
+        self.assertEqual(order, ["G:qwen2.5:0.5b", "C:qwen2.5:0.5b",
+                                 "C:gemma2:2b"])
+
+    def test_compat_04_chat_outbound_contract(self):
+        """Outbound /api/chat: native URL, tools preserved, stream off,
+        num_ctx stamped by _generate_chat itself."""
+        m = self.m
+        sent = {}
+        sf = m.SingleFlight.__new__(m.SingleFlight)
+
+        class FakeResp:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self):
+                return json.dumps({"message": {"role": "assistant",
+                                               "content": "ok",
+                                               "tool_calls": [1, 2, 3]},
+                                   "done": True}).encode()
+
+        def fake_urlopen(req, timeout=None):
+            sent["url"] = req.full_url
+            sent["body"] = json.loads(req.data.decode())
+            sent["timeout"] = timeout
+            return FakeResp()
+
+        real = m.urllib.request.urlopen
+        m.urllib.request.urlopen = fake_urlopen
+        try:
+            code, body = sf._generate_chat(
+                {"model": "qwen2.5:0.5b",
+                 "messages": [{"role": "user", "content": "hi"}],
+                 "tools": [{"type": "function",
+                            "function": {"name": "read_file"}}],
+                 "stream": True, "options": {}},
+                64, 60)
+        finally:
+            m.urllib.request.urlopen = real
+        self.assertEqual(code, 200)
+        self.assertEqual(sent["url"], m.OLLAMA + "/api/chat")
+        self.assertEqual(sent["body"]["stream"], False)
+        self.assertEqual(sent["body"]["tools"][0]["function"]["name"], "read_file")
+        self.assertEqual(sent["body"]["options"]["num_ctx"], m.NUM_CTX)
+        self.assertEqual(sent["body"]["options"]["num_predict"], 64)
+        self.assertEqual(body["message"]["tool_calls"], [1, 2, 3])
+        self.assertTrue(body["done"])
+
+
+class CompatPolicyTests(unittest.TestCase):
+    """qwen2.5-coder:0.5b is the default model of the OpenAI-shape viper
+    scripts; it must pass the identity gate (no default-deny 403)."""
+
+    def test_compat_05_viper_default_model_in_policy(self):
+        pol = base_policy()
+        ok, why, caps = ORCH_M.model_decision(pol, "qwen2.5-coder:0.5b",
+                                              4000, resident=())
+        self.assertTrue(ok, why)
+        self.assertEqual(caps["max_tokens"], 256)
+        self.assertEqual(caps["timeout_s"], 60)
+
+    def test_compat_06_policy_file_carries_viper_default(self):
+        pol, p, src = ORCH_M.load_policy()
+        entry = (pol.get("models") or {}).get("qwen2.5-coder:0.5b")
+        self.assertIsNotNone(entry,
+                             "model_policy.json lost qwen2.5-coder:0.5b")
+        self.assertEqual(entry["tier"], "S")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
