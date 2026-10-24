@@ -31,14 +31,13 @@ import com.aigen.sims.laws.ModelPolicy;
  *  - ONE worker thread inside ModelBus; jobs are a bounded FIFO (cap 16).
  *    Overflow = {@link #BUSY} answer after a bounded grace wait (documented,
  *    never silent, never concurrent).
- *  - If the standalone orchestrator service (127.0.0.1:11435 /v1/run) is
- *    reachable, every job is DELEGATED to it. Then nothing in this JVM touches
- *    Ollama directly and the single flight spans JVM + external clients too.
- *  - If the orchestrator is down, ModelBus degrades to built-in single-flight
- *    direct mode (one generate at a time, keep_alive 5m, 130s read timeout).
- *    Health is probed lazily and cached for 30s.
+ *  - UNIFY-1: the orchestrator (127.0.0.1:11435) is the ONLY path to Ollama
+ *    for this JVM. Every job is DELEGATED to it; nothing here touches :11434.
+ *  - If the gateway is down or a delegate call fails, jobs complete instantly
+ *    with {@link #BUSY} (documented, never silent) — no direct-Ollama fallback.
+ *    Gateway health is probed lazily via /health, cached 30s.
  *  - Instrumentation: one [MODELBUS] log line per state transition
- *    (ENQUEUE, DELEGATE, DIRECT, DONE, TIMEOUT, BUSY, FALLBACK) so inference
+ *    (ENQUEUE, DELEGATE, DONE, TIMEOUT, BUSY) so inference
  *    concurrency is auditable from app logs alone.
  *
  * Thread-safety: all mutable state is confined to the single worker thread or
@@ -52,13 +51,10 @@ public final class ModelBus {
     public static final String BUSY = "NO_RESPONSE";
     /** Orchestrator service endpoint (standalone scripts/ollama_orchestrator.py). */
     public static final String ORCH_URL = "http://127.0.0.1:11435";
-    /** Fallback direct-Ollama endpoint. */
-    public static final String OLLAMA_URL = "http://127.0.0.1:11434";
 
     private static final int QUEUE_CAP = 16;
     private static final long ENQUEUE_GRACE_S = 10;   // bounded wait for queue slot
     private static final long DELEGATE_TIMEOUT_S = 320;
-    private static final long DIRECT_TIMEOUT_S = 130;
     private static final long PROBE_CACHE_MS = 30_000;
 
     private static final LinkedBlockingQueue<Job> queue = new LinkedBlockingQueue<>(QUEUE_CAP);
@@ -99,7 +95,7 @@ public final class ModelBus {
     /**
      * THE only way to run model inference from this JVM. Blocking; serializes
      * behind the single flight; never throws. Returns the model text, or
-     * {@link #BUSY} on queue-full / timeout / transport failure.
+     * {@link #BUSY} on queue-full / timeout / gateway-down / transport failure.
      */
     public static String ask(String model, String prompt) {
         return ask(model, prompt, 220);
@@ -182,26 +178,17 @@ public final class ModelBus {
                     log.info("[MODELBUS] DELEGATE {} -> orchestrator", job.model);
                     job.result = viaOrchestrator(job.model, job.prompt, job.numPredict);
                 } else {
-                    via = "DIRECT";
-                    log.info("[MODELBUS] DIRECT {} (orchestrator down, built-in single flight)",
-                            job.model);
-                    job.result = viaDirectOllama(job.model, job.prompt, job.numPredict);
+                    // UNIFY-1: no direct fallback — gateway down == BUSY, instantly.
+                    // Residency release + record still run in the finally below.
+                    job.result = BUSY;
+                    log.warn("[MODELBUS] BUSY gateway down ({} unreachable): {}",
+                            ORCH_URL, job.model);
                 }
             } catch (Exception e) {
-                if ("DELEGATE".equals(via)) {
-                    // orchestrator died between probe and POST: one bounded direct retry
-                    log.warn("[MODELBUS] FALLBACK delegate failed ({}) -> one direct attempt: {}",
-                            e.toString(), job.model);
-                    try {
-                        job.result = viaDirectOllama(job.model, job.prompt, job.numPredict);
-                    } catch (Exception e2) {
-                        log.error("[MODELBUS] DIRECT also failed: {}", e2.toString());
-                        job.result = BUSY;
-                    }
-                } else {
-                    log.error("[MODELBUS] DONE error path: {}", e.toString());
-                    job.result = BUSY;
-                }
+                // UNIFY-1: no direct fallback — delegate failure == BUSY.
+                log.warn("[MODELBUS] BUSY delegate failed ({}): {}",
+                        e.toString(), job.model);
+                job.result = BUSY;
             } finally {
                 // GODHAND-3 L4: residency must be freed on EVERY exit path — an
                 // Error escaping the catch above would otherwise wedge the
@@ -228,7 +215,7 @@ public final class ModelBus {
         if (now - lastProbeMs < PROBE_CACHE_MS) return orchUp;
         lastProbeMs = now;
         try {
-            HttpURLConnection c = (HttpURLConnection) new URL(ORCH_URL + "/v1/status")
+            HttpURLConnection c = (HttpURLConnection) new URL(ORCH_URL + "/health")
                     .openConnection();
             c.setConnectTimeout(2000);
             c.setReadTimeout(2000);
@@ -272,9 +259,10 @@ public final class ModelBus {
             c.disconnect();
         }
         if (code != 200) {
+            // UNIFY-1: any documented reject (queue full 429, resource deny 507,
+            // wait timeout 504, gateway->ollama unreachable 502) == BUSY; no fallback.
             log.warn("[MODELBUS] orchestrator /v1/run HTTP {}: {}", code, abbrev(resp));
-            if (code == 429 || code == 507 || code == 504) return BUSY; // documented rejects
-            throw new IllegalStateException("orchestrator http " + code);
+            return BUSY;
         }
         JsonNode n = MAPPER.readTree(resp);
         String text = n.path("response").asText("");
@@ -285,52 +273,8 @@ public final class ModelBus {
         return text;
     }
 
-    // ------------------------------------------------------ direct fallback mode
-
-    private static String viaDirectOllama(String model, String prompt, int numPredict) throws Exception {
-        String body = MAPPER.writeValueAsString(new java.util.LinkedHashMap<String, Object>() {{
-            put("model", model);
-            put("prompt", prompt);
-            put("stream", false);
-            put("keep_alive", "5m"); // cellular-mic: hot model stays resident between bursts
-            put("options", new java.util.LinkedHashMap<String, Object>() {{
-                put("num_predict", numPredict);
-                put("num_ctx", 2048);
-            }});
-        }});
-        HttpURLConnection c = (HttpURLConnection) new URL(OLLAMA_URL + "/api/generate")
-                .openConnection();
-        c.setRequestMethod("POST");
-        c.setDoOutput(true);
-        c.setConnectTimeout(5000);
-        c.setReadTimeout((int) (DIRECT_TIMEOUT_S * 1000));
-        c.setRequestProperty("Content-Type", "application/json");
-        byte[] payload = body.getBytes(StandardCharsets.UTF_8);
-        c.setFixedLengthStreamingMode(payload.length);
-        try (OutputStream os = c.getOutputStream()) {
-            os.write(payload);
-            os.flush();
-        }
-        int code = c.getResponseCode();
-        if (code != 200) {
-            String err = "";
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(
-                    c.getErrorStream(), StandardCharsets.UTF_8))) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = in.readLine()) != null) sb.append(line);
-                err = sb.toString();
-            }
-            log.warn("[MODELBUS] Ollama HTTP {}: {}", code, abbrev(err));
-            return BUSY;
-        }
-        try (BufferedReader in = new BufferedReader(new InputStreamReader(
-                c.getInputStream(), StandardCharsets.UTF_8))) {
-            JsonNode n = MAPPER.readTree(in);
-            String text = n.path("response").asText("");
-            return text.isEmpty() ? BUSY : text;
-        }
-    }
+    // UNIFY-1: the direct-Ollama fallback (viaDirectOllama + /api/generate on
+    // :11434) is GONE. Gateway down or a failed delegate == BUSY, documented.
 
     private static String abbrev(String s) {
         if (s == null) return "";
