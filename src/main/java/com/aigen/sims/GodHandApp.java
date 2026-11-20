@@ -634,6 +634,7 @@ public class GodHandApp extends Application {
                         String prompt = String.format("You are Agent %s using model %s chatting with %s. Formulate a short, unrestricted KQML tell message discussing repository %s and topic: %s", 
                             sender, model, target, repo, topic);
                         String reply = ollamaRouter.query(model, prompt);
+                        stageKqml(sender, model, reply);
                         Platform.runLater(() -> {
                             swarmLog.appendText(String.format("[%s (%s)]: %s\n\n", sender.toUpperCase(), model, reply));
                             swarmLog.selectPositionCaret(swarmLog.getLength());
@@ -675,9 +676,61 @@ public class GodHandApp extends Application {
         btnAgent.setOnAction(e -> executeDesktopScript("SPIN_UP_AGENT_NODE.ps1"));
 
         root.getChildren().addAll(btnLogic, btnTopology, btnHouse, btnAgent);
+        
         return root;
     }
 
+    // ── LIVE-3 (t_d5ec0574): unified bot message log staging ────────────────
+    // Every KQML chatter reply is staged as one JSON line into
+    // AIGEN_SYS/logs/kqml_raw.jsonl; bot_chat_tailer.py drains that staging
+    // file into the unified bot_chat.jsonl. The file is append-only and
+    // shared, so writes go through a synchronized helper; a staging failure
+    // must never break the chatter loop. Path is overridable via
+    // -Dkqml.stage.path (selftests use a temp dir).
+    private static final Object KQML_STAGE_LOCK = new Object();
+
+    static void stageKqml(String sender, String model, String text) {
+        try {
+            String stagePath = System.getProperty("kqml.stage.path");
+            if (stagePath == null || stagePath.isEmpty()) {
+                String aigen = System.getenv("AIGEN_SYS");
+                if (aigen == null || aigen.isEmpty()) {
+                    aigen = System.getProperty("user.home") + File.separator + "AIGEN_SYS";
+                }
+                stagePath = aigen + File.separator + "logs" + File.separator + "kqml_raw.jsonl";
+            }
+            File dir = new File(stagePath).getParentFile();
+            if (dir != null && !dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) {
+                return;
+            }
+            StringBuilder esc = new StringBuilder(text == null ? 16 : text.length() + 16);
+            String clean = text == null ? "" : text;
+            for (int i = 0; i < clean.length(); i++) {
+                char c = clean.charAt(i);
+                switch (c) {
+                    case '"':  esc.append("\\\""); break;
+                    case '\\': esc.append("\\\\"); break;
+                    case '\n': esc.append("\\n");  break;
+                    case '\r': esc.append(" ");    break;
+                    case '\t': esc.append("\\t");  break;
+                    default:
+                        if (c < 0x20) esc.append(String.format("\\u%04x", (int) c));
+                        else esc.append(c);
+                }
+            }
+            String line = "{\"ts\":" + System.currentTimeMillis()
+                    + ",\"sender\":\"" + sender + "\",\"model\":\"" + model
+                    + "\",\"text\":\"" + esc + "\"}\n";
+            synchronized (KQML_STAGE_LOCK) {
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(stagePath, true)) {
+                    fos.write(line.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    fos.flush();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[kqml-stage] write failed (chatter unaffected): " + e.getMessage());
+        }
+    }
     // --- Core Operations & Rotations ---
 
     private void initHexGrid() {

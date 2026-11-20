@@ -108,18 +108,46 @@ def generate(prompt, max_tokens=64, model=None, timeout=None, retries=2):
 
 
 class AgentMemory:
-    """REAL append-only memory per agent: AGENT_MEM_DIR/agent_<name>.jsonl"""
+    """REAL append-only memory per agent: AGENT_MEM_DIR/agent_<name>.jsonl.
+    Every utterance is ALSO mirrored to the unified bot chat log
+    (AIGEN_SYS/logs/bot_chat.jsonl, LIVE-3) — the crew-side hook. Mirroring
+    is best-effort: bot_chat outages must never break crew memory."""
 
     def __init__(self, name):
         self.name = name
         os.makedirs(MEM_DIR, exist_ok=True)
         self.path = os.path.join(MEM_DIR, f"agent_{name}.jsonl")
+        self._bc = None  # lazy: bot_chat_log module (import once, optional)
+
+    def _bot_chat(self):
+        if self._bc is None:
+            try:
+                import importlib, sys as _sys
+                bc_dir = os.path.join(os.path.expanduser("~"),
+                                      "AIGEN_SYS", "scripts")
+                if bc_dir not in _sys.path:
+                    _sys.path.insert(0, bc_dir)
+                # module name is unique; a stale copy would be a real bug
+                self._bc = importlib.import_module("bot_chat_log")
+            except Exception:
+                self._bc = False  # log mirroring unavailable; memory only
+        return self._bc
 
     def append(self, role, text, meta=None):
+        model = ""
+        if isinstance(meta, dict):
+            model = str(meta.get("model") or "")[:64]
         entry = {"t": time.time(), "agent": self.name, "role": role,
                  "text": text, "meta": meta or {}}
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
+        bc = self._bot_chat()
+        if bc:
+            channel = "crew" if role != "user" else "user"
+            try:
+                bc.append(self.name, channel, text, model=model)
+            except Exception:
+                pass  # mirroring is best-effort, memory write already done
 
     def recent(self, n=CTX_TURNS):
         if not os.path.exists(self.path):
