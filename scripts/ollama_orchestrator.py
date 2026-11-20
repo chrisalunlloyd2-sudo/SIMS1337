@@ -23,6 +23,17 @@ Core guarantees
     optional num_thread passthrough (clamped 1..16).
   - Swap pacing: when the incoming model differs from the hot model, the
     worker waits SWAP_PACING_S before the next call.
+  - BOT BUDGET (LIVE-5, t_f1bc2861): the config/behaviour block that keeps
+    bot inference from stealing the game's frames. Crew/batch jobs are
+    REFUSED (507 bot_budget_denied) while the game is running and the last
+    system input is younger than game_idle_input_s (Windows GetLastInputInfo;
+    the gateway therefore knows "the player is at the keys" with zero game
+    changes). Fresh bot loads while the game is up are pinned to
+    num_thread_bot threads (C1: ~70% less hitch time at 2 threads); crew is
+    token-capped always, batch only as a contention guard while the game is
+    up; the game lane is never budget-gated. All knobs live in
+    model_policy.json "bot_budget" (hot-reloaded on file mtime change); see
+    bot_budget_cfg / bot_budget_gate below.
   - Per-job timeout: worker abandons the HTTP call after the job's cap.
   - Instrumentation: every dispatch boundary logged as JSONL so concurrency,
     denies and queued depth are measurable from the log alone.
@@ -68,6 +79,7 @@ import ctypes
 import datetime as dt
 import http.server
 import json
+import os
 import queue
 import re
 import socket
@@ -97,6 +109,144 @@ NUM_THREAD_CLAMP = (1, 16)
 MAX_TOKENS_FLOOR = 8        # never let a policy of 0 turn into unbounded
 CALLERS = QUEUE_CAPS.keys()
 RING_SIZE = 20
+
+# ---------------------------------------------------------------------------
+# BOT BUDGET (LIVE-5, t_f1bc2861): config + the game-idle gate.
+# Policy file "bot_budget" block (hot-reloaded on mtime change), defaults
+# mirrored here so an old policy file still has sane numbers:
+#   enabled            master switch (false = behave exactly like pre-LIVE-5)
+#   game_idle_input_s  bot lanes run only when the game is down, or the game
+#                      is up AND the last system input is older than this
+#                      (GetLastInputInfo = the box has been untouched N s)
+#   crew_max_tokens    crew lane token cap, ALWAYS (LIVE-1 doctrine: 64)
+#   batch_max_tokens   batch lane token cap ONLY as a contention guard while
+#                      the game is up (unlimited when the game is down)
+#   num_thread_bot     threads pinned onto FRESH bot loads while the game is
+#                      up (C1 recipe; null = no pinning)
+#   num_thread_games   num_thread the game lane may stamp (null = never stamp;
+#                      the game owns its own calls)
+# ---------------------------------------------------------------------------
+DEFAULT_BOT_BUDGET = {
+    "enabled": True,
+    "game_idle_input_s": 120,
+    "crew_max_tokens": 64,
+    "batch_max_tokens": 256,
+    "num_thread_bot": 2,
+    "num_thread_games": None,
+}
+BOT_BUDGET_KEYS = frozenset(DEFAULT_BOT_BUDGET)
+BOT_LANE_GATE_REASONS = ("game_active_not_idle", "budget_disabled")
+
+
+def bot_budget_cfg(policy):
+    """Extract + sanitize the bot_budget block from the policy (hot-reloaded
+    by re-reading the file periodically: see maybe_reload_policy). PURE."""
+    raw = (policy or {}).get("bot_budget") or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    cfg = dict(DEFAULT_BOT_BUDGET)
+    cfg.update({k: raw[k] for k in BOT_BUDGET_KEYS if k in raw})
+    try:
+        cfg["game_idle_input_s"] = max(0, float(cfg["game_idle_input_s"]))
+        cfg["crew_max_tokens"] = max(1, int(cfg["crew_max_tokens"]))
+        cfg["batch_max_tokens"] = max(1, int(cfg["batch_max_tokens"]))
+    except (TypeError, ValueError):
+        return dict(DEFAULT_BOT_BUDGET)
+    for k in ("num_thread_bot", "num_thread_games"):
+        v = cfg[k]
+        if v is None:
+            continue
+        try:
+            cfg[k] = min(max(int(v), NUM_THREAD_CLAMP[0]), NUM_THREAD_CLAMP[1])
+        except (TypeError, ValueError):
+            cfg[k] = None
+    cfg["enabled"] = bool(cfg["enabled"])
+    return cfg
+
+
+def seconds_since_last_input():
+    """Seconds since the last mouse/keyboard system input (Windows
+    GetLastInputInfo). Returns None when the platform won't say (non-Windows
+    host, API failure). None is NEVER silently mapped to 'idle': the gate
+    treats an unknown input age as fresh while the game is up and the deny
+    is logged — fail closed, visibly (acceptance: 'refuses to run bots and
+    says so in the log'). On a healthy Windows box this is a user32 staple
+    and always reports."""
+    try:
+        import ctypes
+
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint),
+                        ("dwTime", ctypes.c_uint)]
+
+        lii = LASTINPUTINFO()
+        lii.cbSize = ctypes.sizeof(LASTINPUTINFO)
+        if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
+            return None
+        now = ctypes.windll.kernel32.GetTickCount()
+        delta = (now - lii.dwTime) & 0xFFFFFFFF   # tickcount wraps ~49.7d
+        return delta / 1000.0
+    except Exception:
+        return None
+
+
+def bot_budget_gate(caller, game_running, input_idle_s, cfg, now=None):
+    """PURE gate for the bot lanes (crew/batch). The game lane is NEVER
+    gated. Decision contract:
+      - budget disabled               -> allow, reason "budget_disabled"
+      - game not running              -> allow, reason "game_not_running"
+      - game running + input idle age >= game_idle_input_s
+                                      -> allow, reason "game_idle"
+      - game running + input fresh    -> deny, reason "game_active_not_idle"
+      - input never measurable and game running
+                                      -> deny, reason "game_active_not_idle"
+                                        (input age Unknown = treat as fresh;
+                                        standing rule 3: nothing needs a human)
+    -> (allow, reason, detail_dict)."""
+    now = now if now is not None else time.time()
+    if cfg.get("enabled") is False:
+        return True, "budget_disabled", {"game_running": bool(game_running)}
+    if not game_running:
+        return True, "game_not_running", {"game_running": False}
+    if input_idle_s is None:
+        return False, "game_active_not_idle", {"input_idle_s": None}
+    if input_idle_s >= cfg["game_idle_input_s"]:
+        return True, "game_idle", {"input_idle_s": round(input_idle_s, 1)}
+    detail = {"input_idle_s": round(input_idle_s, 1),
+              "need_idle_s": cfg["game_idle_input_s"],
+              "open_at_ts": round(now + (cfg["game_idle_input_s"] - input_idle_s), 2)}
+    return False, "game_active_not_idle", detail
+
+
+def budget_num_thread(caller, needs_load, game_running, cfg, requested):
+    """num_thread for THIS job: the C1 pin applies to fresh bot loads only
+    (stamping num_thread on a hot runner restarts Ollama's runner and 503s a
+    busy slot — observed 2026-11-20). Requested-but-absent semantics are
+    preserved: bots send nothing by default, the gateway decides.
+    -> (num_thread_or_None, log_detail)."""
+    req = requested if requested is not None else None
+    if not game_running or not needs_load:
+        return req, {"thread": req, "source": "passthrough"}
+    pin = cfg.get("num_thread_bot") if caller in ("crew", "batch") else None
+    if pin is None:
+        return req, {"thread": req, "source": "no_pin_lane"}
+    chosen = pin if req is None else min(int(req), pin)
+    return chosen, {"thread": chosen, "source": "budget_pin" if req is None
+                    else "budget_pin_capped", "pin": pin}
+
+
+def budget_token_cap(caller, game_running, cfg):
+    """Token cap for THIS job, over and above the per-model policy cap.
+    Crew: always (LIVE-1 doctrine). Batch: contention guard with the game
+    up. Game: never budget-capped. Returns None = no extra cap."""
+    if not cfg["enabled"]:
+        return None
+    if caller == "crew":
+        return cfg["crew_max_tokens"]
+    if caller == "batch" and game_running:
+        return cfg["batch_max_tokens"]
+    return None
+
 
 _log_lock = threading.Lock()
 
@@ -250,10 +400,45 @@ def identity_deny(reason):
             or "no model policy" in r)
 
 
+def _policy_file_mtime(path):
+    try:
+        return os.stat(path).st_mtime
+    except OSError:
+        return None
+
+
+def maybe_reload_policy(state, path=None, force=False):
+    """Hot-reload model_policy.json when its mtime changed (bot_budget is the
+    user-facing knob: no gateway restart to retune the budget). Returns
+    (policy, source, budget_cfg, reloaded_bool). Any read/parse problem keeps
+    the previous tables (never deny-all mid-flight)."""
+    path = path or POLICY_PATH
+    mtime = _policy_file_mtime(path)
+    last = state.get("policy_mtime")
+    if not force and mtime is not None and last is not None and mtime == last:
+        return state["policy"], state["policy_source"], state["budget_cfg"], False
+    try:
+        with open(path, encoding="utf-8") as f:
+            pol = json.load(f)
+        if not isinstance(pol.get("models"), dict) or not pol["models"]:
+            raise ValueError("policy has no models table")
+        source = "file:" + path
+    except Exception as e:  # law 7: keep the old tables, warn once per mtime
+        log_event("POLICY_RELOAD_FAILED", reason=("%s: %s" % (type(e).__name__, str(e)[:80])))
+        state["policy_mtime"] = mtime if mtime is not None else last
+        return state["policy"], state["policy_source"], state["budget_cfg"], False
+    state["policy"] = pol
+    state["policy_source"] = source
+    state["budget_cfg"] = bot_budget_cfg(pol)
+    state["policy_mtime"] = mtime
+    return pol, source, state["budget_cfg"], True
+
+
 class GameSampler(threading.Thread):
-    """Cached game_running detection for the tier-L window. Samples every
-    GAME_SAMPLE_S via PowerShell CIM; a miss means not-running (fail open
-    for batch work; ops_health remains the authoritative watchdog)."""
+    """Cached game_running + system-input-idle detection for the bot budget
+    gate. Samples every GAME_SAMPLE_S via PowerShell CIM (game process) and
+    user32 GetLastInputInfo (input age); both failures are cached as
+    'unknown' (game_running -> False, input age -> None)."""
 
     GAME_SAMPLE_S = 15.0
 
@@ -262,6 +447,8 @@ class GameSampler(threading.Thread):
         self.game_running = False
         self.last_seen = None
         self.last_error = None
+        self.input_idle_s = None
+        self.input_error = None
         self.start()
 
     def _probe(self):
@@ -281,6 +468,16 @@ class GameSampler(threading.Thread):
         except Exception as e:
             self.last_error = "%s: %s" % (type(e).__name__, str(e)[:80])
             self.game_running = False
+        # input age is a cheap in-process call, no subprocess; used by the
+        # LIVE-5 bot budget gate (crew/batch only run while the player is
+        # away or the game is dark)
+        try:
+            self.input_idle_s = seconds_since_last_input()
+            self.input_error = None if self.input_idle_s is not None \
+                else "GetLastInputInfo returned 0"
+        except Exception as e:
+            self.input_idle_s = None
+            self.input_error = "%s: %s" % (type(e).__name__, str(e)[:80])
 
     def run(self):
         while True:
@@ -294,9 +491,10 @@ class SingleFlight:
     one generation worker thread; three per-class FIFOs drained game>crew>
     batch; every job admitted against model_policy.json before dispatch."""
 
-    def __init__(self, policy, policy_source):
+    def __init__(self, policy, policy_source, budget_cfg=None):
         self.policy = policy
         self.policy_source = policy_source
+        self.budget_cfg = budget_cfg or bot_budget_cfg(policy)
         self.queues = {c: queue.Queue(maxsize=QUEUE_CAPS[c]) for c in PRIORITY}
         self.active_model = None          # model the mic currently points at
         self.hot_model = None             # model hot per last /api/ps sample
@@ -305,10 +503,13 @@ class SingleFlight:
         self.recent = []                  # ring of recent events (/stats)
         self.stats = {"done": 0, "reject_queue": 0, "reject_ram": 0,
                       "timeout": 0, "errors": 0, "policy_deny_identity": 0,
-                      "policy_deny_resource": 0, "queued_wait": 0}
+                      "policy_deny_resource": 0, "queued_wait": 0,
+                      "budget_denied": 0, "budget_allowed": 0, "budget_relaxed": 0}
         for c in PRIORITY:
             self.stats["done_" + c] = 0
             self.stats["reject_queue_" + c] = 0
+            self.stats["budget_denied_" + c] = 0
+        self.last_gate = {}               # one-line why for /stats
         self.lock = threading.Lock()
         self.thread = threading.Thread(target=self._worker, name="cmq-worker",
                                        daemon=True)
@@ -349,6 +550,13 @@ class SingleFlight:
     # ---- worker side (THE single thread) ----------------------------------
     def _worker(self):
         while True:
+            # bot_budget edits are hot: reload policy.json when its mtime moved
+            pol, src, self.budget_cfg, reloaded = maybe_reload_policy(
+                POLICY_STATE, POLICY_PATH)
+            if reloaded:
+                self.policy, self.policy_source = pol, src
+                log_event("POLICY_RELOADED", policy_source=src,
+                          bot_budget=dict(self.budget_cfg))
             caller, job = self._next_job()
             self._process_job(caller, job)
 
@@ -365,6 +573,36 @@ class SingleFlight:
         log_event("GUARD_CHECK", model=model, job_id=job["id"],
                   needs_load=needs_load, free_ram_gb=round(free_gb, 2),
                   loaded_models=len(names), caller=caller)
+
+        # ---- LIVE-5 bot budget: game lane never gated; crew/batch run only
+        # while the game is down or the player has been away N s. Hot policy
+        # (POLICY_STATE, refreshed in the worker loop) allows retuning the
+        # budget without a gateway restart.
+        budget_cfg = self.budget_cfg or bot_budget_cfg(self.policy)
+        if caller in ("crew", "batch"):
+            input_idle = getattr(GAME_SAMPLER, "input_idle_s", None) \
+                if GAME_SAMPLER is not None else seconds_since_last_input()
+            game_up = self._game_flag()
+            allow, reason, detail = bot_budget_gate(
+                caller, game_up, input_idle, budget_cfg)
+            with self.lock:
+                self.last_gate = {"caller": caller, "allow": allow,
+                                  "reason": reason, "detail": detail,
+                                  "ts": now_iso()}
+            if allow:
+                self.stats["budget_allowed"] += 1
+                log_event("BOT_BUDGET_ALLOW", model=model, job_id=job["id"],
+                          caller=caller, reason=reason, **detail)
+            else:
+                self.stats["budget_denied"] += 1
+                self.stats["budget_denied_" + caller] += 1
+                log_event("BOT_BUDGET_DENY", model=model, job_id=job["id"],
+                          caller=caller, reason=reason, **detail)
+                job["out"] = (507, {"error": "bot_budget_denied",
+                                    "detail": reason, "gate": detail})
+                job["done_ev"].set()
+                return
+
         ok, why, caps = model_decision(
             self.policy, model, free_gb * 1024.0,
             resident=names, game_running=self._game_flag(), kind="infer")
@@ -393,7 +631,26 @@ class SingleFlight:
         num_predict = max(min(int(job["num_predict"]), int(caps["max_tokens"])
                               or MAX_TOKENS_FLOOR), 1)
         timeout_s = min(JOB_TIMEOUT_S, float(caps["timeout_s"]))
-        num_thread = job["num_thread"]
+
+        # LIVE-5 budget caps on top of the model policy: crew token cap is
+        # unconditional, batch only while the game is up (contention guard).
+        tcap = budget_token_cap(caller, self._game_flag(), budget_cfg)
+        budget_relaxed = False
+        if tcap is not None and num_predict > tcap:
+            log_event("BUDGET_CAP", model=model, job_id=job["id"],
+                      caller=caller, from_tokens=num_predict, to_tokens=tcap)
+            num_predict = tcap
+            budget_relaxed = True
+        if budget_relaxed:
+            self.stats["budget_relaxed"] += 1
+
+        # C1 num_thread pin: only FRESH bot loads while the game is up
+        num_thread, thread_detail = budget_num_thread(
+            caller, needs_load, self._game_flag(), budget_cfg,
+            job["num_thread"])
+        if thread_detail.get("source") in ("budget_pin", "budget_pin_capped"):
+            log_event("BUDGET_THREAD", model=model, job_id=job["id"],
+                      caller=caller, needs_load=needs_load, **thread_detail)
 
         # ---- pacing on swap decision (plan C.2) -------------------------
         if self.active_model is not None and self.active_model != model:
@@ -581,6 +838,8 @@ class EmbedLane:
 
 
 GAME_SAMPLER = None  # set in main(); guarded by getattr for import-as-library
+POLICY_STATE = {"policy": {}, "policy_source": "embedded-defaults",
+                "budget_cfg": dict(DEFAULT_BOT_BUDGET), "policy_mtime": None}
 
 
 def handler_for(sf, el):
@@ -926,6 +1185,11 @@ def handler_for(sf, el):
                     "ollama_up": bool(names),
                     "uptime_s": int(time.time() - sf.started),
                     "game_running": sf._game_flag(),
+                    "input_idle_s": (round(gs.input_idle_s, 1)
+                                     if (gs := GAME_SAMPLER) is not None
+                                     and gs.input_idle_s is not None else None),
+                    "bot_budget": sf.budget_cfg,
+                    "last_gate": sf.last_gate,
                     "policy_source": sf.policy_source,
                     "policy_max_tokens_note": "per-model caps in /stats",
                     "free_ram_gb": round(free_ram_gb(), 2),
@@ -941,6 +1205,11 @@ def handler_for(sf, el):
                     "hot_model": sf.hot_model,
                     "loaded_generation_models": names,
                     "game_running": sf._game_flag(),
+                    "input_idle_s": (round(gs.input_idle_s, 1)
+                                     if (gs := GAME_SAMPLER) is not None
+                                     and gs.input_idle_s is not None else None),
+                    "bot_budget": sf.budget_cfg,
+                    "last_gate": sf.last_gate,
                     "stats": dict(sf.stats),
                     "embed_stats": dict(el.stats),
                     "recent": sf.recent[-RING_SIZE:],
@@ -1007,15 +1276,19 @@ def main():
 
     global GAME_SAMPLER
     policy, path, source = load_policy(args.policy)
+    POLICY_STATE.update({"policy": policy, "policy_source": source,
+                         "budget_cfg": bot_budget_cfg(policy),
+                         "policy_mtime": _policy_file_mtime(args.policy)})
     GAME_SAMPLER = GameSampler()
-    sf = SingleFlight(policy, source)
+    sf = SingleFlight(policy, source, budget_cfg=POLICY_STATE["budget_cfg"])
     el = EmbedLane(policy)
     # bind host is loopback-ONLY by construction; never expose to the LAN
     httpd = http.server.ThreadingHTTPServer((BIND_HOST, PORT), handler_for(sf, el))
     log_event("SERVICE_START", port=PORT, bind=BIND_HOST, queue_caps=QUEUE_CAPS,
               priority="> ".join(PRIORITY), swap_pacing_s=SWAP_PACING_S,
               keep_alive=KEEP_ALIVE, job_timeout_s=JOB_TIMEOUT_S,
-              num_ctx=NUM_CTX, policy_source=source)
+              num_ctx=NUM_CTX, policy_source=source,
+              bot_budget=dict(POLICY_STATE["budget_cfg"]))
     print(f"ollama_orchestrator listening on {BIND_HOST}:{PORT} "
           f"(priority {' > '.join(PRIORITY)}, caps {QUEUE_CAPS}, "
           f"policy {source})", flush=True)

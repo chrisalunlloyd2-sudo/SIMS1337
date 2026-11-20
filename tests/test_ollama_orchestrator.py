@@ -214,6 +214,7 @@ class SingleFlightBase(unittest.TestCase):
         sf, m = self.sf, self.m
         sf.policy = base_policy()
         sf.policy_source = "test"
+        sf.budget_cfg = ORCH_M.bot_budget_cfg(sf.policy)
         sf.queues = {c: queue.Queue(maxsize=m.QUEUE_CAPS[c]) for c in m.PRIORITY}
         sf.active_model = None
         sf.hot_model = None
@@ -222,10 +223,14 @@ class SingleFlightBase(unittest.TestCase):
         sf.recent = []
         sf.stats = {"done": 0, "reject_queue": 0, "reject_ram": 0, "timeout": 0,
                     "errors": 0, "policy_deny_identity": 0,
-                    "policy_deny_resource": 0, "queued_wait": 0}
+                    "policy_deny_resource": 0, "queued_wait": 0,
+                    "budget_denied": 0, "budget_allowed": 0,
+                    "budget_relaxed": 0}
         for c in m.PRIORITY:
             sf.stats["done_" + c] = 0
             sf.stats["reject_queue_" + c] = 0
+            sf.stats["budget_denied_" + c] = 0
+        sf.last_gate = {}
         sf.lock = threading.Lock()
         sf.game_flag = False
         sf._game_flag = lambda: sf.game_flag
@@ -452,6 +457,288 @@ class GameSamplerTests(unittest.TestCase):
         self.assertIsNone(ORCH_M.GAME_SAMPLER)
         sf = ORCH_M.SingleFlight.__new__(ORCH_M.SingleFlight)
         self.assertFalse(sf._game_flag())
+
+
+# ======================================================================
+# LIVE-5 (t_f1bc2861) bot-budget tests: the gate, thread pin, token caps,
+# hot reload. The worker path is exercised end-to-end (make_job through
+# _process_job) so the accept contract — "the policy refuses to run bots
+# and says so in the log" — is real, not just the pure helpers.
+# ======================================================================
+
+class BotBudgetPureTests(unittest.TestCase):
+    """bot_budget_gate / bot_budget_cfg / budget helpers, PURE."""
+
+    def setUp(self):
+        self.cfg = ORCH_M.bot_budget_cfg(base_policy())
+
+    def test_budget_01_defaults_when_block_missing(self):
+        cfg = ORCH_M.bot_budget_cfg({"models": {}})
+        self.assertEqual(cfg["game_idle_input_s"], 120)
+        self.assertEqual(cfg["crew_max_tokens"], 64)
+        self.assertEqual(cfg["num_thread_bot"], 2)
+        self.assertTrue(cfg["enabled"])
+
+    def test_budget_02_garbage_values_fall_back(self):
+        cfg = ORCH_M.bot_budget_cfg({"bot_budget": {"game_idle_input_s": "x",
+                                                    "crew_max_tokens": None}})
+        self.assertEqual(cfg, dict(ORCH_M.DEFAULT_BOT_BUDGET))
+        cfg = ORCH_M.bot_budget_cfg({"bot_budget": "nope"})
+        self.assertEqual(cfg["game_idle_input_s"], 120)
+
+    def test_budget_03_gate_game_not_running(self):
+        allow, reason, detail = ORCH_M.bot_budget_gate(
+            "crew", False, 0.0, self.cfg)
+        self.assertTrue(allow)
+        self.assertEqual(reason, "game_not_running")
+
+    def test_budget_04_gate_game_active_input_fresh_denies(self):
+        allow, reason, detail = ORCH_M.bot_budget_gate(
+            "batch", True, 3.0, self.cfg, now=1000.0)
+        self.assertFalse(allow)
+        self.assertEqual(reason, "game_active_not_idle")
+        self.assertEqual(detail["input_idle_s"], 3.0)
+        self.assertEqual(detail["need_idle_s"], 120)
+        self.assertAlmostEqual(detail["open_at_ts"], 1117.0, places=1)
+
+    def test_budget_05_gate_game_active_input_old_allows(self):
+        allow, reason, _ = ORCH_M.bot_budget_gate(
+            "crew", True, 120.0, self.cfg)
+        self.assertTrue(allow)
+        self.assertEqual(reason, "game_idle")
+
+    def test_budget_06_gate_unknown_input_age_denies(self):
+        """Accept contract: refuses to run bots and SAYS SO. None input age
+        (API unavailable) while the game is up = deny, not silent allow."""
+        allow, reason, detail = ORCH_M.bot_budget_gate(
+            "crew", True, None, self.cfg)
+        self.assertFalse(allow)
+        self.assertEqual(reason, "game_active_not_idle")
+        self.assertIsNone(detail["input_idle_s"])
+
+    def test_budget_07_gate_disabled_allow(self):
+        cfg = dict(self.cfg, enabled=False)
+        for caller in ("crew", "batch"):
+            allow, reason, _ = ORCH_M.bot_budget_gate(caller, True, 0.0, cfg)
+            self.assertTrue(allow)
+            self.assertEqual(reason, "budget_disabled")
+
+    def test_budget_08_zero_threshold_any_game_allows(self):
+        cfg = dict(self.cfg, game_idle_input_s=0)
+        allow, reason, _ = ORCH_M.bot_budget_gate("crew", True, 0.01, cfg)
+        self.assertTrue(allow)
+
+    def test_budget_09_token_caps(self):
+        self.assertEqual(ORCH_M.budget_token_cap("crew", False, self.cfg), 64)
+        self.assertEqual(ORCH_M.budget_token_cap("crew", True, self.cfg), 64)
+        self.assertEqual(ORCH_M.budget_token_cap("batch", True, self.cfg), 256)
+        # game down -> batch unlimited (no contention to guard)
+        self.assertIsNone(ORCH_M.budget_token_cap("batch", False, self.cfg))
+        self.assertIsNone(ORCH_M.budget_token_cap("game", True, self.cfg))
+        disabled = dict(self.cfg, enabled=False)
+        for c in ("crew", "batch", "game"):
+            self.assertIsNone(ORCH_M.budget_token_cap(c, True, disabled))
+
+    def test_budget_10_thread_pin_fresh_loads_only(self):
+        # fresh load + game up + bot lane -> pinned to 2
+        nt, d = ORCH_M.budget_num_thread("crew", True, True, self.cfg, None)
+        self.assertEqual(nt, 2)
+        self.assertEqual(d["source"], "budget_pin")
+        # hot model (no load) -> untouched passthrough (num_thread stamping a
+        # hot runner restarts Ollama's runner; observed 2026-11-20)
+        nt, d = ORCH_M.budget_num_thread("crew", False, True, self.cfg, None)
+        self.assertIsNone(nt)
+        self.assertEqual(d["source"], "passthrough")
+        # game down -> untouched
+        nt, d = ORCH_M.budget_num_thread("batch", True, False, self.cfg, None)
+        self.assertIsNone(nt)
+        # game lane never pinned
+        nt, d = ORCH_M.budget_num_thread("game", True, True, self.cfg, None)
+        self.assertIsNone(nt)
+        self.assertEqual(d["source"], "no_pin_lane")
+        # requested 4 beats nothing but is capped to the pin
+        nt, d = ORCH_M.budget_num_thread("crew", True, True, self.cfg, 4)
+        self.assertEqual(nt, 2)
+        self.assertEqual(d["source"], "budget_pin_capped")
+        # no pin configured -> passthrough
+        cfg = dict(self.cfg, num_thread_bot=None)
+        nt, d = ORCH_M.budget_num_thread("crew", True, True, cfg, None)
+        self.assertIsNone(nt)
+
+    def test_budget_11_seconds_since_last_input_windows(self):
+        v = ORCH_M.seconds_since_last_input()
+        if ORCH_M.ctypes is not None:
+            self.assertIsNotNone(v)
+            self.assertGreaterEqual(v, 0.0)
+        else:
+            self.assertIsNone(v)
+
+
+class BotBudgetWorkerTests(SingleFlightBase):
+    """End-to-end: crew/batch jobs through the worker hit the gate; the game
+    lane never does. Gate inputs come from GAME_SAMPLER (stubbed)."""
+
+    def setUp(self):
+        super().setUp()
+        self.had_sampler = ORCH_M.GAME_SAMPLER
+
+        class FakeSampler:
+            game_running = True
+            input_idle_s = 0.0      # player at the keys
+            input_error = None
+
+        self.sampler = FakeSampler()
+        ORCH_M.GAME_SAMPLER = self.sampler
+
+    def tearDown(self):
+        ORCH_M.GAME_SAMPLER = self.had_sampler
+        super().tearDown()
+
+    def _arm_gate(self):
+        """Base harness stubs game_flag=False (game 'down'); budget tests
+        arm it per-test so sampler.game_running is the live knob."""
+        self.sf.game_flag = True
+
+    def test_budget_20_crew_denied_while_game_active(self):
+        self._arm_gate()
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="crew", num_predict=64)
+        self.run_job(job)
+        code, body = job["out"]
+        self.assertEqual(code, 507)
+        self.assertEqual(body["error"], "bot_budget_denied")
+        self.assertEqual(body["detail"], "game_active_not_idle")
+        self.assertEqual(self.sf.stats["budget_denied"], 1)
+        self.assertEqual(self.sf.stats["budget_denied_crew"], 1)
+        self.assertEqual(self.generate_calls, [])
+        self.assertEqual(self.sf.last_gate["reason"], "game_active_not_idle")
+
+    def test_budget_21_crew_allowed_when_idle(self):
+        self.sampler.input_idle_s = 120.5
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="crew", num_predict=64)
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.sf.stats["budget_allowed"], 1)
+        self.assertEqual(self.sf.stats["done_crew"], 1)
+
+    def test_budget_22_crew_allowed_game_down(self):
+        self.sampler.game_running = False
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="crew")
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.sf.stats["done_crew"], 1)
+
+    def test_budget_23_game_lane_never_gated(self):
+        """THE invariant: player actively typing, game up -> game jobs run
+        and the game's own num_thread/tokens are untouched."""
+        self.hot_from_ps = ("llama3.2:1b",)
+        job = make_job(model="llama3.2:1b", caller="game", num_predict=256)
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.generate_calls[0]["num_thread"], None)
+        self.assertEqual(self.generate_calls[0]["num_predict"], 256)
+        self.assertEqual(self.sf.stats["budget_denied"], 0)
+
+    def test_budget_24_crew_token_cap_while_idle(self):
+        self.sampler.input_idle_s = 999.0
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="crew", num_predict=999)
+        self.run_job(job)
+        self.assertEqual(self.generate_calls[0]["num_predict"], 64)
+        self.assertEqual(self.sf.stats["budget_relaxed"], 1)
+
+    def test_budget_25_batch_token_cap_only_with_game_up(self):
+        # game up + idle: batch passes the gate, tokens capped to 256
+        self.sampler.input_idle_s = 500.0
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="batch", num_predict=999)
+        self.run_job(job)
+        self.assertEqual(self.generate_calls[0]["num_predict"], 256)
+        # game down: no contention, batch uncapped
+        self.sampler.game_running = False
+        job = make_job(model="qwen2.5:0.5b", caller="batch", num_predict=999)
+        self.run_job(job)
+        self.assertEqual(self.generate_calls[1]["num_predict"], 256)
+        # (model policy S tier cap 256 is the binding cap in both rows)
+
+    def test_budget_26_thread_pin_logged_on_fresh_load(self):
+        self._arm_gate()
+        self.sampler.input_idle_s = 500.0
+        self.hot_from_ps = ()               # fresh load required
+        job = make_job(model="qwen2.5:0.5b", caller="crew")
+        self.run_job(job)
+        self.assertEqual(self.generate_calls[0]["num_thread"], 2)
+
+    def test_budget_27_disabled_policy_unblocks_bots(self):
+        pol = base_policy()
+        pol["bot_budget"] = dict(pol.get("bot_budget") or {}, enabled=False)
+        self.sf.budget_cfg = ORCH_M.bot_budget_cfg(pol)
+        self.hot_from_ps = ("qwen2.5:0.5b",)
+        job = make_job(model="qwen2.5:0.5b", caller="crew", num_predict=999)
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.generate_calls[0]["num_predict"], 256)
+
+    def test_budget_28_hot_reload_picks_up_mtime_change(self):
+        """Editing model_policy.json retunes the budget without a restart.
+        The worker calls maybe_reload_policy(POLICY_STATE, POLICY_PATH)."""
+        import tempfile, os as _os
+        pol = base_policy()
+        pol["bot_budget"] = {"enabled": True, "game_idle_input_s": 300,
+                             "crew_max_tokens": 32, "batch_max_tokens": 128,
+                             "num_thread_bot": 4}
+        tmp = tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False, dir=_os.path.dirname(ORCH))
+        json.dump(pol, tmp)
+        tmp.close()
+        had_path = ORCH_M.POLICY_PATH
+        ORCH_M.POLICY_PATH = tmp.name
+        try:
+            ORCH_M.POLICY_STATE.update({  # unknown mtime -> first pass reads
+                "policy": pol, "policy_source": "file:" + tmp.name,
+                "budget_cfg": ORCH_M.bot_budget_cfg(pol),
+                "policy_mtime": None})
+            fake = self.m
+
+            p_, s_, cfg_, reloaded = fake.maybe_reload_policy(
+                fake.POLICY_STATE, tmp.name)
+            self.assertTrue(reloaded)
+            self.assertEqual(cfg_["game_idle_input_s"], 300)
+            # second pass with no change is a no-op
+            p_, s_, cfg_, reloaded = fake.maybe_reload_policy(
+                fake.POLICY_STATE, tmp.name)
+            self.assertFalse(reloaded)
+        finally:
+            ORCH_M.POLICY_PATH = had_path   # restore for later load_policy reads
+            _os.unlink(tmp.name)
+
+    def test_budget_29_reload_keeps_old_tables_on_broken_file(self):
+        import tempfile, os as _os
+        state = {"policy": {"models": {"a:1b": {}}, "bot_budget":
+                            {"game_idle_input_s": 77}},
+                 "policy_source": "old", "budget_cfg": {"kept": True},
+                 "policy_mtime": None}
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        tmp.write("{broken json")
+        tmp.close()
+        try:
+            p_, s_, cfg_, reloaded = ORCH_M.maybe_reload_policy(
+                state, tmp.name)
+            self.assertFalse(reloaded)
+            self.assertEqual(s_, "old")
+            self.assertEqual(cfg_, {"kept": True})
+        finally:
+            _os.unlink(tmp.name)
+
+    def test_budget_30_policy_file_carries_bot_budget(self):
+        pol, p, src = ORCH_M.load_policy()
+        bb = pol.get("bot_budget")
+        self.assertIsInstance(bb, dict, "model_policy.json lost bot_budget")
+        self.assertEqual(bb["game_idle_input_s"], 120)
+        self.assertEqual(bb["crew_max_tokens"], 64)
+        self.assertEqual(bb["num_thread_bot"], 2)
 
 
 # ======================================================================
