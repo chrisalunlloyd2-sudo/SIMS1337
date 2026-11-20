@@ -18,3 +18,7 @@ Thumbs.db
 # DB locks
 *.db-journal
 *.db-wal
+
+# LIVE-1 crew artifacts (agent memory stays on disk, not in git)
+__pycache__/
+memory/
