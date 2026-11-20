@@ -22,8 +22,10 @@ Env overrides (unchanged names):
   AGENT_MEM_DIR — memory dir (default ../../memory)
   AGENT_CTX_TURNS — memory turns replayed as context (default 8)
   AGENT_TIMEOUT — seconds per generate (default 90; gateway caps per-model)
-  AGENT_NUM_THREAD — num_thread passthrough, clamped by the gateway 1..16
-                     (budget: keep it 2; the CPU is shared with the game)
+  AGENT_NUM_THREAD — num_thread passthrough, clamped by the gateway 1..16.
+                     OPT-IN ONLY ("" default sends nothing): Ollama restarts
+                     the runner when num_thread differs from the loaded one,
+                     which 503s against a busy slot (observed 2026-11-20).
 
 Windows note: this module runs as a Hermes --no-agent cron script, where the
 interpreter is the plain venv python 3.11 without a UTF-8 console; that is
