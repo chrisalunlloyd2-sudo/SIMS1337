@@ -20,8 +20,12 @@ $PIDFILE = "$LOGS\godhand.pid"
 $PORT  = 8899
 
 function Test-ApiHealthy {
+    # CRIT-3 (t_b0965d22): probe /healthz (instant, subprocess-free) instead of /api/status.
+    # /api/status folds in the ops thin-client cache — on a cold engine its refresh can run
+    # the ~40s ops_health.py subprocess fallback and the old poll wrongly read that as
+    # "unhealthy" for the whole cache window. /healthz answers in milliseconds by design.
     try {
-        $r = Invoke-WebRequest -Uri "http://127.0.0.1:$PORT/api/status" -UseBasicParsing -TimeoutSec 5
+        $r = Invoke-WebRequest -Uri "http://127.0.0.1:$PORT/healthz" -UseBasicParsing -TimeoutSec 5
         return ($r.StatusCode -eq 200)
     } catch { return $false }
 }
