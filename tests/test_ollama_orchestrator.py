@@ -740,6 +740,37 @@ class BotBudgetWorkerTests(SingleFlightBase):
         self.assertEqual(bb["crew_max_tokens"], 64)
         self.assertEqual(bb["num_thread_bot"], 2)
 
+    def test_budget_31_resident_behind_lru_head_never_pinned(self):
+        """The 2026-11-20 live 503: crew model resident in slot 1 while the
+        LRU head is another model. Old code read needs_load from names[0]
+        alone, stamped num_thread=2 onto the ALREADY-LOADED runner, Ollama
+        restarted the runner and 503'd the busy slot every crew turn.
+        needs_load is set-membership: a resident model is never touched,
+        so BUDGET_THREAD must not fire and the pin must not reach the
+        outbound call."""
+        self._arm_gate()
+        self.sampler.input_idle_s = 500.0
+        self.hot_from_ps = ("deepseek-r1:1.5b", "qwen2.5:0.5b")
+        job = make_job(model="qwen2.5:0.5b", caller="crew")
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.generate_calls[0]["num_thread"], None)
+        self.assertEqual(self.sf.stats["errors"], 0)
+
+    def test_budget_32_same_incident_fresh_load_still_pinned(self):
+        """Control for 31: the pin survives set-membership semantics —
+        crew model NOT resident (open slot), game up, idle -> genuine
+        fresh load -> BUDGET_THREAD fires and num_thread=2 rides the
+        outbound call (pinning at load time is safe: the runner starts
+        fresh with those threads)."""
+        self._arm_gate()
+        self.sampler.input_idle_s = 500.0
+        self.hot_from_ps = ("deepseek-r1:1.5b",)          # 1/2 slots used
+        job = make_job(model="qwen2.5:0.5b", caller="crew")
+        self.run_job(job)
+        self.assertEqual(job["out"][0], 200)
+        self.assertEqual(self.generate_calls[0]["num_thread"], 2)
+
 
 # ======================================================================
 # Compat-layer tests (UNIFY-1 migration support): the gateway must speak

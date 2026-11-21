@@ -66,9 +66,11 @@ Log-line contract for t_6af8f408 (alert wiring): every line is one JSON
 object; events: SERVICE_START/SERVICE_STOP, JOB_QUEUED, GUARD_CHECK,
 POLICY_DENY, RAM_GUARD_REJECT, QUEUE_REJECT, SWAP_PACING, MODEL_LOAD_START,
 MODEL_LOAD_DETECTED, MODEL_INFER_DONE, JOB_DONE, JOB_TIMEOUT, JOB_REJECT,
-EMBED_START/EMBED_DONE, EMBED_QUEUED. One JSON object per line; tolerate
-unknown events for forward compatibility. MODEL_LOAD_START only ever appears
-when loaded_models == 0 (single flight); MODEL_INFER_DONE is its matching end.
+EMBED_START/EMBED_DONE, EMBED_QUEUED, BOT_BUDGET_ALLOW, BOT_BUDGET_DENY,
+BUDGET_CAP, BUDGET_THREAD, POLICY_RELOADED, POLICY_RELOAD_FAILED. One JSON
+object per line; tolerate unknown events for forward compatibility.
+MODEL_LOAD_START only ever appears when loaded_models == 0 (single flight);
+MODEL_INFER_DONE is its matching end.
 
 Run: python scripts/ollama_orchestrator.py [--port 11435] [--policy <path>]
 Stdlib only. Local Ollama only (127.0.0.1:11434) per EPIC constraint; the
@@ -569,7 +571,15 @@ class SingleFlight:
         names, _ = ollama_ps()
         self.hot_model = names[0] if names else None
         free_gb = free_ram_gb()
-        needs_load = (self.hot_model != model)
+        # LIVE-5 fix: "needs load" means the model is NOT among the resident
+        # generation models. names[0] alone is LRU-order, not "the only hot
+        # model": a model resident in slot 1 (e.g. qwen behind deepseek-r1)
+        # counted as needing a load, and the budget pin then stamped
+        # num_thread onto its ALREADY-LOADED runner, which restarts the
+        # runner and 503s against a busy num_parallel=1 slot (live-observed
+        # 2026-11-20). The keep_alive=5m stamp is harmless to resend; the
+        # thread stamp is not.
+        needs_load = (model not in set(names))
         log_event("GUARD_CHECK", model=model, job_id=job["id"],
                   needs_load=needs_load, free_ram_gb=round(free_gb, 2),
                   loaded_models=len(names), caller=caller)
