@@ -894,19 +894,28 @@ public class GodHandApp extends Application {
             dashboardServer.createContext("/", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
+                    // CRIT-3 (t_b0965d22): the root used to call getJobsJson()/liveStatusHtml()
+                    // synchronously — on cold caches with dark engines those took the subprocess
+                    // fallback path (jobs 15s / ops 40s under their cache locks) and the page
+                    // timed out at 5s. Now: serve from the last-known volatile snapshots (same
+                    // lock-free pattern GODHAND-2C already proved for the phone page) and kick
+                    // ONE background warmer; the 10s meta-refresh picks up the fresh doc.
+                    PhoneWarm warm = warmPhoneCachesIfNeeded();
+                    String jobsDoc = warm.jobsAfter();
+                    String opsDoc = warm.opsAfter();
                     String html = "<!DOCTYPE html><html><head><title>GodHand OPS</title><meta charset='utf-8'>"
                         + "<style>body{background:#050510;color:#00ff88;font-family:monospace;margin:0;padding:12px}"
                         + "h1{font-size:15px;color:#00d9ff;margin:6px 0}pre{color:#00ff88;font-size:11px;white-space:pre-wrap}</style>"
                         + "<meta http-equiv='refresh' content='10'></head><body>"
                         + "<h1>GODHAND OPS — SIMS1337 (headless @ 127.0.0.1:" + dashPort + ")</h1>"
                         + "<img src='/api/hexmap' width='480' height='300'>"
-                        + "<p><a href='/api/status' style='color:#00d9ff'>/api/status</a> "
+                        + "<p><a href='/healthz' style='color:#00d9ff'>/healthz</a> "
+                        + "<a href='/api/status' style='color:#00d9ff'>/api/status</a> "
                         + "<a href='/api/ops' style='color:#00d9ff'>/api/ops</a> "
                         + "<a href='/api/hexflow' style='color:#00d9ff'>/api/hexflow</a> "
                         + "<a href='/api/jobs' style='color:#00d9ff'>/api/jobs</a></p>"
                         + "<h2>job dashboard (GODHAND-4)</h2>"
                         + "<p><span style='color:#00d9ff'>queue</span> ";
-            String jobsDoc = getJobsJson();
             html = html
                         + opsField(jobsDoc, "depth") + "/" + opsField(jobsDoc, "cap")
                         + " &middot; running " + opsField(jobsDoc, "running")
@@ -915,7 +924,7 @@ public class GodHandApp extends Application {
                         + " &middot; paused " + opsField(jobsDoc, "paused_all")
                         + " &middot; drain " + opsField(jobsDoc, "drain")
                         + " &middot; source " + jobsCacheSource + "</p>"
-                        + "<pre>" + liveStatusHtml() + "</pre>"
+                        + "<pre>" + liveStatusHtmlFromSnapshot(opsDoc) + "</pre>"
                         + "</body></html>";
                     byte[] response = html.getBytes("UTF-8");
                     exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
@@ -1491,6 +1500,14 @@ public class GodHandApp extends Application {
     /** GODHAND-2B: tiny status block for the "/" dashboard root, from the same cached snapshot. */
     private String liveStatusHtml() {
         String opsDoc = getOpsSnapshotJson();
+        return liveStatusHtmlFromSnapshot(opsDoc);
+    }
+
+    /** CRIT-3 (t_b0965d22): liveStatusHtml against an ALREADY-FETCHED snapshot — the "/"
+     *  root passes the lock-free last-known doc so the request itself never runs a
+     *  thin-client fetch (up to ~40s subprocess on cold cache); the root handler kicks
+     *  a background warmer instead and the 10s meta-refresh picks up the fresh doc. */
+    private String liveStatusHtmlFromSnapshot(String opsDoc) {
         String violations = opsViolationsJson(opsDoc);
         int violationCount = 0;
         if (!"[]".equals(violations)) {
