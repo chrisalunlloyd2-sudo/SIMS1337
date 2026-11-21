@@ -31,6 +31,7 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -833,6 +834,16 @@ public class GodHandApp extends Application {
             });
 
             // GODHAND-2: full ops_health snapshot (L1..L5 laws + hexflow) — thin client of the ARIA ops engine
+            // CRIT-3 (t_b0965d22): /healthz — instant liveness probe with ZERO thin-client
+            // or subprocess contact. Served from the executor's pool, it answers under 200 ms
+            // even while every other handler is blocked on a cold ops/jobs subprocess.
+            dashboardServer.createContext("/healthz", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    serveHealthz(exchange);
+                }
+            });
+
             dashboardServer.createContext("/api/ops", new HttpHandler() {
                 @Override
                 public void handle(HttpExchange exchange) throws IOException {
@@ -945,7 +956,11 @@ public class GodHandApp extends Application {
                     exchange.close();
                 }
             });
-            dashboardServer.setExecutor(null);
+            // CRIT-3 (t_b0965d22): a real thread pool replaces the default inline executor —
+            // setExecutor(null) made every request queue behind the handler in front of it
+            // (a cold / root held the queue ~40s on the ops subprocess fallback). With a pool,
+            // /healthz and other light endpoints answer even while a subprocess handler blocks.
+            dashboardServer.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
             dashboardServer.start();
             System.out.println("[GODHAND DASHBOARD] Online at http://localhost:" + dashPort + " (loopback-only)");
 
@@ -953,6 +968,49 @@ public class GodHandApp extends Application {
             // GUI mode only — headless stays loopback-only (dashboard + tests never bind LAN).
             publicServer = startPublicPhoneUi(!headlessServer);
         } catch(Exception e) { e.printStackTrace(); }
+    }
+
+    /**
+     * CRIT-3 (t_b0965d22): the /healthz body — instant liveness JSON with ZERO
+     * thin-client or subprocess contact. Package-private so tests bind it on a
+     * throwaway port and time the real handler.
+     */
+    void serveHealthz(HttpExchange exchange) throws IOException {
+        long kgNodes = kg != null ? kg.size() : 0;
+        byte[] resp = ("{\"ok\":true,\"service\":\"godhand-dashboard\",\"kgNodes\":" + kgNodes
+            + ",\"timestamp\":\"" + java.time.LocalDateTime.now() + "\"}").getBytes("UTF-8");
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, resp.length);
+        exchange.getResponseBody().write(resp);
+        exchange.close();
+    }
+
+    /**
+     * CRIT-3 (t_b0965d22) test seam: builds a REAL dashboard server (same registration
+     * order as initBackendSystems, including /healthz) on a free ephemeral loopback
+     * port with the fixed-pool executor, WITHOUT JavaFX, KG loading or the
+     * single-instance lock. Tests time the real handler chain. Returns null on
+     * any bind failure (mirrors startPublicPhoneUi's contract).
+     */
+    HttpServer startDashboardForTest() {
+        try {
+            int port;
+            try (java.net.ServerSocket probe = new java.net.ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+                port = probe.getLocalPort();
+            }
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+            server.createContext("/healthz", new HttpHandler() {
+                @Override
+                public void handle(HttpExchange exchange) throws IOException {
+                    serveHealthz(exchange);
+                }
+            });
+            server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4));
+            server.start();
+            return server;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /**
